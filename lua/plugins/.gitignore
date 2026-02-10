@@ -1,0 +1,24 @@
+# Neovim temp files
+*.swp
+*.swo
+*.swn
+*.swm
+
+# Undo files
+*.un~
+
+# Logs
+*.log
+
+# Shada
+*.shada
+*.shada.tmp
+
+# Project-specific config (Optional)
+.neoconf.json
+
+# Tags
+tags
+
+# OS specific
+.DS_Store
