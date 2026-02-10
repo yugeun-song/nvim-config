@@ -18,5 +18,5 @@ Simply clone the repository into your preferred workspace. For reference, this c
 
 ```zsh
 # Example of the current setup
-git clone [https://github.com/archgeek/nvim-config.git](https://github.com/archgeek/nvim-config.git) ~/workspace/nvim-config
+git clone https://github.com/yugeun-song/nvim-config.git ~/workspace/nvim-config
 ln -s ~/workspace/nvim-config ~/.config/nvim
