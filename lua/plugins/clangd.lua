@@ -1,3 +1,6 @@
+local cpu_count = #vim.uv.cpu_info()
+local half_cpus = math.max(1, math.floor(cpu_count / 2))
+
 return {
   "neovim/nvim-lspconfig",
   opts = {
@@ -9,7 +12,7 @@ return {
           "--clang-tidy",
           "--completion-style=detailed",
           "--header-insertion=never",
-          "-j=4",
+          "-j=" .. half_cpus,
         },
       },
     },
