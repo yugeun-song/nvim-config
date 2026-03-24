@@ -1,4 +1,8 @@
 local uv = vim.uv or vim.loop
+if not uv then
+  return {}
+end
+
 local has_fcitx5 = vim.fn.executable("fcitx5-remote") == 1
 local has_caps_path = vim.fn.glob("/sys/class/leds/input*::capslock/brightness") ~= ""
 
@@ -6,7 +10,7 @@ if not has_fcitx5 and not has_caps_path then
   return {}
 end
 
-local im_state = "EN"
+local im_state = "en"
 local caps_state = ""
 
 local function read_caps_status()
@@ -20,7 +24,7 @@ local function read_caps_status()
   local result = handle:read("*a")
   handle:close()
 
-  if result and result:find("1") then
+  if result and type(result) == "string" and result:find("1") then
     return "󰬈 CAPS"
   else
     return ""
@@ -29,25 +33,43 @@ end
 
 local function start_kbd_check()
   local timer = uv.new_timer()
-  timer:start(
-    0,
-    50,
-    vim.schedule_wrap(function()
-      if has_fcitx5 then
-        local f = io.popen("fcitx5-remote -n 2>/dev/null")
-        if f then
-          local res = f:read("*a"):gsub("%s+", "")
-          f:close()
-          im_state = (res == "hangul") and "한" or "EN"
-        end
-      end
+  if not timer then
+    return false
+  end
 
-      caps_state = read_caps_status()
-    end)
-  )
+  local ok = pcall(function()
+    timer:start(
+      0,
+      50,
+      vim.schedule_wrap(function()
+        caps_state = read_caps_status()
+
+        if has_fcitx5 then
+          local f = io.popen("fcitx5-remote -n 2>/dev/null")
+          if f then
+            local res = f:read("*a")
+            f:close()
+
+            if res and type(res) == "string" then
+              res = res:gsub("%s+", "")
+              if res == "hangul" then
+                im_state = "한"
+              else
+                im_state = (caps_state ~= "") and "EN" or "en"
+              end
+            end
+          end
+        end
+      end)
+    )
+  end)
+
+  return ok
 end
 
-start_kbd_check()
+if not start_kbd_check() then
+  return {}
+end
 
 return {
   {
