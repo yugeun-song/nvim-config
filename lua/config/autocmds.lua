@@ -1,12 +1,17 @@
+local function augroup(name)
+  return vim.api.nvim_create_augroup("lazyvim_" .. name, { clear = true })
+end
+
 vim.api.nvim_create_autocmd("FileType", {
+  group = augroup("linux_kernel_style"),
   pattern = { "c", "cpp" },
   callback = function()
-    vim.opt_local.tabstop = 8
-    vim.opt_local.shiftwidth = 8
-    vim.opt_local.expandtab = false
-    vim.opt_local.softtabstop = 0
-    vim.opt_local.list = true
-    -- Optional : vim.opt_local.listchars:append("trail:X")
+    local opt = vim.opt_local
+    opt.tabstop = 8
+    opt.shiftwidth = 8
+    opt.expandtab = false
+    opt.softtabstop = 0
+    opt.list = true
     vim.b.autoformat = false
   end,
   desc = "Apply Linux Kernel Style and disable autoformatting for C/H files",
