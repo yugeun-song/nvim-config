@@ -9,14 +9,22 @@ local function get_im_command()
   return nil
 end
 
-local im_command = get_im_command()
+return {
+  "im_control",
+  virtual = true,
+  config = function()
+    vim.opt.langmap =
+      "ㅁa,ㅠb,ㅊc,ㅇd,ㄷe,ㄹf,ㅎg,ㅗh,ㅑi,ㅓj,ㅏk,ㅣl,ㅡm,ㅜn,ㅐo,ㅔp,ㅂq,ㄱr,ㄴs,ㅅt,ㅕu,ㅍv,ㅈw,ㅌx,ㅛy,ㅋz,ㅃQ,ㅉW,ㄸE,ㄲR,ㅆT,ㅒO,ㅖP"
 
-if im_command then
-  vim.api.nvim_create_autocmd("InsertLeave", {
-    group = vim.api.nvim_create_augroup("IMControl", { clear = true }),
-    pattern = "*",
-    callback = function()
-      vim.fn.system(im_command)
-    end,
-  })
-end
+    local im_command = get_im_command()
+    if im_command then
+      vim.api.nvim_create_autocmd({ "InsertLeave", "FocusGained" }, {
+        group = vim.api.nvim_create_augroup("IMControl", { clear = true }),
+        pattern = "*",
+        callback = function()
+          vim.fn.system(im_command)
+        end,
+      })
+    end
+  end,
+}
