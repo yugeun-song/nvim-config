@@ -14,6 +14,7 @@ end
 
 local im_state = "en"
 local caps_state = ""
+local fcitx_in_flight = false
 
 local function update_caps_status()
   if not actual_caps_path then
@@ -26,6 +27,35 @@ local function update_caps_status()
     f:close()
     caps_state = (data and data:find("1")) and "󰬈 CAPS" or ""
   end
+end
+
+local function poll_fcitx_async()
+  if fcitx_in_flight then
+    return
+  end
+  fcitx_in_flight = true
+
+  local stdout_lines = {}
+  vim.fn.jobstart({ "fcitx5-remote", "-n" }, {
+    stdout_buffered = true,
+    on_stdout = function(_, data)
+      if data then
+        stdout_lines = data
+      end
+    end,
+    on_exit = function(_, code)
+      fcitx_in_flight = false
+      if code ~= 0 then
+        return
+      end
+      local res = table.concat(stdout_lines, ""):gsub("%s+", "")
+      if res == "hangul" then
+        im_state = "한"
+      else
+        im_state = (caps_state ~= "") and "EN" or "en"
+      end
+    end,
+  })
 end
 
 local function start_kbd_check()
@@ -41,19 +71,7 @@ local function start_kbd_check()
       update_caps_status()
 
       if has_fcitx5 then
-        local f = io.popen("fcitx5-remote -n 2>/dev/null")
-        if f then
-          local res = f:read("*a")
-          f:close()
-          if res then
-            res = res:gsub("%s+", "")
-            if res == "hangul" then
-              im_state = "한"
-            else
-              im_state = (caps_state ~= "") and "EN" or "en"
-            end
-          end
-        end
+        poll_fcitx_async()
       end
     end)
   )
