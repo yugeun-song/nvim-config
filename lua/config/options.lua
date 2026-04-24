@@ -5,3 +5,4 @@
 local opt = vim.opt
 opt.modeline = false
 opt.whichwrap:append("h,l,<,>,[,]")
+opt.tags = "./tags;,tags;"
