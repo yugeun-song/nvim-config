@@ -3,6 +3,9 @@ local diag_augroup = vim.api.nvim_create_augroup("UserLspDiagnostics", { clear =
 vim.api.nvim_create_autocmd("CursorHold", {
   group = diag_augroup,
   callback = function()
+    if not vim.diagnostic.is_enabled({ bufnr = vim.api.nvim_get_current_buf() }) then
+      return
+    end
     local ok, _, winid = pcall(vim.diagnostic.open_float, nil, {
       focusable = false,
       close_events = { "CursorMovedI", "BufHidden", "InsertCharPre" },

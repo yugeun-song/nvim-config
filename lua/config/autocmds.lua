@@ -49,3 +49,21 @@ vim.api.nvim_create_autocmd("LspAttach", {
   end,
   desc = "Clear LSP tagfunc on C/C++/H buffers so <C-]> falls back to tags file",
 })
+
+vim.api.nvim_create_autocmd("LspAttach", {
+  group = augroup("kernel_diagnostic_mute"),
+  callback = function(args)
+    if vim.g.kernel_diag_mute_enabled == false then
+      return
+    end
+    local ft = vim.bo[args.buf].filetype
+    if ft ~= "c" and ft ~= "cpp" and ft ~= "h" then
+      return
+    end
+    if vim.fn.findfile(".nvim-diag-off", ".;") == "" then
+      return
+    end
+    vim.diagnostic.enable(false, { bufnr = args.buf })
+  end,
+  desc = "Mute LSP diagnostics in C/C++/H buffers under a project rooted at .nvim-diag-off",
+})
