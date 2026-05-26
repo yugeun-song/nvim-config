@@ -26,6 +26,7 @@ local function update_caps_status()
     local data = f:read("*a")
     f:close()
     caps_state = (data and data:find("1")) and "󰬈 CAPS" or ""
+    vim.g.caps_state = caps_state
   end
 end
 
@@ -54,6 +55,7 @@ local function poll_fcitx_async()
       else
         im_state = (caps_state ~= "") and "EN" or "en"
       end
+      vim.g.im_state = im_state
     end,
   })
 end
