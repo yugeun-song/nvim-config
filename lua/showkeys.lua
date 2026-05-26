@@ -27,6 +27,7 @@ local config = {
   },
   bold = true,
   im_indicator = true,
+  kitty_keyboard = "auto",
 }
 
 local MOD_NAME = {
@@ -314,6 +315,58 @@ local function should_skip(seq)
   return false
 end
 
+local function in_gui()
+  return vim.g.neovide or vim.g.fvim_loaded or vim.g.goneovim
+end
+
+local function detect_kitty_kb()
+  if in_gui() then
+    return false
+  end
+  local term = vim.env.TERM or ""
+  local prog = vim.env.TERM_PROGRAM or ""
+  if term == "xterm-kitty" or vim.env.KITTY_PID then
+    return true
+  end
+  if prog == "WezTerm" then
+    return true
+  end
+  if term:find("^foot") then
+    return true
+  end
+  if prog == "ghostty" or vim.env.GHOSTTY_RESOURCES_DIR then
+    return true
+  end
+  if prog == "rio" then
+    return true
+  end
+  return false
+end
+
+local function enable_kitty_kb()
+  local want = config.kitty_keyboard
+  if want == false then
+    return
+  end
+
+  local ok, detected = pcall(detect_kitty_kb)
+  if not ok or (want == "auto" and not detected) then
+    return
+  end
+
+  local sent, err = pcall(vim.fn.chansend, 2, "\27[>1u")
+  if not sent then
+    vim.notify("[showkeys] kitty keyboard protocol failed: " .. tostring(err), vim.log.levels.DEBUG)
+    return
+  end
+
+  vim.api.nvim_create_autocmd("VimLeavePre", {
+    callback = function()
+      pcall(vim.fn.chansend, 2, "\27[<u")
+    end,
+  })
+end
+
 local function on_key(_, typed)
   if not config.enabled then
     return
@@ -404,14 +457,7 @@ function M.setup(opts)
     M.toggle()
   end, {})
 
-  if vim.env.TERM == "xterm-kitty" then
-    pcall(vim.fn.chansend, 2, "\27[>1u")
-    vim.api.nvim_create_autocmd("VimLeavePre", {
-      callback = function()
-        pcall(vim.fn.chansend, 2, "\27[<u")
-      end,
-    })
-  end
+  enable_kitty_kb()
 end
 
 return M
