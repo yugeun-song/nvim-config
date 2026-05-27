@@ -77,6 +77,8 @@ local state = {
   keys = {},
   timer = nil,
   last_color = 0,
+  esc_pending = false,
+  esc_timer = nil,
 }
 
 local color_count = 0
@@ -112,6 +114,37 @@ local function build_label(mods, main)
     table.insert(parts, MOD_NAME[m] or m)
   end
   return table.concat(parts, " + ") .. " + " .. main
+end
+
+local MODIFIER_PATTERNS = {
+  { "Shift", "Shift" },
+  { "Control", "Ctrl" },
+  { "Alt", "Alt" },
+  { "Super", "Super" },
+  { "Meta", "Meta" },
+  { "Hyper", "Hyper" },
+}
+
+local function standalone_modifier(main)
+  for _, pair in ipairs(MODIFIER_PATTERNS) do
+    if main:find(pair[1]) then
+      return pair[2]
+    end
+  end
+  return nil
+end
+
+local function is_internal_keycode(s)
+  if #s <= 1 then
+    return false
+  end
+  for i = 1, #s do
+    local b = s:byte(i)
+    if b < 0x61 or b > 0x7A then
+      return false
+    end
+  end
+  return true
 end
 
 local function pick_color()
@@ -162,8 +195,22 @@ local function close_window()
   state.buf = nil
 end
 
+local function cancel_esc_timer()
+  if state.esc_timer then
+    pcall(function()
+      state.esc_timer:stop()
+    end)
+    pcall(function()
+      state.esc_timer:close()
+    end)
+    state.esc_timer = nil
+  end
+end
+
 function M._wipe()
   state.keys = {}
+  state.esc_pending = false
+  cancel_esc_timer()
   close_window()
   stop_timer()
 end
@@ -207,7 +254,7 @@ local function place_window(inner_w)
     pcall(
       vim.api.nvim_set_option_value,
       "winhighlight",
-      "NormalFloat:ShowKeysCap,FloatBorder:ShowKeysCapBorder",
+      "NormalFloat:ChKeysCap,FloatBorder:ChKeysCapBorder",
       { win = state.win }
     )
   end
@@ -236,11 +283,11 @@ local function render()
 
   local indicator = ""
   if config.im_indicator and vim.g.im_state == "한" then
-    indicator = "한 "
+    indicator = " 한"
   end
   local indicator_bytes = #indicator
 
-  local line = pad .. indicator .. text .. pad
+  local line = pad .. text .. indicator .. pad
 
   vim.bo[state.buf].modifiable = true
   vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, { line })
@@ -248,22 +295,23 @@ local function render()
 
   vim.api.nvim_buf_clear_namespace(state.buf, state.ns, 0, -1)
 
-  if indicator_bytes > 0 then
-    pcall(vim.api.nvim_buf_set_extmark, state.buf, state.ns, 0, config.pad_x, {
-      end_row = 0,
-      end_col = config.pad_x + indicator_bytes,
-      hl_group = "ShowKeysMod",
-      priority = 100,
-    })
-  end
-
-  local off = config.pad_x + indicator_bytes
+  local off = config.pad_x
   for _, sp in ipairs(spans) do
     pcall(vim.api.nvim_buf_set_extmark, state.buf, state.ns, 0, off + sp.s, {
       end_row = 0,
       end_col = off + sp.e,
-      hl_group = "ShowKeysColor" .. sp.color,
+      hl_group = "ChKeysColor" .. sp.color,
       priority = 200,
+    })
+  end
+
+  if indicator_bytes > 0 then
+    local ind_start = config.pad_x + #text
+    pcall(vim.api.nvim_buf_set_extmark, state.buf, state.ns, 0, ind_start, {
+      end_row = 0,
+      end_col = ind_start + indicator_bytes,
+      hl_group = "ChKeysMod",
+      priority = 100,
     })
   end
 
@@ -356,7 +404,7 @@ local function enable_kitty_kb()
 
   local sent, err = pcall(vim.fn.chansend, 2, "\27[>1u")
   if not sent then
-    vim.notify("[showkeys] kitty keyboard protocol failed: " .. tostring(err), vim.log.levels.DEBUG)
+    vim.notify("[chkeys] kitty keyboard protocol failed: " .. tostring(err), vim.log.levels.DEBUG)
     return
   end
 
@@ -366,6 +414,8 @@ local function enable_kitty_kb()
     end,
   })
 end
+
+local ESC_MERGE_MS = 50
 
 local function on_key(_, typed)
   if not config.enabled then
@@ -382,11 +432,57 @@ local function on_key(_, typed)
     return
   end
 
+  if seq == "<Esc>" then
+    if state.esc_pending then
+      cancel_esc_timer()
+      vim.schedule(function()
+        push_key("Esc")
+      end)
+    end
+    state.esc_pending = true
+    local t = uv.new_timer()
+    state.esc_timer = t
+    t:start(ESC_MERGE_MS, 0, vim.schedule_wrap(function()
+      state.esc_pending = false
+      state.esc_timer = nil
+      push_key("Esc")
+    end))
+    return
+  end
+
+  local alt_prefix = state.esc_pending
+  if alt_prefix then
+    state.esc_pending = false
+    cancel_esc_timer()
+  end
+
   vim.schedule(function()
     if not config.enabled then
       return
     end
     local mods, main = parse_key(seq)
+
+    local mod_label = standalone_modifier(main)
+    if mod_label then
+      push_key(mod_label)
+      return
+    end
+
+    if alt_prefix and not vim.tbl_contains(mods, "A") and not vim.tbl_contains(mods, "M") then
+      table.insert(mods, 1, "A")
+    end
+
+    if is_internal_keycode(main) then
+      if #mods > 0 then
+        local parts = {}
+        for _, m in ipairs(mods) do
+          table.insert(parts, MOD_NAME[m] or m)
+        end
+        push_key(table.concat(parts, " + "))
+      end
+      return
+    end
+
     push_key(build_label(mods, main))
   end)
 end
@@ -400,9 +496,9 @@ local function get_fg(name)
 end
 
 local function setup_highlights()
-  vim.api.nvim_set_hl(0, "ShowKeysCap", { link = "Normal", default = true })
-  vim.api.nvim_set_hl(0, "ShowKeysCapBorder", { link = "Comment", default = true })
-  vim.api.nvim_set_hl(0, "ShowKeysMod", { link = "Comment", default = true })
+  vim.api.nvim_set_hl(0, "ChKeysCap", { link = "Normal", default = true })
+  vim.api.nvim_set_hl(0, "ChKeysCapBorder", { link = "Comment", default = true })
+  vim.api.nvim_set_hl(0, "ChKeysMod", { link = "Comment", default = true })
 
   color_count = 0
   local seen = {}
@@ -411,11 +507,11 @@ local function setup_highlights()
     if fg and not seen[fg] then
       seen[fg] = true
       color_count = color_count + 1
-      vim.api.nvim_set_hl(0, "ShowKeysColor" .. color_count, { fg = fg, bold = config.bold })
+      vim.api.nvim_set_hl(0, "ChKeysColor" .. color_count, { fg = fg, bold = config.bold })
     end
   end
   if color_count == 0 then
-    vim.api.nvim_set_hl(0, "ShowKeysColor1", { bold = config.bold, default = true })
+    vim.api.nvim_set_hl(0, "ChKeysColor1", { bold = config.bold, default = true })
     color_count = 1
   end
 end
@@ -435,7 +531,7 @@ function M.toggle()
   else
     M.enable()
   end
-  vim.notify("ShowKeys: " .. (config.enabled and "on" or "off"))
+  vim.notify("ChKeys: " .. (config.enabled and "on" or "off"))
 end
 
 function M.setup(opts)
@@ -444,16 +540,16 @@ function M.setup(opts)
     return
   end
   math.randomseed(os.time())
-  state.ns = vim.api.nvim_create_namespace("user_showkeys")
+  state.ns = vim.api.nvim_create_namespace("user_chkeys")
   setup_highlights()
   vim.on_key(on_key, state.ns)
   vim.api.nvim_create_autocmd("ColorScheme", {
     callback = function()
       setup_highlights()
     end,
-    desc = "ShowKeys: re-link highlights after colorscheme change",
+    desc = "ChKeys: re-link highlights after colorscheme change",
   })
-  vim.api.nvim_create_user_command("ShowKeysToggle", function()
+  vim.api.nvim_create_user_command("ChKeysToggle", function()
     M.toggle()
   end, {})
 
