@@ -12,6 +12,8 @@ local config = {
   margin_bottom = 2,
   zindex = 250,
   border = "rounded",
+  per_key_window = false,
+  per_key_gap = 1,
   excluded_modes = {},
   color_sources = {
     "String",
@@ -74,6 +76,8 @@ local state = {
   ns = nil,
   buf = nil,
   win = nil,
+  per_bufs = {},
+  per_wins = {},
   keys = {},
   timer = nil,
   last_color = 0,
@@ -184,6 +188,21 @@ local function arm_timer()
   )
 end
 
+local function close_per_key_windows()
+  for _, w in ipairs(state.per_wins) do
+    if vim.api.nvim_win_is_valid(w) then
+      pcall(vim.api.nvim_win_close, w, true)
+    end
+  end
+  for _, b in ipairs(state.per_bufs) do
+    if vim.api.nvim_buf_is_valid(b) then
+      pcall(vim.api.nvim_buf_delete, b, { force = true })
+    end
+  end
+  state.per_wins = {}
+  state.per_bufs = {}
+end
+
 local function close_window()
   if state.win and vim.api.nvim_win_is_valid(state.win) then
     pcall(vim.api.nvim_win_close, state.win, true)
@@ -193,6 +212,7 @@ local function close_window()
   end
   state.win = nil
   state.buf = nil
+  close_per_key_windows()
 end
 
 local function cancel_esc_timer()
@@ -260,7 +280,134 @@ local function place_window(inner_w)
   end
 end
 
+local function render_per_key()
+  local n = #state.keys
+  if n == 0 then
+    close_per_key_windows()
+    return
+  end
+
+  local pad = string.rep(" ", config.pad_x)
+  local outer_h = 3
+  local row = math.max(0, vim.o.lines - config.margin_bottom - outer_h)
+  local col_cursor = vim.o.columns - config.margin_right
+  local slot = 0
+
+  for i = n, 1, -1 do
+    local k = state.keys[i]
+    local label = k.label
+    local has_indicator = i == n and config.im_indicator and vim.g.im_state == "한"
+    if has_indicator then
+      label = label .. " 한"
+    end
+
+    local text = pad .. label .. pad
+    local inner_w = vim.fn.strdisplaywidth(text)
+    if inner_w < 3 then
+      inner_w = 3
+    end
+
+    local outer_w = inner_w + 2
+    col_cursor = col_cursor - outer_w
+    if col_cursor < 0 then
+      break
+    end
+
+    slot = slot + 1
+    local buf = state.per_bufs[slot]
+    local win = state.per_wins[slot]
+    local buf_valid = buf and vim.api.nvim_buf_is_valid(buf)
+    local win_valid = win and vim.api.nvim_win_is_valid(win)
+
+    if not buf_valid then
+      buf = vim.api.nvim_create_buf(false, true)
+      vim.bo[buf].bufhidden = "wipe"
+      state.per_bufs[slot] = buf
+    end
+
+    vim.bo[buf].modifiable = true
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, { text })
+    vim.bo[buf].modifiable = false
+    vim.api.nvim_buf_clear_namespace(buf, state.ns, 0, -1)
+
+    if win_valid then
+      pcall(vim.api.nvim_win_set_config, win, {
+        relative = "editor",
+        row = row,
+        col = col_cursor,
+        width = inner_w,
+        height = 1,
+      })
+    else
+      local ok, w = pcall(vim.api.nvim_open_win, buf, false, {
+        relative = "editor",
+        row = row,
+        col = col_cursor,
+        width = inner_w,
+        height = 1,
+        focusable = false,
+        style = "minimal",
+        border = config.border,
+        noautocmd = true,
+        zindex = config.zindex,
+      })
+      if not ok then
+        break
+      end
+      win = w
+      state.per_wins[slot] = win
+      pcall(
+        vim.api.nvim_set_option_value,
+        "winhighlight",
+        "NormalFloat:ChKeysCap,FloatBorder:ChKeysCapBorder",
+        { win = win }
+      )
+    end
+
+    pcall(vim.api.nvim_buf_set_extmark, buf, state.ns, 0, config.pad_x, {
+      end_row = 0,
+      end_col = config.pad_x + #k.label,
+      hl_group = "ChKeysColor" .. k.color,
+      priority = 200,
+    })
+
+    if has_indicator then
+      local ind_start = config.pad_x + #k.label
+      pcall(vim.api.nvim_buf_set_extmark, buf, state.ns, 0, ind_start, {
+        end_row = 0,
+        end_col = ind_start + #" 한",
+        hl_group = "ChKeysMod",
+        priority = 100,
+      })
+    end
+
+    col_cursor = col_cursor - config.per_key_gap
+  end
+
+  for j = slot + 1, #state.per_wins do
+    local w = state.per_wins[j]
+    if w and vim.api.nvim_win_is_valid(w) then
+      pcall(vim.api.nvim_win_close, w, true)
+    end
+    local b = state.per_bufs[j]
+    if b and vim.api.nvim_buf_is_valid(b) then
+      pcall(vim.api.nvim_buf_delete, b, { force = true })
+    end
+    state.per_wins[j] = nil
+    state.per_bufs[j] = nil
+  end
+end
+
 local function render()
+  if config.per_key_window then
+    if #state.keys == 0 then
+      close_per_key_windows()
+    else
+      render_per_key()
+    end
+    return
+  end
+
   if #state.keys == 0 then
     close_window()
     return

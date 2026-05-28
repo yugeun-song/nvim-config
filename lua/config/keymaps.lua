@@ -44,7 +44,9 @@ vim.keymap.set("n", "<leader>uk", function()
 end, { desc = "Toggle diagnostic mute for .nvim-diag-off projects" })
 
 pcall(function()
-  require("chkeys").setup()
+  require("chkeys").setup({
+    per_key_window = vim.g.neovide ~= nil,
+  })
 end)
 
 vim.keymap.set("n", "<leader>uK", function()

@@ -3,7 +3,7 @@ vim.g.colors_name = "spaceduck"
 vim.o.termguicolors = true
 
 local p = {
-  bg1       = "#16182a",
+  bg1       = vim.g.neovide and "#1b1a1c" or "#16182a",
   bg2       = "#1b1c36",
   bg3       = "#30365F",
   fg        = "#ecf0c1",
@@ -27,8 +27,8 @@ end
 
 -- Editor UI ------------------------------------------------------------------
 
-hi("Normal",       { fg = p.fg,   bg = p.none })
-hi("NormalNC",     { fg = p.fg,   bg = p.none })
+hi("Normal",       { fg = p.fg,   bg = vim.g.neovide and p.bg1 or p.none })
+hi("NormalNC",     { fg = p.fg,   bg = vim.g.neovide and p.bg1 or p.none })
 hi("NormalFloat",  { fg = p.fg,   bg = p.bg1 })
 hi("FloatBorder",  { fg = p.grey, bg = p.bg1 })
 hi("FloatTitle",   { fg = p.yellow, bg = p.bg1, bold = true })
