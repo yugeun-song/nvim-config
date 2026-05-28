@@ -24,6 +24,11 @@ if vim.g.neovide then
   vim.keymap.set("n", "<C-+>", function() scale(1.1) end)
   vim.keymap.set("n", "<C-->", function() scale(1 / 1.1) end)
   vim.keymap.set("n", "<C-0>", function() vim.g.neovide_scale_factor = 1.0 end)
+
+  local function paste()
+    vim.api.nvim_paste(vim.fn.getreg("+"), true, -1)
+  end
+  vim.keymap.set({ "n", "i", "v", "c", "t" }, "<C-S-v>", paste, { silent = true, desc = "Paste from clipboard" })
 end
 
 return {}
