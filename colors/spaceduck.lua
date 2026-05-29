@@ -1,3 +1,8 @@
+-- spaceduck colorscheme for Neovim
+-- An independent Lua re-implementation of the "spaceduck" theme by pineapplegiant,
+-- reusing its color palette and name.
+-- Original: https://github.com/pineapplegiant/spaceduck (MIT, Copyright (c) 2020 pineapplegiant)
+
 vim.cmd("highlight clear")
 vim.g.colors_name = "spaceduck"
 vim.o.termguicolors = true
