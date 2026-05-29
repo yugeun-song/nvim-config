@@ -12,6 +12,7 @@ Neovim configuration based on LazyVim, configured for Linux kernel development.
 - **Dynamic clangd Workers**: Auto-calculates `-j` flag based on 50% of available CPU threads.
 - **Input Status**: Displays Fcitx5 (Hangul/English) and CapsLock state on lualine.
 - **Cscope/Telescope**: Cscope navigation mappings integrated with Telescope.
+- **File Explorer**: mini.files for yazi-style Miller-column navigation (`<leader>fm`/`<leader>fM` to open, `<CR>` to open/enter, `gc` to set cwd).
 
 ## Installation
 Simply clone the repository into your preferred workspace. For reference, this configuration is currently managed via a symbolic link from the workspace to the Neovim config directory:
