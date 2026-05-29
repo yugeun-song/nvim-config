@@ -88,26 +88,26 @@ return {
   {
     "nvim-lualine/lualine.nvim",
     opts = function(_, opts)
-      if has_fcitx5 then
-        table.insert(opts.sections.lualine_x, 1, {
-          function()
-            return im_state
-          end,
-          color = function()
-            return { fg = im_state == "한" and "#ff9e64" or "#7aa2f7", gui = "bold" }
-          end,
-          padding = { left = 1, right = 1 },
-        })
-      end
-
       if actual_caps_path then
-        table.insert(opts.sections.lualine_x, has_fcitx5 and 2 or 1, {
+        table.insert(opts.sections.lualine_x, 1, {
           function()
             return caps_state
           end,
           color = { fg = "#f7768e", gui = "bold" },
           cond = function()
             return caps_state ~= ""
+          end,
+          padding = { left = 1, right = 1 },
+        })
+      end
+
+      if has_fcitx5 then
+        table.insert(opts.sections.lualine_x, actual_caps_path and 2 or 1, {
+          function()
+            return im_state
+          end,
+          color = function()
+            return { fg = im_state == "한" and "#ff9e64" or "#7aa2f7", gui = "bold" }
           end,
           padding = { left = 1, right = 1 },
         })
