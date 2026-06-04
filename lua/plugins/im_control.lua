@@ -26,5 +26,33 @@ return {
         end,
       })
     end
+
+    if not vim.g.neovide then
+      local foot_ime = vim.api.nvim_create_augroup("FootIME", { clear = true })
+      local function foot_send(seq)
+        pcall(vim.fn.chansend, vim.v.stderr, seq)
+      end
+      vim.api.nvim_create_autocmd("InsertEnter", {
+        group = foot_ime,
+        pattern = "*",
+        callback = function()
+          foot_send("\27[?737769h")
+        end,
+      })
+      vim.api.nvim_create_autocmd({ "InsertLeave", "VimEnter" }, {
+        group = foot_ime,
+        pattern = "*",
+        callback = function()
+          foot_send("\27[?737769l")
+        end,
+      })
+      vim.api.nvim_create_autocmd("VimLeavePre", {
+        group = foot_ime,
+        pattern = "*",
+        callback = function()
+          foot_send("\27[?737769h")
+        end,
+      })
+    end
   end,
 }
