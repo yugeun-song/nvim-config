@@ -21,6 +21,7 @@
   "mini.files": { "branch": "main", "commit": "423d6b5afb7a94e658950d470957f830d43dd41e" },
   "mini.icons": { "branch": "main", "commit": "520995f1d75da0e4cc901ee95080b1ff2bc46b94" },
   "mini.pairs": { "branch": "main", "commit": "30cf2f01c4aaa2033db67376b9924fa2442c05d6" },
+  "neov-ime.nvim": { "branch": "main", "commit": "9d1dd789761fb3aadf91cdfed0cebcb750424380" },
   "noctis.nvim": { "branch": "main", "commit": "0b9336e39c686a7e58de06e4dd38c2bd862a7b33" },
   "noice.nvim": { "branch": "main", "commit": "7bfd942445fb63089b59f97ca487d605e715f155" },
   "nui.nvim": { "branch": "main", "commit": "de740991c12411b663994b2860f1a4fd0937c130" },
