@@ -11,6 +11,7 @@ return {
           explorer = {
             hidden = true,
             ignored = true,
+            watch = true,
           },
           files = {
             hidden = true,

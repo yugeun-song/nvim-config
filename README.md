@@ -141,6 +141,7 @@ nvim-config/
         ├── clangd.lua        # clangd cmd + dynamic -j, inlay hints off
         ├── cscope.lua        # cscope_maps.nvim + Telescope, <leader>i* navigation
         ├── diagnostics.lua   # CursorHold auto floating diagnostics
+        ├── fs_refresh.lua    # external change auto-reload + :FsRefresh
         ├── lsp_filter.lua    # wires up lsp_filter + <leader>cF* keys
         ├── im_control.lua    # Korean langmap + IME auto-reset
         ├── imstate.lua       # Caps Lock + fcitx5 lualine indicators
@@ -225,9 +226,18 @@ Turning it back on:
 - **`spaceduck` colorscheme** (`colors/spaceduck.lua`) — a complete hand-written theme with very broad Treesitter coverage and a dedicated C/C++ palette (macros, preprocessor directives, type qualifiers). Background is **transparent in the terminal** and **opaque under Neovide**; requires a true-color terminal. It also defines a matching lualine theme in `vim.g.spaceduck_lualine`, although the current `lualine.lua` does not wire it up (the statusline keeps LazyVim's default `auto` theme). `colorscheme.lua` selects spaceduck as the active scheme and installs `lush.nvim` / `noctis.nvim` / `gruvbox-material` as alternates.
 - **lualine** (`lualine.lua`) — shows the **full path** (never truncated) and prepends an encoding/line-ending flag (e.g. `UTF-8/LF`, `UTF-8+BOM/CRLF`) to the right-hand section.
 - **mini.files** (`mini-files.lua`, enabled via the LazyVim `editor.mini-files` extra) — `<CR>` opens a file and closes the explorer, or enters a directory. The open mappings (`<leader>fm` / `<leader>fM`) come from the LazyVim extra.
-- **Snacks** (`snacks.lua`) — `bigfile` enabled at a **5 MiB** threshold; the explorer/files/grep picker sources show **hidden *and* gitignored** files. (In a kernel tree this surfaces a lot of build artifacts — expect noisier pickers.)
+- **Snacks** (`snacks.lua`) — `bigfile` enabled at a **5 MiB** threshold; the explorer/files/grep picker sources show **hidden *and* gitignored** files. (In a kernel tree this surfaces a lot of build artifacts — expect noisier pickers.) The explorer's filesystem watcher (`watch`) is pinned on so the tree keeps following external changes even if the upstream default flips.
 - **markview** (`markview.lua`) — `markview.nvim` for in-buffer Markdown rendering, loaded eagerly with default settings (needs a Nerd Font).
 - **Diagnostics** (`diagnostics.lua`) — line diagnostics pop up automatically in a rounded, non-focusable float on `CursorHold` (after the `updatetime` delay), with the source always shown, and close when you move to another line, enter insert mode, or hide the buffer.
+
+### External change detection & refresh (`lua/plugins/fs_refresh.lua`)
+
+Out of the box, LazyVim only runs `:checktime` on `FocusGained`/`TermClose`/`TermLeave`, so files rewritten by another program (an AI coding agent, `git` in another terminal, a build) while the editor keeps — or never regains — focus are not picked up. This module makes detection unconditional, in terminals and Neovide alike:
+
+- **Buffers** — a 2 s libuv poll timer plus `BufEnter`/`CursorHold`/`CursorHoldI` autocmds run `:checktime`; unmodified buffers reload automatically (`autoread`), real conflicts still raise the usual W12 prompt. A notification reports what was reloaded (batched when many buffers reload at once).
+- **snacks explorer** — already watches every expanded directory via libuv `fs_event` (see above); collapsed levels are only re-scanned on demand via `:FsRefresh`.
+- **mini.files** — has no watcher of its own, so an open explorer is re-read on the same 2 s tick. The re-read is skipped while any mini.files buffer holds pending manual edits (a typed rename/create is never clobbered or prompted over).
+- **`:FsRefresh`** / `<leader>uR` — explicit refresh: `checktime` over all buffers, a full re-scan of every open snacks explorer tree (including collapsed levels), and a mini.files re-read. If mini.files has pending edits, mini.files itself asks before discarding them.
 
 ### ChKeys — on-screen keystroke display (`lua/chkeys.lua`)
 
@@ -274,6 +284,7 @@ Everything here is guarded by `if vim.g.neovide` — it's inert in a terminal. I
 | Key | Mode | Action |
 |-----|------|--------|
 | `<leader>uK` | n | Toggle the ChKeys keystroke display |
+| `<leader>uR` | n | Refresh buffers & file explorers from disk (`:FsRefresh`) |
 | `<CR>` | n (in mini.files) | Open file (and close explorer) / enter directory |
 
 ### Neovide only
@@ -290,6 +301,7 @@ Everything here is guarded by `if vim.g.neovide` — it's inert in a terminal. I
 | Command | Source | Notes |
 |---------|--------|-------|
 | `:ChKeysToggle` | `chkeys.lua` | Toggle the keystroke display |
+| `:FsRefresh` | `fs_refresh.lua` | Reload changed buffers + refresh snacks explorer / mini.files |
 | `:Cscope` / `:Cs` | `cscope_maps.nvim` | The `<leader>i*` keys wrap `:Cscope find …`; `:Cs` is used to auto-add databases |
 
 ---
@@ -300,6 +312,7 @@ Everything here is guarded by `if vim.g.neovide` — it's inert in a terminal. I
 - **`<C-]>` does not use LSP** in C/C++/H buffers — it falls back to the `tags` file by design. Generate `tags` (`make tags` / `ctags`) for it to work.
 - **Pickers include ignored files.** `hidden`/`ignored` are on for the Snacks file/grep/explorer sources, so build outputs and dotfiles appear — convenient, but noisy in a kernel tree.
 - **No swap files.** `swapfile = false` means there's no swap-based crash recovery.
+- **Unmodified buffers reload silently every ~2 s** when their file changes on disk (`fs_refresh`). The reload is undoable (`'undoreload'`), and a notification names the reloaded file.
 - **Autoformat is off for C/C++.** Intentional, so kernel sources aren't reformatted on save.
 - **`lsp_filter` rules live outside the repo** at `~/.local/share/nvim/lsp_filter/rules.json`, so they are machine-local and not version-controlled.
 - **`example.lua` is inert** (`if true then return {} end`) — it's the LazyVim onboarding template and configures nothing.
