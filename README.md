@@ -11,6 +11,7 @@ The config is primarily targeted at Linux. Several features (the Korean IME rese
 - **LazyVim base.** Plugins are managed by [lazy.nvim](https://github.com/folke/lazy.nvim); the LazyVim distribution is imported as the foundation, and everything under `lua/plugins/` layers on top.
 - **Linux kernel coding style.** C/C++ buffers get 8-wide hard tabs (`noexpandtab`), visible whitespace, and autoformat disabled so kernel sources are never reflowed on save.
 - **clangd, cscope & tags wired for big trees.** clangd runs with kernel-friendly flags and dynamic parallelism; cscope databases auto-load; `<C-]>` is redirected to the `tags` file instead of LSP.
+- **Low-level / cpp-preprocessed highlighting.** Kernel-style `.S`/`.s` assembly gets the C grammar Tree-sitter-injected into its `#` directive lines (so `#define`/`#include`/`#ifdef` and macro names read as C, not flat comments); inline `asm("…")` bodies inside C/C++ get the assembly grammar injected; `.S`/`.s` are pinned to GNU-as (avoiding the `vmasm` fallback on `.macro` files); linker scripts (`.lds`/`.ld`) use the `linkerscript` parser; and device trees (`.dts`/`.dtsi`) use `devicetree`.
 - **Custom `lsp_filter` module.** Disable clangd (or any server) per file/directory via persisted rules — useful for excluding noisy generated files from a kernel tree.
 - **Korean IME integration.** A Dubeolsik → QWERTY `langmap` keeps Normal-mode commands working while the OS IME is in Hangul, the IME auto-resets to English on leaving Insert mode, and the statusline shows live fcitx5 / Caps Lock state.
 - **ChKeys.** A built-in keystroke caster for screencasts/demos.
@@ -124,13 +125,18 @@ nvim-config/
 ├── lazyvim.json              # enabled LazyVim extras (mini.files) + version state
 ├── .neoconf.json             # lua_ls / neodev types for editing this config
 ├── stylua.toml               # StyLua style for the config's own Lua (2-space, 120 col)
+├── after/
+│   └── queries/               # Tree-sitter query extensions (see lua/plugins/asm.lua)
+│       ├── asm/injections.scm # inject C into .S/.s cpp directive lines
+│       ├── c/injections.scm   # inject asm into inline asm("…") bodies
+│       └── cpp/injections.scm # same, for kernel headers detected as cpp
 ├── colors/
 │   └── spaceduck.lua         # hand-written "spaceduck" colorscheme (+ lualine theme)
 └── lua/
     ├── chkeys.lua            # on-screen keystroke display (ChKeys)
     ├── config/
     │   ├── lazy.lua          # lazy.nvim + LazyVim bootstrap
-    │   ├── options.lua       # editor options (tags, guicursor, no swap/modeline)
+    │   ├── options.lua       # editor options (tags, guicursor, no swap/modeline) + .S/.s/.lds filetypes
     │   ├── keymaps.lua       # ChKeys setup + <leader>uK toggle
     │   └── autocmds.lua      # kernel coding style, cscope auto-load, tagfunc reset
     ├── lsp_filter/           # custom per-path LSP gating module
@@ -140,6 +146,7 @@ nvim-config/
     └── plugins/
         ├── clangd.lua        # clangd cmd + dynamic -j, inlay hints off
         ├── cscope.lua        # cscope_maps.nvim + Telescope, <leader>i* navigation
+        ├── asm.lua           # asm/linkerscript parsers + at-line-start? cpp-injection predicate
         ├── diagnostics.lua   # CursorHold auto floating diagnostics
         ├── fs_refresh.lua    # external change auto-reload + :FsRefresh
         ├── lsp_filter.lua    # wires up lsp_filter + <leader>cF* keys
@@ -176,6 +183,7 @@ Layered on top of LazyVim's defaults:
 - `guicursor` — block cursor in normal/visual/command, a thin bar in insert, with blink timing (mainly visible in GUIs/Neovide).
 - `modeline = false`, `swapfile = false` — no in-file modelines, no `.swp` files (note: no swap-based crash recovery).
 - `whichwrap` extended so `h`, `l`, and the arrow keys wrap across line boundaries.
+- `vim.filetype.add` — `.S`/`.s`/`.sx` are pinned to `asm` (GNU as) so files that define `.macro` are not misdetected as `vmasm`; `.lds` maps to `ld` (bare linker scripts). `.lds.S` stays `asm` on purpose (see below).
 
 ### Linux kernel C workflow (`lua/config/autocmds.lua`, `lua/plugins/clangd.lua`, `lua/plugins/cscope.lua`)
 
@@ -183,6 +191,20 @@ Layered on top of LazyVim's defaults:
 - **clangd** is launched as `clangd --background-index --clang-tidy --completion-style=detailed --header-insertion=never -j=<N>`, where `<N>` is **half the logical CPUs** (at least 1, so it's host-dependent). `--header-insertion=never` avoids auto-inserting `#include`s, which matters for kernel code. Inlay hints are disabled.
 - **cscope** — `cscope_maps.nvim` (with a Telescope picker) provides navigation under the `<leader>i` prefix; its own default mappings and tag keymap are disabled so only the explicit bindings apply. On reading a `*.c`/`*.h`/`*.S` file, the nearest `cscope.out` found upward is auto-added once per session.
 - **`<C-]>` → tags, not LSP** — on `LspAttach` to `c`/`cpp`/`h` buffers the LSP `tagfunc` is cleared, so `<C-]>` jumps through the `tags` file (ctags) instead of LSP go-to-definition. This is a deliberate override; generate a `tags` file (`make tags`) to use it.
+
+### Low-level / cpp-preprocessed highlighting (`lua/plugins/asm.lua`, `after/queries/{asm,c,cpp}/injections.scm`)
+
+Kernel low-level sources mix several languages in one file, and the stock grammars leave the embedded parts flat. This config injects the right grammar into each embedded region and pins the filetypes so the parsers actually run:
+
+- **cpp in assembly** — `.S`/`.s` are run through the C preprocessor by `as`, so they are full of `#define`/`#include`/`#ifdef` and macro-based pseudo-instructions. The `asm` grammar treats every `#`-line as a plain comment (`#` is a GAS line-comment char), so `after/queries/asm/injections.scm` (`; extends` the bundled `asm` injections) injects the **C** grammar into `#` directive lines: `#define`/`#include`/`#ifdef`/`#endif` become keywords, macro names `@constant.macro`, include paths strings, `CONFIG_*` operands constants. The rest of the line (an assembly macro body) stays assembly.
+- **`#at-line-start?` predicate** (registered in `asm.lua`) — restricts that injection to `#` directives that lead a line (only whitespace before `#`). Without it, a trailing `mov x0, x1  # else branch` comment — which the `asm` grammar sometimes parses as a comment node — would be mis-highlighted as C. Deleting this predicate breaks the query (unknown predicate), so the two files travel together.
+- **assembly in C/C++** — `after/queries/c/injections.scm` and `.../cpp/injections.scm` inject the **asm** grammar into inline `asm("…")` / `__asm__(…)` bodies (`gnu_asm_expression`), so mnemonics, `%0` operands and `#imm` immediates in kernel inline assembly are highlighted instead of being one flat string. Each string piece is injected independently so multi-line and adjacent-literal (`"…\n\t" "…\n\t"`) blocks read cleanly. `cpp` is included because Neovim detects kernel `*.h` headers as `cpp`.
+- **filetype pinning** — `.S`/`.s`/`.sx` are forced to `asm` in `options.lua` (Neovim otherwise flips files containing `.macro`/`.title`/… to `vmasm`, which has no Tree-sitter parser); `.lds` maps to `ld`.
+- **parsers** — `asm`, `c`, `cpp`, `linkerscript`, and `devicetree` are added to `ensure_installed`.
+- **linker scripts** — bare `*.lds`/`*.ld` use the `linkerscript` grammar (`SECTIONS`/`ENTRY`/`MEMORY` etc.). cpp-preprocessed `*.lds.S` (e.g. `vmlinux.lds.S`) are intentionally kept as `asm`: the `linkerscript` grammar has no `#` handling and would turn the directive block into one `ERROR` node, whereas the `asm` path highlights the cpp directives cleanly (the linker-script body then rides on the assembly grammar).
+- **device trees** — `*.dts`/`*.dtsi` use the `devicetree` grammar, which handles cpp `#include`/`#define` natively (no injection needed) and does not confuse them with `#address-cells`-style properties.
+
+Known ceiling: this is injection, not preprocessing, so `#if 0 … #endif` bodies are still highlighted (Tree-sitter cannot evaluate the preprocessor), and an assembler directive used as a `#define` body (`#define __HEAD .section …`) is tokenised by the C grammar rather than the assembly grammar.
 
 ### `lsp_filter` — per-path LSP gating (`lua/lsp_filter/`, `lua/plugins/lsp_filter.lua`)
 

@@ -10,3 +10,12 @@ opt.whichwrap:append("h,l,<,>,[,]")
 opt.tags = "./tags;,tags;"
 opt.swapfile = false
 vim.o.guicursor = "n-v-c:block,i-ci-ve:ver25,r-cr:hor20,o:hor50,a:blinkwait700-blinkoff400-blinkon250-Cursor/lCursor"
+
+vim.filetype.add({
+  extension = {
+    S = "asm",
+    s = "asm",
+    sx = "asm",
+    lds = "ld",
+  },
+})
