@@ -18,4 +18,7 @@ vim.filetype.add({
     sx = "asm",
     lds = "ld",
   },
+  pattern = {
+    [".*%.lds%.S"] = "ld",
+  },
 })

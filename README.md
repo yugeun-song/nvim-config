@@ -11,7 +11,7 @@ The config is primarily targeted at Linux. Several features (the Korean IME rese
 - **LazyVim base.** Plugins are managed by [lazy.nvim](https://github.com/folke/lazy.nvim); the LazyVim distribution is imported as the foundation, and everything under `lua/plugins/` layers on top.
 - **Linux kernel coding style.** C/C++ buffers get 8-wide hard tabs (`noexpandtab`), visible whitespace, and autoformat disabled so kernel sources are never reflowed on save.
 - **clangd, cscope & tags wired for big trees.** clangd runs with kernel-friendly flags and dynamic parallelism; cscope databases auto-load; `<C-]>` is redirected to the `tags` file instead of LSP.
-- **Low-level / cpp-preprocessed highlighting.** Kernel-style `.S`/`.s` assembly gets the C grammar Tree-sitter-injected into its `#` directive lines (so `#define`/`#include`/`#ifdef` and macro names read as C, not flat comments); inline `asm("…")` bodies inside C/C++ get the assembly grammar injected; `.S`/`.s` are pinned to GNU-as (avoiding the `vmasm` fallback on `.macro` files); linker scripts (`.lds`/`.ld`) use the `linkerscript` parser; and device trees (`.dts`/`.dtsi`) use `devicetree`.
+- **Low-level / cpp-preprocessed highlighting.** Kernel-style `.S`/`.s` assembly gets the C grammar Tree-sitter-injected into its `#` directive lines (so `#define`/`#include`/`#ifdef` and macro names read as C, not flat comments); inline `asm("…")` bodies inside C/C++ get the assembly grammar injected; `.S`/`.s` are pinned to GNU-as (avoiding the `vmasm` fallback on `.macro` files); linker scripts (`.lds`/`.ld`, and cpp-preprocessed `.lds.S` like `vmlinux.lds.S`) use the `linkerscript` parser; and device trees (`.dts`/`.dtsi`) use `devicetree`.
 - **Custom `lsp_filter` module.** Disable clangd (or any server) per file/directory via persisted rules — useful for excluding noisy generated files from a kernel tree.
 - **Korean IME integration.** A Dubeolsik → QWERTY `langmap` keeps Normal-mode commands working while the OS IME is in Hangul, the IME auto-resets to English on leaving Insert mode, and the statusline shows live fcitx5 / Caps Lock state.
 - **ChKeys.** A built-in keystroke caster for screencasts/demos.
@@ -136,7 +136,7 @@ nvim-config/
     ├── chkeys.lua            # on-screen keystroke display (ChKeys)
     ├── config/
     │   ├── lazy.lua          # lazy.nvim + LazyVim bootstrap
-    │   ├── options.lua       # editor options (tags, guicursor, no swap/modeline) + .S/.s/.lds filetypes
+    │   ├── options.lua       # editor options (tags, guicursor, no swap/modeline) + .S/.s/.lds/.lds.S filetypes
     │   ├── keymaps.lua       # ChKeys setup + <leader>uK toggle
     │   └── autocmds.lua      # kernel coding style, cscope auto-load, tagfunc reset
     ├── lsp_filter/           # custom per-path LSP gating module
@@ -183,7 +183,7 @@ Layered on top of LazyVim's defaults:
 - `guicursor` — block cursor in normal/visual/command, a thin bar in insert, with blink timing (mainly visible in GUIs/Neovide).
 - `modeline = false`, `swapfile = false` — no in-file modelines, no `.swp` files (note: no swap-based crash recovery).
 - `whichwrap` extended so `h`, `l`, and the arrow keys wrap across line boundaries.
-- `vim.filetype.add` — `.S`/`.s`/`.sx` are pinned to `asm` (GNU as) so files that define `.macro` are not misdetected as `vmasm`; `.lds` maps to `ld` (bare linker scripts). `.lds.S` stays `asm` on purpose (see below).
+- `vim.filetype.add` — `.S`/`.s`/`.sx` are pinned to `asm` (GNU as) so files that define `.macro` are not misdetected as `vmasm`; `.lds` maps to `ld` (bare linker scripts), and a `*.lds.S` filename pattern maps cpp-preprocessed kernel linker scripts (e.g. `vmlinux.lds.S`) to `ld` too (see below).
 
 ### Linux kernel C workflow (`lua/config/autocmds.lua`, `lua/plugins/clangd.lua`, `lua/plugins/cscope.lua`)
 
@@ -199,9 +199,9 @@ Kernel low-level sources mix several languages in one file, and the stock gramma
 - **cpp in assembly** — `.S`/`.s` are run through the C preprocessor by `as`, so they are full of `#define`/`#include`/`#ifdef` and macro-based pseudo-instructions. The `asm` grammar treats every `#`-line as a plain comment (`#` is a GAS line-comment char), so `after/queries/asm/injections.scm` (`; extends` the bundled `asm` injections) injects the **C** grammar into `#` directive lines: `#define`/`#include`/`#ifdef`/`#endif` become keywords, macro names `@constant.macro`, include paths strings, `CONFIG_*` operands constants. The rest of the line (an assembly macro body) stays assembly.
 - **`#at-line-start?` predicate** (registered in `asm.lua`) — restricts that injection to `#` directives that lead a line (only whitespace before `#`). Without it, a trailing `mov x0, x1  # else branch` comment — which the `asm` grammar sometimes parses as a comment node — would be mis-highlighted as C. Deleting this predicate breaks the query (unknown predicate), so the two files travel together.
 - **assembly in C/C++** — `after/queries/c/injections.scm` and `.../cpp/injections.scm` inject the **asm** grammar into inline `asm("…")` / `__asm__(…)` bodies (`gnu_asm_expression`), so mnemonics, `%0` operands and `#imm` immediates in kernel inline assembly are highlighted instead of being one flat string. Each string piece is injected independently so multi-line and adjacent-literal (`"…\n\t" "…\n\t"`) blocks read cleanly. `cpp` is included because Neovim detects kernel `*.h` headers as `cpp`.
-- **filetype pinning** — `.S`/`.s`/`.sx` are forced to `asm` in `options.lua` (Neovim otherwise flips files containing `.macro`/`.title`/… to `vmasm`, which has no Tree-sitter parser); `.lds` maps to `ld`.
+- **filetype pinning** — `.S`/`.s`/`.sx` are forced to `asm` in `options.lua` (Neovim otherwise flips files containing `.macro`/`.title`/… to `vmasm`, which has no Tree-sitter parser); `.lds` maps to `ld`, and a `*.lds.S` filename pattern maps cpp-preprocessed kernel linker-script templates to `ld` too.
 - **parsers** — `asm`, `c`, `cpp`, `linkerscript`, and `devicetree` are added to `ensure_installed`.
-- **linker scripts** — bare `*.lds`/`*.ld` use the `linkerscript` grammar (`SECTIONS`/`ENTRY`/`MEMORY` etc.). cpp-preprocessed `*.lds.S` (e.g. `vmlinux.lds.S`) are intentionally kept as `asm`: the `linkerscript` grammar has no `#` handling and would turn the directive block into one `ERROR` node, whereas the `asm` path highlights the cpp directives cleanly (the linker-script body then rides on the assembly grammar).
+- **linker scripts** — bare `*.lds`/`*.ld` and cpp-preprocessed `*.lds.S` (e.g. `vmlinux.lds.S`) both use the `linkerscript` grammar (`SECTIONS`/`ENTRY`/`MEMORY`/`ALIGN`/`KEEP`/output-section descriptions). `*.lds.S` needs a filename pattern because its `.S` extension would otherwise pin it to `asm`. Trade-off: the `linkerscript` grammar has no `#` handling, so cpp directive lines (`#include`/`#ifdef`/`#define`) parse as `ERROR` nodes and lose highlighting — this is accepted because the linker-script structure (the reason the file is read) is then highlighted correctly, whereas the `asm` fallback mis-tokenises `SECTIONS`/`ALIGN`/output sections as assembly (measured ~12% vs ~18% parse-error nodes on a real `vmlinux.lds.S`).
 - **device trees** — `*.dts`/`*.dtsi` use the `devicetree` grammar, which handles cpp `#include`/`#define` natively (no injection needed) and does not confuse them with `#address-cells`-style properties.
 
 Known ceiling: this is injection, not preprocessing, so `#if 0 … #endif` bodies are still highlighted (Tree-sitter cannot evaluate the preprocessor), and an assembler directive used as a `#define` body (`#define __HEAD .section …`) is tokenised by the C grammar rather than the assembly grammar.
