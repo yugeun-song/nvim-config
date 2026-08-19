@@ -12,6 +12,7 @@ The config is primarily targeted at Linux. Several features (the Korean IME rese
 - **Linux kernel coding style.** C/C++ buffers get 8-wide hard tabs (`noexpandtab`), visible whitespace, and autoformat disabled so kernel sources are never reflowed on save.
 - **clangd, cscope & tags wired for big trees.** clangd runs with kernel-friendly flags and dynamic parallelism; cscope databases auto-load; `<C-]>` is redirected to the `tags` file instead of LSP.
 - **Low-level / cpp-preprocessed highlighting.** Kernel-style `.S`/`.s` assembly gets the C grammar Tree-sitter-injected into its `#` directive lines (so `#define`/`#include`/`#ifdef` and macro names read as C, not flat comments); inline `asm("…")` bodies inside C/C++ get the assembly grammar injected; `.S`/`.s` are pinned to GNU-as (avoiding the `vmasm` fallback on `.macro` files); linker scripts (`.lds`/`.ld`, and cpp-preprocessed `.lds.S` like `vmlinux.lds.S`) use the `linkerscript` parser; and device trees (`.dts`/`.dtsi`) use `devicetree`.
+- **Debugger built on GDB's own DAP.** `nvim-dap` drives `gdb -i dap` (GDB 14+ speaks the Debug Adapter Protocol natively), so userspace C/C++ and cross-architecture kernel debugging against a QEMU gdbstub both work without a third-party adapter. Rust picks between `codelldb`, `lldb-dap` and `gdb`; JavaScript/TypeScript and Python light up when their adapters are installed. Adds panels for registers, a two-column locals/globals view, a configurable hex view, memory mappings and target queries on top of `nvim-dap-view`.
 - **Custom `lsp_filter` module.** Disable clangd (or any server) per file/directory via persisted rules — useful for excluding noisy generated files from a kernel tree.
 - **Korean IME integration.** A Dubeolsik → QWERTY `langmap` keeps Normal-mode commands working while the OS IME is in Hangul, the IME auto-resets to English on leaving Insert mode, and the statusline shows live fcitx5 / Caps Lock state.
 - **ChKeys.** A built-in keystroke caster for screencasts/demos.
@@ -32,6 +33,11 @@ The config is primarily targeted at Linux. Several features (the Korean IME rese
 | **C / kernel workflow** | `clangd` | C/C++ language server (launched with kernel-friendly flags). |
 | | `cscope` | Symbol navigation; databases are auto-loaded. |
 | | `universal-ctags` | Generates the `tags` file that `<C-]>` jumps through. |
+| **Debugging (optional)** | `gdb` **14+** | The debug adapter is GDB itself (`gdb -i dap`). Older GDB has no DAP interpreter. |
+| | `lldb-dap` | Adapter used for Rust; ships with LLVM. |
+| | `codelldb`, `js-debug-adapter`, `debugpy` (optional) | Installed through Mason. Each language's configurations appear only when its adapter is actually present, so the picker never offers something that cannot start. |
+| | `qemu-system-*` | Only for the kernel/bare-metal workflow; the gdbstub is what Neovim attaches to. |
+| | `<triple>-gdb` (optional) | `aarch64-linux-gnu-gdb`, `riscv64-linux-gnu-gdb`, … are preferred per target architecture when present; a multiarch-built `gdb` is used otherwise. |
 | **Korean IME (optional)** | `fcitx5` + `fcitx5-remote` | IME auto-reset and the Hangul/English statusline indicator. |
 | **Caps Lock indicator (optional)** | Linux sysfs LED node | `/sys/class/leds/input*::capslock/brightness`. |
 | **GUI (optional)** | [Neovide](https://neovide.dev/) | GUI front-end; this config has a dedicated profile for it. |
@@ -134,6 +140,19 @@ nvim-config/
 │   └── spaceduck.lua         # hand-written "spaceduck" colorscheme (+ lualine theme)
 └── lua/
     ├── chkeys.lua            # on-screen keystroke display (ChKeys)
+    ├── dbg/                  # debugger panels and target discovery
+    │   ├── discover.lua      # reads /proc to find running QEMU gdbstubs, ELF arch, KASLR evidence
+    │   ├── kernel.lua        # target picker + evidence report, builds the dap configuration
+    │   ├── caps.lua          # asks the target which symbols/commands/registers actually exist
+    │   ├── gdbq.lua          # runs a gdb command through the DAP repl, strips ANSI
+    │   ├── safemem.lua       # classifies an address as RAM / device / unmapped before reading it
+    │   ├── memory.lua        # configurable hex view (target, physical, or a file on disk)
+    │   ├── registers.lua     # register panel with symbol annotation and change marks
+    │   ├── mappings.lua      # parsed memory map
+    │   ├── session.lua       # target panel, detach-safe stop, robust continue
+    │   ├── layout.lua        # compact (tabs) vs wide (side panel) window layouts
+    │   ├── panel.lua         # scratch buffer / window plumbing
+    │   └── ui.lua            # panel highlights, section banners, window styling
     ├── config/
     │   ├── lazy.lua          # lazy.nvim + LazyVim bootstrap
     │   ├── options.lua       # editor options (tags, guicursor, no swap/modeline) + .S/.s/.lds/.lds.S filetypes
@@ -144,6 +163,7 @@ nvim-config/
     │   ├── rules.lua         # rule engine (within/contains → disable/diagnostics_off)
     │   └── util.lua          # path / JSON helpers (atomic writes)
     └── plugins/
+        ├── dap.lua           # nvim-dap + dap-view + disassembly, adapters, keymaps, commands
         ├── clangd.lua        # clangd cmd + dynamic -j, inlay hints off
         ├── cscope.lua        # cscope_maps.nvim + Telescope, <leader>i* navigation
         ├── asm.lua           # asm/linkerscript parsers + at-line-start? cpp-injection predicate
@@ -205,6 +225,82 @@ Kernel low-level sources mix several languages in one file, and the stock gramma
 - **device trees** — `*.dts`/`*.dtsi` use the `devicetree` grammar, which handles cpp `#include`/`#define` natively (no injection needed) and does not confuse them with `#address-cells`-style properties.
 
 Known ceiling: this is injection, not preprocessing, so `#if 0 … #endif` bodies are still highlighted (Tree-sitter cannot evaluate the preprocessor), and an assembler directive used as a `#define` body (`#define __HEAD .section …`) is tokenised by the C grammar rather than the assembly grammar.
+
+### Debugging (`lua/plugins/dap.lua`, `lua/dbg/`)
+
+The debug adapter is GDB itself. GDB 14 and later ship a Debug Adapter Protocol interpreter (`gdb -i dap`), so `nvim-dap` talks to the same GDB that already loads your `~/.gdbinit`, pwndbg and any Python tooling you source there. Nothing is proxied through GDB/MI, and no VS Code adapter has to be installed.
+
+**Which languages are wired up.** C, C++ and assembly go through GDB. Rust offers all three of `codelldb` (renders `Vec`/`String`/`Option` properly), `lldb-dap` and `gdb` (which brings the registers, hex view, mappings and pwndbg with it) — the trade-off is written into each entry's name so the choice is visible at the point of choosing. JavaScript and TypeScript launch or attach through `js-debug-adapter`, picking up `tsx`/`ts-node`/`bun`/`deno` for a `.ts` file when one is on PATH. Python needs `debugpy`. Adapters are resolved from Mason's package directory rather than `PATH`, because Mason only extends `PATH` once it has loaded. Julia is not offered: the debugger shipped with `julia-lsp` expects three named pipes and a VS Code handshake, which is not the standard DAP launch model.
+
+The low-level panels degrade rather than break. Registers, the hex view, mappings, file-scope globals and the gdb console are GDB-specific; on any other adapter `:DbgState` reports them as unavailable and they stay out of the way.
+
+**Running a program.** The launch configurations ask for the executable and then for its command line; the arguments are split with shell quoting rules and handed to the program as `argv`, so `hello world` is two arguments and `"hello world"` is one. Both prompts remember what you last answered. The answers GDB actually ran with are kept, so a later `<leader>dc` with no session replays them without asking again and goes straight to your breakpoints — `<leader>dn` is how you pick a different configuration or a different program.
+
+**Adapters.** `gdb` for C/C++ (launch, launch-and-stop-at-main, attach by PID), `lldb` (`lldb-dap`) for Rust because it renders enums and `Vec`/`String` correctly, and `gdb_kernel` for remote targets. The kernel adapter is a function: it picks `<triple>-gdb` for the target architecture when one exists, adds `add-auto-load-safe-path <kernel root>` so the tree's `vmlinux-gdb.py` (`lx-*` commands) loads, sources a sibling `kgdb-earlyboot.py` if one is found by walking up from the kernel root, and passes the full environment through (libuv replaces the environment rather than merging it, so `HOME` — and therefore `~/.gdbinit` — is lost if you don't).
+
+**Attaching to a kernel has two ways in, offered together.** After picking the target, `<leader>dq` asks how: attach where the kernel has already got to, or arm the early-boot machinery and stop on the very first `head.S` instruction with the MMU still off. The second runs `kearly on`, then `kearly bootbreak` to walk past the reset vector to the kernel entry and calibrate the phys/virt offset, then `kearly status`, and stops there: `_text`, physical addresses, ready to be stepped one instruction at a time through the MMU enable and the branch into the high map. `kearly kaslr auto` is deliberately not run, because it advances to that branch and leaves the first step landing in virtual addresses; type it in the gdb console when you want to stop at the crossing itself. A breakpoint set while the slide is still unknown arms a catcher on the crossing by itself, so symbols line up without it. Nothing can be calibrated before `bootbreak`, and the slide cannot be recovered before the calibration exists. The KASLR state comes from the guest's own `-append` line or the build's `CONFIG_RANDOMIZE_BASE`, and on x86 the recovery also needs `KGDB_X86_KASLR` in the adapter's environment, which a console command cannot set. A target with no `kearly` is told so rather than sent commands it does not have.
+
+**A gdbstub that dies takes the session with it, and now says so.** Requests to a dead stub are simply never answered, so the QEMU process the target was discovered from is watched while the session runs; when it disappears the session is closed with the reason and the debug windows go with it.
+
+**Finding a target.** `<leader>dq` lists the QEMU instances currently exposing a gdbstub. Nothing is hardcoded: every candidate is built by reading `/proc/<pid>/cmdline` of each `qemu-system-*` process and parsing its actual `-gdb`, `-S`, `-kernel`, `-append`, `-M` and `-cpu` flags; the symbol file is derived from the `-kernel` path (stripping `arch/*/boot/*`, or using the image itself when it is an ELF, as for bare-metal targets); the architecture comes from the symbol file's ELF `e_machine`; the port is confirmed against `/proc/net/tcp`, never by dialling it, because a QEMU gdbstub accepts a single client and an exploratory connection disturbs it. KASLR is reported from the guest's own `-append` line, falling back to `CONFIG_RANDOMIZE_BASE` in the build's `.config`. `<leader>dQ` shows the same data as a table with the evidence for every field, and anything without evidence is reported as unknown rather than guessed.
+
+**Panels** (`nvim-dap-view`, one bottom window with a winbar): Scopes, Locals+Globals, Watches, Registers, Memory, Mappings, Disassembly, Call stack, Breakpoints, Target, gdb console and Output. The console is `nvim-dap`'s REPL wired to GDB's own command interpreter, so `bt`, `vmmap`, `telescope`, `context`, `checksec`, `kearly`, `lx-dmesg` and everything else your GDB and pwndbg know can be typed there; `baleia.nvim` colorizes the ANSI those commands emit.
+
+It takes input the way a console does. `<CR>` in normal mode sends the line under the cursor to GDB rather than triggering nvim-dap's variable expansion, and pressing it on an earlier `dap>` line runs that command again, so the scrollback doubles as history. `i`, `a`, `A` and `I` jump to the prompt from anywhere in the buffer. Expansion is still what `<CR>` does on a result line. The console buffer outlives the session, so the output is still there to read after the program exits.
+
+There is no completion popup. blink.cmp makes an explicit exception for `dap-repl` buffers and completes them from buffer words, which in a console means suggestions scraped out of your own backtrace, over a menu tall enough to bury the prompt. It is switched off there. GDB's own completion is still one `<C-x><C-o>` away, because nvim-dap points the buffer's omnifunc at the DAP `completions` request, and it knows every command your GDB and pwndbg define.
+
+**Execution control typed into the console goes through nvim-dap.** `c`, `n`, `s`, `ni`, `si`, `finish`, `q` and `kill` are answered by the client rather than passed to GDB, and the console echoes what happened. Sending them straight to GDB does work once and then breaks: the panels keep showing a target that is no longer stopped, and the frame ids GDB handed out go stale, so the next command dies with `list index out of range`. Everything that only inspects state — `bt`, `info`, `p`, `x`, `vmmap`, `telescope`, `context` — is passed through untouched.
+
+- **Registers** merges the DAP register scope with one `info symbol` sweep over the general-purpose set, so values that point at something show `<symbol+offset>`. Registers that changed since the previous stop are marked. System and vector registers are collapsed into a compact grid below (an arm64 target exposes about 430 of them). `f` filters by name, `<CR>` opens the value under the cursor in the hex view.
+- **Memory** is a hex view whose source and layout are yours to pick (`t` and `L`, or `:DbgMemory`). Sources: any expression or address, a physical address (read through the QEMU monitor), or a file on disk. Layout: bytes per row (or fit-to-window), bytes per group with a byte-order toggle, row count, ASCII column, and symbol annotation for 8-byte groups. Targets can be pinned and switched. Only the presets that the target actually supports are offered.
+- **Mappings** parses `vmmap` into a table; `<CR>` opens a region in the hex view.
+- **Locals+Globals** puts what the frame owns on the left and what the file owns on the right. DAP only publishes the scopes the adapter chooses — GDB publishes Arguments, Locals and Registers — so the file-scope side is collected separately, from the symbols the current compilation unit declares, `static` included. A name that cannot be read here is not listed: a variable whose block has ended simply leaves, and the count in the header says so. The one exception is a variable the compiler threw away, which keeps its row and is tagged `opt`, because there the name is real and only the value is missing.
+- **Values appear where variables are used, not only where they are declared.** dap-view annotates the treesitter definition captures, which is the declaration line; a macro argument list is all uses and stays bare. The same values — no extra round trip — are also placed at the end of every visible line that mentions them. End of line, not inline: inline text pushes the code sideways and turns `type->cnt` into `type` and a distant `->cnt`. `:DbgInline off` turns it off.
+- **Target** shows the session, and queries the target for whatever is applicable — `lx-version`, `kearly` and `mmview` for a kernel, `checksec` and `piebase` for a userspace process.
+
+**The disassembly marks where the program counter is and where a branch is about to go.** The current instruction is marked by background alone, taken from the theme's own diff colour, so the instruction keeps its syntax colours instead of competing with a text marker. When the program counter is standing on a branch that will be taken, a connector is drawn from it to its destination; a branch that will fall through draws nothing, because the absence is the answer. When the condition cannot be decided the connector is dim, so an unknown is never mistaken for a certainty.
+
+Whether a branch will be taken is worked out per architecture, from the registers the target actually exposes rather than from a configured architecture name: `cpsr` flags for aarch64 `b.<cond>`/`cbz`/`cbnz`/`tbz`/`tbnz`, `eflags` for the x86 `jcc` family, and a direct register comparison for riscv `beq`/`bne`/`blt`/`bge`/`bltu`/`bgeu`. An indirect branch has no address in the text, but standing on it the register that decides where it goes is already known, so `ret`, `br`, `blr`, `jr`, `jalr` and `jmp *%rax` resolve their destination from the stopped state. Everything is computed on fixed-width hex strings, not doubles: `0xffff8000803a1870` loses its top nibble as a double, and an address that is wrong by a nibble is worse than no address at all. The connector cannot live in the sign column — dap-view sets `statuscolumn = ""` on its panel — so it is drawn as an equal-width prefix on every row, which keeps the listing aligned.
+
+**A build without `-g` is as usable as it is in plain gdb.** GDB answers `setFunctionBreakpoints` and `setInstructionBreakpoints`, which need no line table, but nvim-dap has no API for either, so the list is kept here and pushed to the session before it starts running. `<leader>dF` breaks on a symbol or a `0x` address, which is what `break main` does, and it works whether or not a session is up. `<leader>dg` opens every breakpoint the debugger will stop on — line, function and address — in a picker.
+
+Two things follow from having no line table, and both match what plain gdb does rather than being worked around: a breakpoint on the function you are already stopped in sits behind the program counter and never fires again, and `list` in a frame with no debug info falls back to whatever source gdb has loaded. Stepping does adapt: with no line table `<leader>dO` and `<leader>di` switch to instruction granularity and say so once, instead of asking gdb to step over a line that does not exist.
+
+**The frame you are on is the frame gdb is on.** nvim-dap selects the first frame that carries a source so it has somewhere to jump; on a binary without debug info that silently selects the caller, which is how the marker, the status line, `list` and even the `rip` in the register panel ended up describing a glibc header while `bt` said `main`. The selection is put back on frame 0 before anything reads it, so the registers, the scopes and the console all describe the same frame.
+
+When that frame has no source there is no line to point at, so the stale marker is removed rather than left claiming a line the program is not on, and the panel switches to the disassembly, which is the only view that can follow the program counter without a line table. The console is left alone if that is what you are looking at — you are typing in it, and the location is echoed there anyway, the way gdb prints it.
+
+**What the session supports is decided up front, not discovered by failing.** `:DbgState` reports the case it detected — adapter, launch or attach, kernel/userspace/bare metal, and whether the program carries embedded DWARF, a separate debug file or none — and then answers yes or no for line breakpoints, source stepping, function breakpoints, instruction breakpoints, disassembly and the QEMU monitor, with the reason attached to every no. Features that are unavailable are refused with that reason instead of being attempted and failing somewhere deeper.
+
+**What the target can do is measured, not assumed.** On each attach, GDB is asked which of a set of symbols resolve, which commands exist, which registers the architecture has, and whether the QEMU monitor answers. A kernel is recognised by `init_task`/`linux_banner`/`swapper_pg_dir` resolving, userspace by `__libc_start_main`/`environ`/`main_arena`, anything else is treated as bare metal. Menu entries that make no sense for the current target — a heap pointer on a kernel, kernel symbols on a bare-metal image — are simply absent.
+
+**Memory reads are guarded.** A debug read of a guest address that translates outside RAM makes QEMU dispatch into a device model, and that path has been observed to take the VM down with the debug session. Before reading, the address is checked with `monitor gva2gpa` and `monitor gpa2hva`. `gva2gpa` answers for whichever core QEMU's monitor is currently pointed at, which is state shared with everything else on that gdbstub, so the monitor is aimed at the core the session is stopped on before the question is asked rather than inheriting wherever it was left. RAM is read normally, an address that is not a live virtual address but is physical RAM is read through `monitor xp`, and a device region or a hole is refused with the reason shown. `o` reads anyway, `:DbgSafeMem off` disables the guard, and it is inert for adapters with no QEMU monitor behind them.
+
+**Stopping a session detaches rather than kills.** GDB's DAP maps `terminate` to `kill`, which ends the QEMU guest; `<leader>dt` therefore issues a disconnect without terminating for attach sessions and only kills for launched processes. `<leader>dT` is the explicit kill.
+
+**Layout follows the terminal, not the monitor.** The only measurement used is the cell grid Neovim reports as `columns` and `lines`, so changing the font size with `ctrl-+` / `ctrl--` in the terminal counts as a resolution change and the layout is re-measured on the spot. Below the threshold everything lives in the bottom panel's tabs and the winbar labels shorten; above it a side column appears beside the source and carries one panel at full height, with the bottom bar running the whole width underneath both.
+
+| Terminal | Mode | Side column | Panels stacked | Source width |
+|---|---|---|---|---|
+| 120x32 | compact | — | 0 | 120 |
+| 140x36 | wide | 42 | 1 | 98 |
+| 200x50 | wide | 60 | 1 | 140 |
+| 240x60 | wide | 72 | 1 | 168 |
+| 280x70 | wide | 78 | 2 | 202 |
+| 320x90 | wide | 78 | 3 | 242 |
+
+A second panel only appears once the first still gets every row it needs — a register panel is worth little cut off halfway through the general set — so a 50-line terminal keeps the column for Registers alone and stacks nothing under it.
+
+A wide terminal gets the column, a narrow one gets none: both dimensions are checked. The column holds a single panel, Registers by default, because that is the one you read continuously and it is worth the full height; everything else is one keystroke away in the bottom bar. dap-view resizes its own window whenever another appears, which reflows the column, so the sizes are re-applied on every stop and whenever a window opens or closes. `]p`/`[p` rotate which panels the column shows, skipping any that another window already has. `:DbgLayout auto|wide|compact` overrides the mode and reports the measurement it settled on.
+
+**Source always opens in a source window.** nvim-dap's fallback is "the window you were in before", which is a debugger panel when you step from the console, and dap-view pins its panel with `winfixbuf`; the jump then fails with `E1513` from inside nvim-dap's coroutine and takes the step down with it. A `switchbuf` function picks a window holding an ordinary file instead, splitting one off if none exists, and does it without stealing focus from wherever you are typing.
+
+**One window per panel, one handle per window.** Panel buffers and the windows the debugger owns are registered in a single place (`lua/dbg/panel.lua`) and handed out from there, with a `WinClosed` hook dropping a handle the moment its window goes away. No module keeps its own copy, so a closed window cannot be mistaken for a live one and two callers cannot each believe they hold the real thing.
+
+**The debug windows come and go with the session.** Starting a session records the window layout first, then opens the panels; ending one closes everything the debugger opened and puts the layout, the focused window and its buffer back, so a session that walked into `libc_start_call_main.h` does not leave you there. The sources the debugger listed on its way through — that glibc header among them — are dropped from the buffer list too, unless you edited them or still have them open. `:DbgClose` does the same by hand. Each panel also lives in exactly one window at a time: ask for Registers somewhere new and the old window gives it up, the side panel moving on to the first panel nothing else is showing.
+
+**The session says what it is doing.** Starting, exiting (with the exit code), detaching and stopping for an unexpected reason are all reported through `vim.notify`. So is a breakpoint that never bound, together with why — a breakpoint reported unverified while GDB has not loaded the program yet is normal and stays quiet, but one that is still unbound when the session ends is called out, and if the executable has no `.debug_*` sections the message says it was built without `-g` instead of leaving you guessing.
 
 ### `lsp_filter` — per-path LSP gating (`lua/lsp_filter/`, `lua/plugins/lsp_filter.lua`)
 
@@ -289,6 +385,33 @@ Everything here is guarded by `if vim.g.neovide` — it's inert in a terminal. I
 | `<leader>ii` | Find files **i**ncluding this file |
 | `<leader>ia` | Find **a**ssignments to this symbol |
 
+### Debugging (Normal mode, prefix `<leader>d`)
+
+| Key | Action |
+|-----|--------|
+| `<leader>dc` | Run / continue — with no session, replays the last configuration without re-prompting |
+| `<leader>dn` | Start a new session and choose the configuration, executable and arguments again |
+| `<leader>db` / `<leader>dB` | Toggle breakpoint / conditional breakpoint |
+| `<leader>dF` | Break on a function name or a `0x` address (works without `-g`) |
+| `<leader>dg` | List every breakpoint — line, function and address — in a picker |
+| `<leader>dC` | Run to cursor |
+| `<leader>di` / `<leader>do` / `<leader>dO` | Step into / over (`next`) / out (`finish`) — instruction granularity when there is no line table |
+| `<leader>dj` / `<leader>dk` | Move down / up the call stack |
+| `<leader>dP` | Pause |
+| `<leader>dt` | Stop — detaches when attached, terminates a launched process |
+| `<leader>dT` | Terminate for real (kills a QEMU guest) |
+| `<leader>dl` | Run last configuration |
+| `<leader>du` | Toggle the debug panel |
+| `<leader>de` / `<leader>dw` | Evaluate under cursor / add a watch (asks for the expression when the cursor is in a panel) |
+| `<leader>dr` | Toggle the gdb console |
+| `<leader>dR` / `<leader>dm` / `<leader>dM` / `<leader>dD` | Registers / hex view / mappings / disassembly |
+| `<leader>ds` | Target panel |
+| `<leader>dq` | Pick a QEMU gdbstub and attach |
+| `<leader>dQ` | Report every debug target found on this host, with the evidence |
+| `<leader>dv` / `<leader>dV` | Toggle the side panel / pick which panel to show |
+
+Inside the hex view: `t` source, `L` layout, `g` go to, `w` bytes per row, `g`…`]]`/`[[` page, `<CR>` follow pointer, `p`/`x`/`s` pin/unpin/switch, `e` byte order, `A` ascii column, `N` symbol annotation, `W` width fitting, `a` auto refresh, `o` read past the guard, `r` refresh. Inside Registers: `f` filter, `r` refresh, `<CR>` open the value in the hex view. Inside Locals+Globals: `r` refresh, `f` name filter, `<CR>` pin the name to Watches, `K` ask `ksym` what the address on the line is — it answers for a physical address as readily as a virtual one, which is what makes it useful before the MMU is on. It stops at naming the address: whether a number is a pointer at all is not decidable from the number, and following a wrong one is the read that takes QEMU down, so `kpt`, `kpgd` and `ktel` do the walking in the console where you have said what the value is. Inside the side panel: `]p`/`[p` switch panel.
+
 ### LSP filter (Normal mode, prefix `<leader>cF`)
 
 | Key | Action |
@@ -322,6 +445,17 @@ Everything here is guarded by `if vim.g.neovide` — it's inert in a terminal. I
 
 | Command | Source | Notes |
 |---------|--------|-------|
+| `:DbgKernel` / `:DbgKernelEarly` | `plugins/dap.lua` | Attach to a QEMU gdbstub; the second exports `KGDB_AUTO=1` |
+| `:DbgTargets` | `plugins/dap.lua` | Report the debug targets found on this host |
+| `:DbgMemory [expr\|file]` | `plugins/dap.lua` | Open the hex view |
+| `:DbgRegisters` / `:DbgMappings` | `plugins/dap.lua` | Open the register / mapping panels |
+| `:DbgSafeMem on\|off\|auto` | `plugins/dap.lua` | Guard memory reads against QEMU device-region dispatch |
+| `:DbgLayout auto\|wide\|compact` | `plugins/dap.lua` | Switch the debugger window layout |
+| `:DbgBreak [name\|0xADDR]` | `plugins/dap.lua` | Break on a function or an address, no line table needed |
+| `:DbgBreakpoints` | `plugins/dap.lua` | List every breakpoint in a picker |
+| `:DbgState` | `plugins/dap.lua` | Report what this session supports, and why not when it does not |
+| `:DbgClose` | `plugins/dap.lua` | Close every debugger window and restore the previous layout |
+| `:DbgInline on\|off` | `plugins/dap.lua` | Show variable values where they are used, not only where they are declared |
 | `:ChKeysToggle` | `chkeys.lua` | Toggle the keystroke display |
 | `:FsRefresh` | `fs_refresh.lua` | Reload changed buffers + refresh snacks explorer / mini.files |
 | `:Cscope` / `:Cs` | `cscope_maps.nvim` | The `<leader>i*` keys wrap `:Cscope find …`; `:Cs` is used to auto-add databases |
@@ -337,6 +471,14 @@ Everything here is guarded by `if vim.g.neovide` — it's inert in a terminal. I
 - **Unmodified buffers reload silently every ~2 s** when their file changes on disk (`fs_refresh`). The reload is undoable (`'undoreload'`), and a notification names the reloaded file.
 - **Autoformat is off for C/C++.** Intentional, so kernel sources aren't reformatted on save.
 - **`lsp_filter` rules live outside the repo** at `~/.local/share/nvim/lsp_filter/rules.json`, so they are machine-local and not version-controlled.
+- **A QEMU gdbstub takes one client.** While Neovim is attached, a separate `gdb`/pwndbg session cannot connect, and vice versa. The gdb console panel is the way to run those commands instead. Target discovery never opens a connection to probe, and refuses a stub that already has a client.
+- **Quitting Neovim mid-session is safe.** nvim-dap installs no `VimLeavePre` handler, so `:qa!` with a session up used to leave `gdb -i dap` reparented to init: a launched program kept running, and a QEMU target kept its single gdbstub client slot occupied so nothing could attach again. Sessions are now shut down on the way out, detaching for attach sessions so the guest survives and terminating for launched ones so the debuggee does not.
+- **The hex view shows one window at a time.** The header spells out the range and the file size (`crc32 0x0-0x200 of 0xc9a8`) because a page boundary looks exactly like the end of the file otherwise; `]]` and `[[` move through it.
+- **`<leader>dt` detaches, it does not kill.** That is deliberate: GDB's DAP `terminate` request runs `kill`, which ends the guest. Use `<leader>dT` when you actually want the guest gone.
+- **The memory read guard is on for QEMU targets.** Addresses that are neither RAM nor translatable are refused with the reason; `o` overrides once and `:DbgSafeMem off` disables it. Symbol annotation in the hex view is capped at the first 128 values per page, and the header says so when it applies.
+- **Source-line breakpoints need `-g`; symbol breakpoints do not.** Without DWARF a breakpoint on a line stays pending forever and the program runs to completion, so `<leader>db` refuses with that reason and points at `<leader>dF`, which breaks on a symbol and works on a plain `gcc -o prog prog.c` build. Build with `-g -O0` when you want line stepping and locals (`-O0` also stops the optimizer from folding away the line you meant to stop on).
+- **Ending a session closes the debug windows.** Panels you opened by hand during the session close too, and the pre-session layout is restored. Nothing outside the debugger is touched.
+- **Early-boot kgdb tooling is not armed by default.** `:DbgKernel` leaves the `kgdb-earlyboot` commands registered but inert; `:DbgKernelEarly` exports `KGDB_AUTO=1`. The armed mode installs stop hooks that resume the target and rewrite the symbol table on their own, which a DAP client does not expect, so prefer a terminal session for that phase.
 - **`example.lua` is inert** (`if true then return {} end`) — it's the LazyVim onboarding template and configures nothing.
 
 ---
