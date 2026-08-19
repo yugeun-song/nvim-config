@@ -25,7 +25,7 @@ The config is primarily targeted at Linux. Several features (the Korean IME rese
 | Group | Tool | Why |
 |-------|------|-----|
 | **Core (required)** | Neovim **0.10+** | The config uses `vim.uv`, `vim.fs.joinpath`, and other recent APIs. |
-| | `git` | Bootstraps lazy.nvim on first launch and clones plugins. |
+| | `git` | Bootstraps lazy.nvim on first launch and clones plugins; also queried for the statusline tag component. |
 | | C compiler + `make` | Treesitter parsers are compiled locally. |
 | | Network access | Needed on the first launch to fetch lazy.nvim and plugins. |
 | **Search / UI (recommended)** | `ripgrep` (`rg`), `fd` | Backends for the Snacks picker / grep. |
@@ -173,6 +173,7 @@ nvim-config/
         ├── im_control.lua    # Korean langmap + IME auto-reset
         ├── imstate.lua       # Caps Lock + fcitx5 lualine indicators
         ├── lualine.lua       # full path + encoding/format flag
+        ├── git_tag.lua       # git describe tag beside the branch
         ├── mini-files.lua    # <CR> = open file & close / enter dir
         ├── snacks.lua        # bigfile 5 MiB, picker shows hidden + ignored
         ├── colorscheme.lua   # selects spaceduck (+ alternate schemes installed)
@@ -343,6 +344,7 @@ Turning it back on:
 
 - **`spaceduck` colorscheme** (`colors/spaceduck.lua`) — a complete hand-written theme with very broad Treesitter coverage and a dedicated C/C++ palette (macros, preprocessor directives, type qualifiers). Background is **transparent in the terminal** and **opaque under Neovide**; requires a true-color terminal. It also defines a matching lualine theme in `vim.g.spaceduck_lualine`, although the current `lualine.lua` does not wire it up (the statusline keeps LazyVim's default `auto` theme). `colorscheme.lua` selects spaceduck as the active scheme and installs `lush.nvim` / `noctis.nvim` / `gruvbox-material` as alternates.
 - **lualine** (`lualine.lua`) — shows the **full path** (never truncated) and prepends an encoding/line-ending flag (e.g. `UTF-8/LF`, `UTF-8+BOM/CRLF`) to the right-hand section.
+- **Git tag** (`git_tag.lua`) — right after the branch name, shows the tag that `git describe --tags` resolves to for the buffer's repository: `v6.12.95` when HEAD sits on the tag, `v6.12.95+12` when it is 12 commits past it. Repositories without tags, and buffers outside a work tree, show nothing. The lookup runs asynchronously per repository root and is cached for 10 s, so a redraw never spawns `git`. Since kernel trees tag releases as `v<version>`, this reads as the version of the tree you are in — including on a detached HEAD, where the branch component only shows a hash.
 - **mini.files** (`mini-files.lua`, enabled via the LazyVim `editor.mini-files` extra) — `<CR>` opens a file and closes the explorer, or enters a directory. The open mappings (`<leader>fm` / `<leader>fM`) come from the LazyVim extra.
 - **Snacks** (`snacks.lua`) — `bigfile` enabled at a **5 MiB** threshold; the explorer/files/grep picker sources show **hidden *and* gitignored** files. (In a kernel tree this surfaces a lot of build artifacts — expect noisier pickers.) The explorer's filesystem watcher (`watch`) is pinned on so the tree keeps following external changes even if the upstream default flips.
 - **markview** (`markview.lua`) — `markview.nvim` for in-buffer Markdown rendering, loaded eagerly with default settings (needs a Nerd Font).
