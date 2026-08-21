@@ -1,19 +1,18 @@
 local M = {}
 
--- Execution control typed into the console has to go through nvim-dap rather
--- than straight to GDB.  Running `continue` behind the client's back leaves the
--- panels showing a stopped target that is no longer stopped, and the frame ids
--- GDB handed out go stale, which is what makes a later command fail with
--- "list index out of range".
+-- Execution control typed into the console has to go through nvim-dap, not
+-- straight to GDB: continuing behind the client's back leaves the panels showing
+-- a stop that is over and the frame ids GDB handed out stale, which surfaces
+-- later as "list index out of range".
 local echo_next_stop = false
 local explained = {}
 
--- Said once per session, the first time the target stops somewhere the editor
--- cannot follow.  nvim-dap points its marker at the nearest frame that happens
--- to carry a source, which is why a green arrow appears over a glibc header
--- and then disappears again when that marker is taken back down.
+-- Said once per session.  nvim-dap points its marker at the nearest frame that
+-- happens to carry a source, which is why a green arrow appears over a glibc
+-- header and vanishes again when that marker comes back down.
 local function explain_sourceless(session, frame)
-  if explained[session.id] then
+  -- Already said at attach time when the whole binary has no DWARF.
+  if explained[session.id] or session.dbg_no_debug_info then
     return
   end
   explained[session.id] = true
@@ -117,10 +116,9 @@ function M.handles(name)
   return COMMANDS[name] ~= nil
 end
 
--- nvim-dap picks the first frame that carries a source so that it has
--- somewhere to jump; on a binary built without -g that quietly selects the
--- caller instead of the frame you are actually in, which is why `list` used to
--- show glibc while `bt` said `main`.  Put the selection back on frame 0.
+-- nvim-dap picks the first frame carrying a source so it has somewhere to jump;
+-- without -g that quietly selects the caller, which is why `list` used to show
+-- glibc while `bt` said `main`.  Put the selection back on frame 0.
 function M.realign(session)
   local thread = session.threads and session.threads[session.stopped_thread_id]
   local top = thread and thread.frames and thread.frames[1]

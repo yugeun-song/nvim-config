@@ -68,10 +68,9 @@ local function uint(str, pos, len, little)
   return v
 end
 
--- Report how an ELF carries its DWARF: "embedded", "external" (a separate
--- debug file is referenced), or "none".  Returns nil when the file cannot be
--- read or is not an ELF.  The section name string table is read directly, so
--- this works for any ELF class, endianness and architecture.
+-- How an ELF carries its DWARF: "embedded", "external" (a separate debug file),
+-- "none", or nil when it is not a readable ELF.  The section name string table
+-- is read directly, so this holds for any ELF class, endianness and arch.
 function M.elf_debug_info(path)
   if not path or path == "" then
     return nil
@@ -133,6 +132,14 @@ function M.elf_debug_info(path)
   end
   if names:find(".gnu_debuglink", 1, true) or names:find(".debug_sup", 1, true) then
     return "external"
+  end
+  -- No debug sections and no symbol table either means the binary was stripped,
+  -- so debuginfod or a debug package may still supply what was removed.  A
+  -- build-id cannot be used to tell these apart: gcc emits one with or without
+  -- -g.  With .symtab still present nothing was removed, so the information was
+  -- never generated.
+  if not names:find(".symtab", 1, true) then
+    return "stripped"
   end
   return "none"
 end
