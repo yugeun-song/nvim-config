@@ -200,15 +200,13 @@ function M.manual(cb)
   end)
 end
 
--- Mirrors what run-gdb.sh does on connect, stopping one step earlier.  The
--- order matters: the tool cannot calibrate the phys<->virt offset until
--- `bootbreak` has walked past the reset vector to the kernel entry.  It stops
--- there, on the first head.S instruction with the MMU still off, because that is
--- where reading the boot assembly starts.  `kearly kaslr auto` would run on to
--- the MMU crossing and park on the branch into the high map, which makes the
--- first step jump straight into virtual addresses; type it in the gdb console
--- when that is what you want.  A breakpoint set while the slide is still unknown
--- arms a catcher on the crossing by itself, so symbols still line up.
+-- Mirrors run-gdb.sh's connect sequence, stopping one step earlier: the
+-- phys<->virt offset cannot be calibrated until `bootbreak` has walked past the
+-- reset vector, so park on the first head.S instruction with the MMU still off.
+-- `kearly kaslr auto` runs on to the MMU crossing instead, so the first step
+-- lands in virtual addresses; type it in the gdb console when you want that.
+-- A breakpoint set while the slide is still unknown arms its own catcher on the
+-- crossing, so symbols line up anyway.
 function M.arm_kaslr(session)
   local cfg = session and session.config or {}
   if not cfg.kgdb_auto then
@@ -256,9 +254,8 @@ function M.arm_kaslr(session)
   end)
 end
 
--- A gdbstub that goes away takes the session with it, but nothing tells the
--- client: requests simply stop being answered.  Watch the QEMU process we
--- attached to and close the session with a reason when it disappears.
+-- A dying gdbstub takes the session with it but tells the client nothing;
+-- requests simply stop being answered.  Watch the QEMU pid instead.
 local watchdog = nil
 
 function M.stop_watchdog()
@@ -330,11 +327,10 @@ function M.start(opts)
     if not choice then
       return
     end
-    -- Two ways in, offered together rather than hidden behind two commands:
-    -- attach where the kernel already is, or arm the early-boot machinery and
-    -- stop on the first head.S instruction.  `kaslr_auto` only tells the adapter
-    -- to put KGDB_X86_KASLR in gdb's environment, which x86 needs to find the
-    -- decompressor-relocated kernel and which a console command cannot set.
+    -- Both ways in, offered together: attach where the kernel already is, or arm
+    -- the early-boot machinery and stop on the first head.S instruction.
+    -- `kaslr_auto` only puts KGDB_X86_KASLR in gdb's environment, which x86 needs
+    -- to find the decompressor-relocated kernel and which no console command sets.
     local function launch(cfg, early)
       cfg.kgdb_auto = early and true or false
       local kaslr = cfg.kaslr_state
@@ -391,10 +387,9 @@ function M.start(opts)
     cfg.qemu_pid = choice.pid
     cfg.kaslr_state = choice.kaslr and choice.kaslr.state or "unknown"
     cfg.kaslr_source = choice.kaslr and choice.kaslr.source or nil
-    -- The early-boot symbolizer calibrates the phys<->virt offset at runtime,
-    -- so it copes with KASLR on its own; relocating gdb's symbols to the slide
-    -- is a separate step the tool only takes when asked.  Ask for it here
-    -- rather than leaving a note telling you to type it.
+    -- The early-boot symbolizer calibrates the phys<->virt offset at runtime and
+    -- so copes with KASLR itself; relocating gdb's symbols to the slide is a
+    -- separate step, asked for here rather than left as a note to type it.
     run(cfg)
   end)
 end

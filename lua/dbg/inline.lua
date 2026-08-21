@@ -1,14 +1,9 @@
 local M = {}
 
--- dap-view annotates only the treesitter "definition" captures, which is the
--- line a variable is declared on.  Everywhere the variable is *used* stays
--- bare, and a macro argument list is all uses.  This adds the values for those
--- lines as well.
---
--- They go at the end of the line, not next to each identifier: inline text
--- pushes the real code sideways, which turns `type->cnt` into `type` and a
--- distant `->cnt` and makes the expression harder to read than it was without
--- any values at all.
+-- dap-view annotates only treesitter "definition" captures, i.e. declaration
+-- lines; every use stays bare, and a macro argument list is all uses.  Values
+-- go at end of line, not beside each identifier: inline text pushes the code
+-- sideways and splits `type->cnt` into `type` and a distant `->cnt`.
 local ns = vim.api.nvim_create_namespace("dbg_inline")
 
 M.enabled = true
@@ -40,7 +35,6 @@ function M.clear(buf)
   end
 end
 
--- `values` is name -> printable value, taken from the frame that is stopped.
 function M.render(session, values)
   M.clear()
   if not M.enabled or not session or not values or vim.tbl_isempty(values) then

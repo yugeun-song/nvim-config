@@ -105,8 +105,7 @@ local function source_label()
   if s.kind == "file" then
     local f = state.file or {}
     local offset = f.offset or 0
-    -- Spell out where this page sits in the file: one window of bytes looks
-    -- exactly like the end of the file otherwise.
+    -- Without the range, one window of bytes looks exactly like the end of the file.
     if f.size and f.size > 0 then
       return ("%s  0x%x-0x%x of 0x%x"):format(
         vim.fs.basename(s.path or "?"),
@@ -463,9 +462,8 @@ function M.show_file(path, offset)
   read_file()
 end
 
--- Nothing chosen yet used to mean nothing drawn at all, which reads as a
--- broken panel rather than an empty one.  Start on the stack, and if even that
--- is not available say what the panel wants.
+-- Drawing nothing when no source is chosen reads as a broken panel, so fall back
+-- to the stack and otherwise say what the panel wants.
 local function idle(reason)
   local buf = M.buffer()
   local line, title = head()

@@ -1,8 +1,7 @@
 local M = {}
 
--- Adapters beyond GDB.  Each one is registered only when it is actually
--- present, so the configuration picker never offers something that cannot
--- start, and a language with no adapter installed simply has no entry.
+-- Adapters beyond GDB, each registered only when it is actually present, so the
+-- configuration picker never offers something that cannot start.
 local function mason_package(name)
   local path = vim.fs.joinpath(vim.fn.stdpath("data"), "mason", "packages", name)
   return vim.uv.fs_stat(path) and path or nil
@@ -96,8 +95,7 @@ function M.setup(dap, ask)
       executable = { command = jsdebug, args = { "${port}" } },
     }
 
-    -- A .ts file needs something that can execute TypeScript; use whichever
-    -- runner is on PATH and fall back to plain node for .js.
+    -- A .ts file needs a TypeScript-capable runner; .js falls back to plain node.
     local function runtime()
       if vim.fn.expand("%:e"):match("^tsx?$") then
         return first_of("tsx", "ts-node", "bun", "deno")

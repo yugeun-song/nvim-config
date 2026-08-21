@@ -44,10 +44,9 @@ local function monitor(session, cmd, cb)
   )
 end
 
--- gva2gpa translates through the core QEMU's monitor happens to be pointed at,
--- which is state shared with everything else on this gdbstub.  Point it at the
--- core gdb is stopped on before asking, instead of inheriting whatever is there:
--- a monitor left on a parked secondary answers Unmapped for every live kernel VA.
+-- gva2gpa translates through whichever core QEMU's monitor is pointed at, state
+-- shared with everything else on this gdbstub.  Pin it to the core gdb stopped
+-- on: a monitor left on a parked secondary answers Unmapped for every kernel VA.
 local function pin_cpu(session, cb)
   local frame = session.current_frame
   session:request("evaluate", {

@@ -52,9 +52,8 @@ local ANNOTATE_PROBE = table.concat({
   "print('\\\\n'.join(out))\")",
 }, "")
 
--- Both tables are built locally and handed to the callback: two renders can be
--- in flight at once (the stop listener and the sidebar refresh), and sharing
--- module state between them used to duplicate every general register.
+-- Local, not module state: two renders can be in flight (the stop listener and
+-- the sidebar refresh), and sharing state duplicated every general register.
 local function collect_annotations(cb)
   local annotations, order = {}, {}
   gdbq.run(ANNOTATE_PROBE, function(text)
@@ -95,11 +94,9 @@ local function collect_annotations(cb)
   end)
 end
 
--- Translation-base registers are worth decoding, because the raw value is not
--- the table address: arm64 carries an ASID above it, x86 a PCID or cache
--- attributes below it, riscv a mode and an ASID with the base shifted.  Which
--- ones exist is read from the target's own register set rather than assumed
--- from an architecture name, so a target that has none simply shows none.
+-- The raw value is not the table address: arm64 carries an ASID above it, x86 a
+-- PCID or cache attributes below it, riscv a mode and an ASID with the base
+-- shifted.  Presence comes from the target's own register set, not an arch name.
 local TRANSLATION = {
   { name = "cr3", role = "page tables" },
   { name = "satp", role = "supervisor page tables" },
@@ -458,8 +455,7 @@ function M.render()
   end)
 end
 
--- The values from the last paint, so other panels can reason about flags and
--- register contents without asking the target again.
+-- Values from the last paint, so other panels need not ask the target again.
 function M.values()
   return previous
 end

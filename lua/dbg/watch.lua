@@ -4,11 +4,10 @@ local ui = require("dbg.ui")
 
 local M = {}
 
--- Two columns: what the frame owns on the left, what the file owns on the
--- right.  DAP only publishes the scopes the adapter chooses -- GDB publishes
--- Arguments, Locals and Registers -- so the file-scope side is collected
--- separately.  Every stop re-checks each name, because a local's lifetime ends
--- when its block does and saying so is the point of the panel.
+-- Frame scope on the left, file scope on the right.  DAP only publishes the
+-- scopes the adapter chooses (GDB gives Arguments, Locals, Registers), so the
+-- file side is collected separately.  Every stop re-checks each name: a local's
+-- lifetime ends when its block does.
 local SCAN_LIMIT = 4000
 local NAME_LIMIT = 200
 local MIN_SPLIT_WIDTH = 96
@@ -85,13 +84,12 @@ end
 -- What an address is, asked of kgdb rather than worked out here.  `ksym` resolves
 -- a PHYSICAL or a VIRTUAL address against the same shadow symbols the session is
 -- already using, so it answers before the MMU is on as well as after, which is
--- the whole point of asking during early boot.
+-- the point during early boot.
 --
--- It stops there on purpose.  Following a value onward -- dereferencing it,
--- walking it as a page table -- cannot be decided from the number: nothing in a
--- u64 says whether it is a pointer, and reading a wrong one is exactly the case
--- that takes QEMU down.  `kpt` / `kpgd` / `ktel` do those jobs in the console,
--- where you have told the tool what the value is.
+-- It stops there on purpose: nothing in a u64 says whether it is a pointer, and
+-- reading a wrong one is exactly the case that takes QEMU down.  `kpt` / `kpgd`
+-- / `ktel` dereference and walk page tables in the console, where you have told
+-- the tool what the value is.
 function M.explain()
   local addr = vim.api.nvim_get_current_line():match("(0x%x+)")
   if not addr then
@@ -150,10 +148,9 @@ local function pass(name)
   return not state.filter or name:lower():find(state.filter, 1, true)
 end
 
--- Padding is done by hand rather than through string.format: its width field
--- is limited to two digits, so a column wider than 99 cells raised
--- "invalid option '%-104'".  Widths are measured in display cells too, so a
--- value carrying multi-byte characters still lines up.
+-- Padding by hand rather than string.format: its width field is two digits, so
+-- a column wider than 99 cells raised "invalid option '%-104'".  Widths are in
+-- display cells, so a value with multi-byte characters still lines up.
 local function width_of(text)
   return vim.fn.strdisplaywidth(text or "")
 end
@@ -169,7 +166,6 @@ local function clip(text, width)
   if width_of(text) <= width then
     return text
   end
-  -- "~" marks a value the column was too narrow to show in full
   local cut = vim.fn.strcharpart(text, 0, math.max(1, width - 1))
   while width_of(cut) > math.max(1, width - 1) do
     cut = vim.fn.strcharpart(cut, 0, vim.fn.strchars(cut) - 1)
@@ -177,9 +173,9 @@ local function clip(text, width)
   return cut .. "~"
 end
 
--- A name is either readable here or it is not listed at all; the list itself
--- is the answer.  The one case worth a word is a variable the compiler threw
--- away, because there the name is real and the value is not.
+-- A name is either readable here or not listed at all.  The one case worth a
+-- tag is a variable the compiler threw away: there the name is real and the
+-- value is not.
 local function cell(entry, namew, valuew)
   local tag = entry.life == "opt" and "  opt" or ""
   local room = math.max(4, valuew - width_of(tag))
@@ -292,9 +288,8 @@ function M.render()
   panel.render(buf, lines, hls)
 end
 
--- Anything that cannot be read here simply leaves the list: a variable whose
--- block has ended is not part of what is in play any more, and an empty row
--- saying so is noise.
+-- Anything that cannot be read leaves the list: a variable whose block has
+-- ended is not in play any more, and an empty row saying so is noise.
 local function fold(kind, fresh)
   local out = {}
   for _, e in ipairs(fresh) do
@@ -386,8 +381,8 @@ function M.probe()
     note_changes(state.locals)
     vim.schedule(function()
       M.render()
-      -- The same values feed the inline annotations, so the editor and this
-      -- panel never disagree and no extra round trip is needed.
+      -- The same values feed the inline annotations: no extra round trip, and
+      -- the editor cannot disagree with this panel.
       local readable = {}
       for _, e in ipairs(state.locals) do
         if e.life == "live" then
@@ -411,8 +406,8 @@ function M.probe()
       return
     end
     -- Split rather than gmatch: the probe's first two lines are positional
-    -- (file, count) and a pattern that skips or invents empty matches shifts
-    -- them, which turned the count into a variable named "0".
+    -- (file, count), and a pattern that skips empty matches shifts them, which
+    -- turned the count into a variable named "0".
     local rows = vim.split(tostring(text or ""), "\n", { plain = true })
     local file = vim.trim(rows[1] or "")
     local total = tonumber(vim.trim(rows[2] or "")) or 0

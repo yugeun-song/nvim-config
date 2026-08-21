@@ -41,8 +41,8 @@ function M.stop()
   end
 end
 
--- The configuration nvim-dap actually ran, with every prompt already answered.
--- Replaying it is what lets a second <leader>dc go straight to the breakpoints.
+-- The configuration nvim-dap actually ran, prompts already answered; replaying
+-- it is what lets a second <leader>dc go straight to the breakpoints.
 local last_config = nil
 
 function M.remember(config)
@@ -66,11 +66,10 @@ function M.last()
   return last_config
 end
 
--- QEMU exposes every vCPU as a thread, so a kernel target reports several
--- halted threads and nvim-dap asks which one to move.  Answering with a
--- different CPU than the one that reported the stop makes QEMU resume the whole
--- machine, which is how a kernel runs away from its own breakpoint.  Remember
--- the thread the stop came from and always move that one.
+-- QEMU exposes every vCPU as a thread, so nvim-dap asks which of the halted
+-- threads to move.  Answering with a CPU other than the one that reported the
+-- stop resumes the whole machine, which is how a kernel runs away from its own
+-- breakpoint.  Always move the thread the stop came from.
 function M.focus(session)
   if not session then
     return nil
@@ -107,8 +106,8 @@ function M.cont()
     dap.continue()
     return
   end
-  -- Never replay a configuration that cannot start: a mistyped executable
-  -- would otherwise be repeated by every later press.
+  -- Never replay a configuration that cannot start: a mistyped executable would
+  -- be repeated by every later press.
   if last_config then
     local program = last_config.program
     if program and (vim.fn.filereadable(program) ~= 1 or vim.fn.executable(program) ~= 1) then
@@ -123,9 +122,8 @@ function M.cont()
   dap.continue()
 end
 
--- Line stepping needs a line table.  Without one gdb has nothing to step over,
--- so fall back to instruction granularity rather than letting the target run
--- away, and say so the first time it happens.
+-- Without a line table gdb has nothing to step over, so fall back to
+-- instruction granularity rather than letting the target run away.
 local warned_instruction = false
 
 function M.step(kind)
@@ -156,10 +154,9 @@ function M.step(kind)
 end
 
 -- nvim-dap installs no VimLeavePre handler, so quitting with a session up
--- leaves `gdb -i dap` reparented to init: for a launched program the debuggee
--- keeps running, and for a QEMU target the orphan keeps the gdbstub's single
--- client slot so nothing can attach again.  Shut sessions down on the way out,
--- detaching where detaching is the right thing.
+-- leaves `gdb -i dap` reparented to init: a launched debuggee keeps running,
+-- and against QEMU the orphan holds the gdbstub's single client slot so nothing
+-- can attach again.
 function M.shutdown()
   local ok, dap = pcall(require, "dap")
   if not ok then
