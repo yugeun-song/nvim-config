@@ -15,16 +15,15 @@ M.groups = {
   DbgStack = { link = "DiagnosticWarn" },
   DbgCode = { link = "DiagnosticError" },
   DbgData = { link = "Special" },
-  -- The line the program counter is on, in the source and in the disassembly.
-  -- CursorLine is not enough: it is where the cursor already is.
+  -- The program counter line, in source and in disassembly.  CursorLine is not
+  -- enough: it marks where the cursor is, not where the program stopped.
   DbgStopLine = { link = "Visual", force = true },
   DbgStopSign = { link = "DiagnosticOk", force = true },
   DbgInlineValue = { link = "NvimDapViewVirtualText", force = false },
 }
 
--- The program counter line is marked by background alone.  Taking the
--- background from a diff group keeps it theme-aware and, because no foreground
--- is set, every syntax colour on the line survives untouched.
+-- Background only, borrowed from a theme group so it stays theme-aware; with no
+-- foreground set, every syntax colour on the line survives.
 local function pc_background()
   for _, source in ipairs({ "DiffAdd", "Visual", "CursorLine" }) do
     local ok, hl = pcall(vim.api.nvim_get_hl, 0, { name = source, link = false })
@@ -45,6 +44,32 @@ function M.setup_highlights()
   vim.api.nvim_set_hl(0, "DbgPcLine", bg and { bg = bg } or { link = "Visual" })
   vim.api.nvim_set_hl(0, "DbgBranchTaken", { link = "DiagnosticOk" })
   vim.api.nvim_set_hl(0, "DbgBranchUnknown", { link = "Comment" })
+  -- A branch that will not be taken is dimmed, not left out: leaving it out
+  -- reads as "there is no branch here", which is a different fact.
+  vim.api.nvim_set_hl(0, "DbgBranchNotTaken", { link = "NonText" })
+end
+
+-- Undo style_window, so a window that used to hold a panel can go back to being
+-- an ordinary editor window.
+function M.unstyle_window(win)
+  if not (win and vim.api.nvim_win_is_valid(win)) then
+    return
+  end
+  for opt, value in pairs({
+    winbar = "",
+    winhighlight = "",
+    signcolumn = "auto",
+    wrap = true,
+    winfixheight = false,
+    winfixbuf = false,
+    number = vim.o.number,
+    relativenumber = vim.o.relativenumber,
+    list = vim.o.list,
+  }) do
+    pcall(function()
+      vim.wo[win][opt] = value
+    end)
+  end
 end
 
 function M.banner(title, width, right)

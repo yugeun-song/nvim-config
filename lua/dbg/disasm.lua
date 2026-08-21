@@ -1,9 +1,8 @@
 local M = {}
 
--- The disassembly marker does not go in the sign column: that column is a
--- window option, and the panel re-applies its own window options when it
--- switches sections, which makes a sign flash and vanish.  An extmark lives on
--- the buffer, so it stays put no matter what happens to the window.
+-- Not a sign: the sign column is a window option and the panel re-applies its
+-- window options when it switches sections, which makes a sign flash and
+-- vanish.  An extmark lives on the buffer and stays put.
 local ns = vim.api.nvim_create_namespace("dbg_pc")
 
 local function buffer()
@@ -19,10 +18,9 @@ local function normalise(addr)
   return (addr:lower():gsub("^0x0*", ""))
 end
 
--- Whether the branch under the program counter is about to be taken.  The
--- answer comes from the registers already collected for the register panel, so
--- no extra round trip is needed, and each architecture is only consulted when
--- the target actually exposes the state it needs.
+-- Whether the branch under the program counter is about to be taken, answered
+-- from the registers already collected for the register panel: no extra round
+-- trip, and an architecture is only consulted when its state is present.
 local ALWAYS = {
   b = true,
   bl = true,
@@ -50,9 +48,8 @@ local function flags_of(values, name)
 end
 
 -- 64-bit values do not survive a double: 0xffff8000803a1870 loses its top
--- nibble.  Everything that must stay exact -- addresses, zero tests, equality --
--- works on a fixed-width hex string instead, and only genuinely small operands
--- become Lua numbers.
+-- nibble.  Addresses, zero tests and equality work on a fixed-width hex string
+-- instead; only small operands become Lua numbers.
 local function norm16(value)
   local text = tostring(value or "")
   local digits = text:match("0[xX](%x+)")
@@ -281,9 +278,8 @@ local function riscv_taken(mnemonic, operands, values)
   return ops[mnemonic]
 end
 
--- An indirect branch has no address in the text, but standing on it the
--- register that decides where it goes is already known, so the destination can
--- be read straight out of the stopped state.
+-- An indirect branch has no address in the text, but the register that decides
+-- where it goes is already in the stopped state.
 local function indirect_target(mnemonic, operands, values, arch)
   values = values or {}
   -- returns the 16-digit form so the address survives intact
@@ -334,8 +330,8 @@ local function indirect_target(mnemonic, operands, values, arch)
   end
 
   if arch == "x86_64" then
-    -- `jmp *%rax` (att) or `jmp rax` (intel); a memory operand needs a read,
-    -- which is not done here, so those stay unresolved rather than guessed.
+    -- `jmp *%rax` (att) or `jmp rax` (intel); a memory operand would need a
+    -- read, so those stay unresolved rather than guessed.
     if (mnemonic == "jmp" or mnemonic == "call") and not operands:find("[%[%]]") then
       return reg(first)
     end
@@ -345,10 +341,9 @@ local function indirect_target(mnemonic, operands, values, arch)
   return nil
 end
 
--- Which instruction set this is, decided by the registers the target actually
--- exposes rather than by a configured architecture name.  Each ISA then gets
--- its own evaluator: the mnemonics barely overlap, but the state they consult
--- does not overlap at all, and mixing them would give confident wrong answers.
+-- The instruction set is decided by the registers the target exposes, not by a
+-- configured name.  Each ISA gets its own evaluator: the state they consult
+-- does not overlap, and mixing them would give confident wrong answers.
 local function detect_arch(values)
   values = values or {}
   if values.cpsr ~= nil or values.CPSR ~= nil then
@@ -372,11 +367,10 @@ local EVALUATE = {
 -- Returns target address string, taken (true/false/nil when undecidable).
 function M.branch_at(line, values)
   local body = line:gsub("^%s*0[xX]%x+:%s*", "")
-  -- The instruction-bytes column is a lone hex blob before the mnemonic, but a
+  -- The instruction-bytes column is a hex blob before the mnemonic, but a
   -- mnemonic can be valid hex too: stripping "%x+%s+" ate the `b` in
   -- "b 0xffff..." and left the target as the mnemonic.  Only strip an
-  -- even-length hex run that is actually followed by something starting with a
-  -- letter, and only when a byte column is present at all.
+  -- even-length hex run that is followed by something starting with a letter.
   local head, rest = body:match("^(%S+)%s+(.*)$")
   if head and rest and #head >= 2 and #head % 2 == 0 and head:match("^%x+$") and rest:match("^%a") then
     body = rest
@@ -440,8 +434,7 @@ function M.mark(session)
   for i, line in ipairs(lines) do
     local addr = line:match("(0[xX]%x+)")
     if addr and normalise(addr) == want then
-      -- Background only, so the instruction's own colours survive; a text
-      -- marker next to it just competes with them.
+      -- Background only, so the instruction's own colours survive.
       pcall(vim.api.nvim_buf_set_extmark, buf, ns, i - 1, 0, {
         line_hl_group = "DbgPcLine",
         priority = 200,
@@ -456,62 +449,211 @@ function M.mark(session)
   end
 end
 
--- A connector from the branch to its destination.  It cannot live in the sign
--- column: dap-view sets `statuscolumn = ""` on its panel window
--- (views/options.lua:14), which stops signs being drawn at all.  Instead every
--- row of the buffer gets the same two-cell inline prefix, so the listing shifts
--- as a whole and stays aligned, and nothing is drawn when the program counter
--- is not on a branch.
+-- Which mnemonics are branches whose target is written in the text.  Calls are
+-- left out: they come back, and drawing them would fill the margin with lines
+-- that leave the function.
+local BRANCH = {
+  aarch64 = "^b$|^b%.%a%a$|^cbn?z$|^tbn?z$",
+  x86_64 = "^jmp$|^jmpq$|^j%a+$|^loop%a*$",
+  riscv64 = "^b%a+$|^j$|^c%.j$|^c%.b%a+z$",
+}
+
+local function is_branch(mnemonic, arch)
+  local patterns = BRANCH[arch or ""] or (BRANCH.aarch64 .. "|" .. BRANCH.x86_64 .. "|" .. BRANCH.riscv64)
+  for pattern in patterns:gmatch("[^|]+") do
+    if mnemonic:match(pattern) then
+      return true
+    end
+  end
+  return false
+end
+
+local function row_target(line, arch)
+  local body = line:gsub("^%s*0[xX]%x+:%s*", "")
+  local head, rest = body:match("^(%S+)%s+(.*)$")
+  if head and rest and #head >= 2 and #head % 2 == 0 and head:match("^%x+$") and rest:match("^%a") then
+    body = rest
+  end
+  local mnemonic, operands = body:match("^(%S+)%s*(.*)$")
+  if not mnemonic or not is_branch(mnemonic:lower(), arch) then
+    return nil
+  end
+  operands = operands:gsub("%s*[/;].*$", ""):gsub("%s*<[^>]*>%s*$", "")
+  local target = nil
+  for addr in operands:gmatch("0[xX]%x+") do
+    target = addr
+  end
+  return target
+end
+
+-- Lanes, widest span outermost, each edge in the leftmost column that no
+-- overlapping edge already occupies.  Same packing radare2 uses, and the reason
+-- crossing branches stay readable instead of landing on one another.
+local function pack(edges)
+  local order = {}
+  for i = 1, #edges do
+    order[i] = i
+  end
+  table.sort(order, function(a, b)
+    local sa = edges[a].bot - edges[a].top
+    local sb = edges[b].bot - edges[b].top
+    if sa ~= sb then
+      return sa > sb
+    end
+    return edges[a].top < edges[b].top
+  end)
+  local occupied = {}
+  local ncols = 0
+  for _, k in ipairs(order) do
+    local e = edges[k]
+    local col = 1
+    while true do
+      occupied[col] = occupied[col] or {}
+      local free = true
+      for _, span in ipairs(occupied[col]) do
+        if not (e.bot < span[1] or span[2] < e.top) then
+          free = false
+          break
+        end
+      end
+      if free then
+        table.insert(occupied[col], { e.top, e.bot })
+        e.col = col
+        ncols = math.max(ncols, col)
+        break
+      end
+      col = col + 1
+    end
+  end
+  return ncols
+end
+
+-- Every branch in view is drawn.  Only the one under the program counter is
+-- coloured, and only when the registers say it will be taken -- an uncoloured
+-- line is the answer for "this will not branch", and for every branch whose
+-- turn has not come.
 function M.draw_branch(buf, lines, pc_row)
   local ok, registers = pcall(require, "dbg.registers")
   local values = ok and registers.values() or {}
-  local target, taken = M.branch_at(lines[pc_row] or "", values)
-  if not target then
-    return
-  end
-  -- Only a branch that is actually about to be taken gets a connector.  One
-  -- that will fall through draws nothing: the absence is the answer.  When the
-  -- condition cannot be decided the connector is drawn dim, so an unknown is
-  -- never mistaken for a certainty.
-  if taken == false then
-    return
-  end
-  local group = taken == true and "DbgBranchTaken" or "DbgBranchUnknown"
+  local _, _, arch = M.branch_at(lines[pc_row] or "", values)
 
-  local want = normalise(target)
-  local target_row = nil
+  local index = {}
   for i, line in ipairs(lines) do
     local addr = line:match("(0[xX]%x+)")
-    if addr and normalise(addr) == want then
-      target_row = i
-      break
+    if addr then
+      local key = normalise(addr)
+      if index[key] == nil then
+        index[key] = i
+      end
     end
   end
 
-  local glyph = {}
-  if not target_row then
-    local here = as_number((lines[pc_row] or ""):match("(0[xX]%x+)"))
-    local there = as_number(target)
-    glyph[pc_row] = (here and there and there < here) and "\u{25b2} " or "\u{25bc} "
-  elseif target_row == pc_row then
-    glyph[pc_row] = "\u{21bb} "
-  else
-    local from, to = math.min(pc_row, target_row), math.max(pc_row, target_row)
-    for row = from + 1, to - 1 do
-      glyph[row] = "\u{2502} "
+  local edges = {}
+  for i, line in ipairs(lines) do
+    local target = row_target(line, arch)
+    local j = target and index[normalise(target)]
+    if j and j ~= i then
+      edges[#edges + 1] = { top = math.min(i, j), bot = math.max(i, j), src = i, dst = j }
     end
-    if target_row > pc_row then
-      glyph[pc_row] = "\u{256d} "
-      glyph[target_row] = "\u{2570}\u{25b6}"
-    else
-      glyph[target_row] = "\u{256d}\u{25b6}"
-      glyph[pc_row] = "\u{2570} "
+  end
+  if #edges == 0 then
+    for row = 1, #lines do
+      pcall(vim.api.nvim_buf_set_extmark, buf, ns, row - 1, 0, {
+        virt_text = { { "  ", "DbgMuted" } },
+        virt_text_pos = "inline",
+        right_gravity = false,
+        priority = 190,
+      })
+    end
+    return
+  end
+
+  local ncols = pack(edges)
+  local width = ncols + 1
+  local grid, paint = {}, {}
+  for row = 1, #lines do
+    grid[row], paint[row] = {}, {}
+    for c = 1, width do
+      grid[row][c], paint[row][c] = " ", false
+    end
+  end
+
+  -- The branch the program counter is on, and whether it is about to be taken.
+  local pc_taken = nil
+  local pc_edge = nil
+  for _, e in ipairs(edges) do
+    if e.src == pc_row then
+      pc_edge = e
+    end
+  end
+  if pc_edge then
+    local _, taken = M.branch_at(lines[pc_row] or "", values)
+    pc_taken = taken
+  end
+
+  local function mark(row, col, ch, hot)
+    if grid[row] and grid[row][col] then
+      grid[row][col] = ch
+      if hot then
+        paint[row][col] = true
+      end
+    end
+  end
+
+  for _, e in ipairs(edges) do
+    local hot = (e == pc_edge) and pc_taken == true
+    local c = e.col
+    for row = e.top + 1, e.bot - 1 do
+      if grid[row][c] == " " then
+        mark(row, c, "\u{2502}", hot)
+      elseif hot then
+        paint[row][c] = true
+      end
+    end
+    mark(e.top, c, "\u{250c}", hot)
+    mark(e.bot, c, "\u{2514}", hot)
+    for _, row in ipairs({ e.top, e.bot }) do
+      for col = c + 1, ncols do
+        local at = grid[row][col]
+        if at == "\u{2502}" then
+          mark(row, col, "\u{253c}", hot)
+        elseif at == "\u{2514}" then
+          mark(row, col, "\u{2534}", hot)
+        elseif at == "\u{250c}" then
+          mark(row, col, "\u{252c}", hot)
+        elseif at == " " then
+          mark(row, col, "\u{2500}", hot)
+        elseif hot then
+          paint[row][col] = true
+        end
+      end
+      if row == e.dst then
+        mark(row, width, "\u{25b6}", hot)
+      elseif grid[row][width] ~= "\u{25b6}" then
+        mark(row, width, "\u{2500}", hot)
+      elseif hot then
+        paint[row][width] = true
+      end
     end
   end
 
   for row = 1, #lines do
+    local chunks, run, group = {}, {}, nil
+    for c = 1, width do
+      local g = paint[row][c] and "DbgBranchTaken" or "DbgMuted"
+      if g ~= group and #run > 0 then
+        chunks[#chunks + 1] = { table.concat(run), group }
+        run = {}
+      end
+      group = g
+      run[#run + 1] = grid[row][c]
+    end
+    if #run > 0 then
+      chunks[#chunks + 1] = { table.concat(run), group }
+    end
+    chunks[#chunks + 1] = { " ", "DbgMuted" }
     pcall(vim.api.nvim_buf_set_extmark, buf, ns, row - 1, 0, {
-      virt_text = { { glyph[row] or "  ", glyph[row] and group or "DbgMuted" } },
+      virt_text = chunks,
       virt_text_pos = "inline",
       right_gravity = false,
       priority = 190,
