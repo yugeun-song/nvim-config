@@ -30,10 +30,18 @@ function M.run(cmd, cb, opts)
     frameId = frame and frame.id,
   }, function(err, res)
     if err then
-      cb(nil, err.message or "command failed")
+      local message = err.message or "command failed"
+      pcall(function()
+        require("dbg.watchdog").saw_text(message)
+      end)
+      cb(nil, message)
       return
     end
-    cb(M.strip_ansi((res or {}).result or ""))
+    local text = M.strip_ansi((res or {}).result or "")
+    pcall(function()
+      require("dbg.watchdog").saw_text(text)
+    end)
+    cb(text)
   end)
 end
 
