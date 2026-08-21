@@ -1,7 +1,7 @@
 local last_answer = {}
 
--- Asks until the answer names something that can actually be run.  A typo used
--- to be accepted, remembered, and then replayed by every later <leader>dc.
+-- Keep asking until the answer is runnable: a typo used to be accepted, remembered,
+-- and then replayed by every later <leader>dc.
 local function input_path(prompt, default)
   return function()
     local seed = last_answer[prompt] or default()
@@ -141,6 +141,7 @@ return {
               "registers",
               "memory",
               "mappings",
+              "controlflow",
               "disassembly",
               "threads",
               "breakpoints",
@@ -200,6 +201,16 @@ return {
                   return require("dbg.mappings").buffer()
                 end,
               },
+              controlflow = {
+                label = adaptive("Control flow(F)", "CFG(F)"),
+                keymap = "F",
+                action = function()
+                  require("dbg.cfg").probe()
+                end,
+                buffer = function()
+                  return require("dbg.cfg").buffer()
+                end,
+              },
               session = {
                 label = adaptive("Target(I)", "Tgt(I)"),
                 keymap = "I",
@@ -227,10 +238,9 @@ return {
           dapui_register = false,
           dapview_register = true,
           dapview = { keymap = "D", label = "Dis(D)", short_label = "Dis(D)" },
-          -- GDB's DAP mishandles a negative instructionOffset: asking for
-          -- instructions before the reference returns a window that starts
-          -- past it and does not contain it, so the current instruction can
-          -- never be marked. Start at the program counter instead.
+          -- GDB's DAP mishandles a negative instructionOffset: the window it returns
+          -- starts past the reference and never contains it, so the current instruction
+          -- can never be marked. Start at the program counter instead.
           ins_before_memref = 0,
           ins_after_memref = 40,
           columns = { "address", "instructionBytes", "instruction" },
@@ -390,9 +400,8 @@ return {
       {
         "<leader>dw",
         function()
-          -- dap-view takes the expression under the cursor, and there is none
-          -- when the cursor sits in a panel, so ask for it there instead of
-          -- adding nothing.
+          -- dap-view takes the expression under the cursor, and a panel has none, so
+          -- ask for it there instead of adding nothing.
           local ft = vim.bo.filetype
           local in_panel = ft:match("^dbg%-") or ft:match("^dap%-") or vim.bo.buftype ~= ""
           local word = vim.fn.expand("<cexpr>")
@@ -443,17 +452,31 @@ return {
       local dap = require("dap")
       local discover = require("dbg.discover")
 
+      -- bufferline's keys act on the current window, and the debugger's panels are
+      -- winfixbuf, so pressing one with the cursor in a panel raises E1513.  Wrap
+      -- the commands rather than rebinding whatever keys are configured.
+      pcall(function()
+        local commands = require("bufferline.commands")
+        for _, name in ipairs({ "go_to", "cycle", "pick", "move", "exec" }) do
+          local original = commands[name]
+          if type(original) == "function" and not commands["dbg_wrapped_" .. name] then
+            commands["dbg_wrapped_" .. name] = true
+            commands[name] = function(...)
+              require("dbg.layout").unfix_for_buffer_switch()
+              return original(...)
+            end
+          end
+        end
+      end)
+
       dap.defaults.fallback.switchbuf = function(bufnr, line, column)
         require("dbg.layout").jump(bufnr, line, column)
       end
 
-      -- nvim-dap says "Source missing, cannot jump to frame: X" on every stop in
-      -- code with no line table.  In a kernel's early boot that is most stops:
-      -- arm64 puts primary_entry and __primary_switch in .rodata.text, which this
-      -- build's DWARF line table does not cover, so the frame carries a name but
-      -- no line.  The session already says so once and puts the disassembly on the
-      -- program counter, so the repeat is noise.  Only that one message is
-      -- dropped; everything else nvim-dap reports comes through untouched.
+      -- nvim-dap says "Source missing, cannot jump to frame" on every stop in code with
+      -- no line table, which is most of a kernel's early boot: arm64 puts primary_entry
+      -- and __primary_switch in .rodata.text, uncovered by this build's DWARF line
+      -- table. The session already says so once and shows the disassembly instead.
       local dap_utils = require("dap.utils")
       if not dap_utils.dbg_quiet_source_missing then
         local report = dap_utils.notify
@@ -466,11 +489,18 @@ return {
         dap_utils.dbg_quiet_source_missing = true
       end
 
-      dap.adapters.gdb = {
-        type = "executable",
-        command = "gdb",
-        args = { "-q", "-i", "dap", "-iex", "set pagination off" },
-      }
+      -- The userspace adapter loads the same toolkit as the kernel one, so the
+      -- control-flow panel works against an ordinary binary too.  It registers
+      -- its commands and stays inert without a kernel.
+      dap.adapters.gdb = function(callback, config)
+        local args = { "-q", "-i", "dap", "-iex", "set pagination off" }
+        local tool = discover.kgdb_tool(config and config.program and vim.fs.dirname(config.program))
+        if tool then
+          table.insert(args, "-ex")
+          table.insert(args, "source " .. tool)
+        end
+        callback({ type = "executable", command = "gdb", args = args })
+      end
 
       dap.adapters.gdb_kernel = function(callback, config)
         local bin = config.gdb_bin or discover.gdb_for(config.arch or "x86_64")
@@ -479,8 +509,7 @@ return {
           table.insert(args, "-iex")
           table.insert(args, "add-auto-load-safe-path " .. config.kernel_root)
         end
-        local tool = config.kernel_root
-          and vim.fs.find("kgdb-earlyboot.py", { path = config.kernel_root, upward = true, type = "file", limit = 1 })[1]
+        local tool = discover.kgdb_tool(config.kernel_root)
         if tool then
           table.insert(args, "-ex")
           table.insert(args, "source " .. tool)
@@ -566,18 +595,15 @@ return {
         { text = "▶", texthl = "DbgStopSign", linehl = "DbgStopLine", numhl = "DbgStopSign" }
       )
 
-      -- The panel is labelled "gdb console", so it behaves like one: <CR> sends
-      -- the line under the cursor to GDB instead of nvim-dap's variable
-      -- expansion, and any older command can be re-run by pressing it there.
+      -- Labelled "gdb console", so it behaves like one: <CR> sends the line under the
+      -- cursor to GDB instead of nvim-dap's variable expansion, re-running old commands.
       vim.api.nvim_create_autocmd("FileType", {
         pattern = "dap-repl",
         callback = function(ev)
           local buf = ev.buf
-          -- blink.cmp makes an explicit exception for dap-repl and completes
-          -- from buffer words there; the console is a command line, so it gets
-          -- no popup at all. GDB's own completion is still one <C-x><C-o> away,
-          -- because nvim-dap points the buffer's omnifunc at the DAP
-          -- `completions` request.
+          -- blink.cmp makes an explicit exception for dap-repl and completes from buffer
+          -- words there; a command line wants no popup. GDB's own completion is still
+          -- one <C-x><C-o> away, through nvim-dap's omnifunc.
           vim.b[buf].completion = false
           local function prompt()
             return vim.fn.prompt_getprompt(buf)
@@ -638,10 +664,9 @@ return {
         desc = "Keep the debugger panel highlights defined across colorscheme changes",
       })
 
-      -- nvim-dap fetches the stack asynchronously after dispatching the stopped
-      -- event and only settles on a frame once the response lands, so the
-      -- panels are painted from the stackTrace response rather than from the
-      -- event: reading `current_frame` any earlier gets the previous stop's.
+      -- nvim-dap settles on a frame only once the stackTrace response lands, so paint
+      -- from that response and not from the stopped event: reading `current_frame` any
+      -- earlier gets the previous stop's.
       local awaiting = {}
 
       local function paint(session)
@@ -654,15 +679,15 @@ return {
           require("dbg.memory").on_stopped()
           require("dbg.session").probe()
           require("dbg.mappings").probe()
+          require("dbg.cfg").probe()
           require("dbg.layout").resize()
           if not require("dbg.console").has_source(session.current_frame) then
             pcall(vim.fn.sign_unplace, session.sign_group)
             require("dbg.layout").show_disassembly()
           end
         end)
-        -- nvim-dap-disasm only redraws when its buffer is on screen, and it
-        -- keys off the scopes response; ask it directly once the window is
-        -- settled so the marker follows every stop.
+        -- nvim-dap-disasm only redraws when its buffer is on screen and keys off the
+        -- scopes response; ask it directly once the window is settled.
         vim.schedule(function()
           pcall(function()
             require("dap-disasm").refresh()
@@ -679,9 +704,8 @@ return {
         pcall(function()
           require("dbg.registers").mark_stop()
         end)
-        -- Remember which thread reported the stop: with several halted vCPUs
-        -- the client would otherwise ask, and moving the wrong one resumes the
-        -- whole machine.
+        -- Remember which thread reported the stop: with several halted vCPUs the client
+        -- would otherwise ask, and moving the wrong one resumes the whole machine.
         if body and body.threadId then
           session.dbg_stopped_thread = body.threadId
         end
@@ -739,6 +763,51 @@ return {
           pcall(function()
             require("dbg.layout").leave()
           end)
+        end)
+      end
+
+      -- Losing the QEMU gdbstub does not terminate the DAP session, so nothing
+      -- would otherwise say the panels have gone stale.
+      -- A binary with no DWARF is a normal thing to attach to; it is only worth
+      -- saying once, at the start, so the panels are read for what they can
+      -- actually show.  Nothing is rebuilt and nothing is disabled beyond what
+      -- the missing information already makes impossible.
+      dap.listeners.after.event_initialized["dbg_debuginfo"] = function(session)
+        pcall(function()
+          local prog = (session.config or {}).program
+          local kind = prog and require("dbg.discover").elf_debug_info(prog)
+          if kind ~= "none" and kind ~= "stripped" then
+            return
+          end
+          session.dbg_no_debug_info = true
+          local why = kind == "stripped"
+              and "is stripped, so unless debuginfod or a debug package supplies it there are no source lines, locals or types"
+            or "was built without -g, so there are no source lines, locals or types"
+          require("dbg.notify").warn(
+            ("%s %s. "):format(vim.fs.basename(prog), why)
+              .. "Disassembly, registers, memory, breakpoints and the control-flow graph still work."
+          )
+        end)
+      end
+
+      dap.listeners.after.event_initialized["dbg_watchdog"] = function(session)
+        pcall(function()
+          require("dbg.watchdog").start(session)
+        end)
+      end
+      dap.listeners.after.event_output["dbg_watchdog"] = function(_, body)
+        pcall(function()
+          require("dbg.watchdog").saw_text(body and body.output)
+        end)
+      end
+      dap.listeners.after.event_terminated["dbg_watchdog"] = function()
+        pcall(function()
+          require("dbg.watchdog").stop()
+        end)
+      end
+      dap.listeners.after.disconnect["dbg_watchdog"] = function()
+        pcall(function()
+          require("dbg.watchdog").stop()
         end)
       end
 
@@ -860,6 +929,18 @@ return {
       vim.api.nvim_create_user_command("DbgKernelEarly", function()
         require("dbg.kernel").start({ kgdb_auto = true })
       end, { desc = "Attach with the kgdb early-boot machinery armed (KGDB_AUTO=1)" })
+
+      vim.api.nvim_create_user_command("DbgLog", function()
+        require("dbg.notify").show_log()
+      end, { desc = "Everything the debugger reported, including messages that scrolled past" })
+
+      vim.api.nvim_create_user_command("DbgLayoutReset", function()
+        require("dbg.layout").rebuild()
+      end, { desc = "Rebuild the debugger windows, leaving the session and breakpoints alone" })
+
+      vim.api.nvim_create_user_command("DbgControlFlow", function()
+        require("dbg.cfg").toggle_in_editor()
+      end, { desc = "Show the control flow in the source window, and the source again on a second call" })
 
       vim.api.nvim_create_user_command("DbgMemory", function(o)
         require("dbg.memory").open(o.args)

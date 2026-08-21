@@ -322,4 +322,31 @@ function M.gdb_supports_dap(bin)
   return (major or 0) >= 14
 end
 
+-- Where the kgdb toolkit lives.  The kernel adapter finds it by walking up from
+-- the kernel root; a userspace session has no kernel root, so the known places
+-- are searched instead.  Absent is a normal answer: the control-flow panel gates
+-- on the command being there.
+function M.kgdb_tool(near)
+  local env = vim.env.KGDB_EARLYBOOT
+  if env and vim.uv.fs_stat(env) then
+    return env
+  end
+  if near then
+    local found = vim.fs.find("kgdb-earlyboot.py", { path = near, upward = true, type = "file", limit = 1 })[1]
+    if found then
+      return found
+    end
+  end
+  local home = vim.uv.os_homedir() or ""
+  for _, candidate in ipairs({
+    home .. "/workspace/linux-kernel-research/kgdb-earlyboot.py",
+    home .. "/linux-kernel-research/kgdb-earlyboot.py",
+  }) do
+    if vim.uv.fs_stat(candidate) then
+      return candidate
+    end
+  end
+  return nil
+end
+
 return M

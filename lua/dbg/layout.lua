@@ -5,27 +5,22 @@ local M = {}
 
 M.preset = "auto"
 
--- The only resolution that counts here is the terminal's cell grid, which is
--- exactly what `columns` and `lines` report.  Changing the font size in the
--- terminal emulator changes them, so every threshold below is expressed in
--- cells and re-measured on every resize.
--- The register rows carry a `<symbol + offset>` annotation, and on a kernel
--- those names are long; a narrow column cuts them off exactly where they start
--- being useful.
+-- Font size changes what `columns` and `lines` report, so every threshold below
+-- is in cells and re-measured on every resize.
+-- Register rows carry a `<symbol + offset>` annotation; kernel symbols are long
+-- and a narrow column cuts them off right where they start being useful.
 M.sidebar_min = 44
 M.sidebar_max = 110
 M.sidebar_share = 0.38
 M.min_editor_width = 84
 M.min_lines = 20
--- A register panel is only useful when the whole general set fits; a second
--- panel is worth stacking only once that is satisfied and there are rows left
--- over for it.
+-- A register panel is only useful when the whole general set fits; stack a
+-- second panel only once that holds and rows are left over.
 M.primary_rows = 28
 M.extra_rows = 14
 
--- `weight` is how much of the side column a panel gets when several are
--- stacked.  Registers is the one you read continuously and it has the most
--- rows, so it takes the largest share and the rest sit below it.
+-- `weight` is the share of the side column when several panels stack. Registers
+-- is the one you read continuously and has the most rows, so it takes the most.
 local PANELS = {
   { name = "registers", title = "Registers", mod = "dbg.registers", weight = 5 },
   { name = "watch", title = "Watch", mod = "dbg.watch", weight = 4 },
@@ -89,9 +84,8 @@ function M.wide()
   return vim.o.columns - M.sidebar_size() >= M.min_editor_width and vim.o.lines >= M.min_lines
 end
 
--- Rows the side column actually gets: the grid minus the bottom panel, the
--- status line and the tab line.  Measured from the live windows when they are
--- up, estimated from the cell grid otherwise.
+-- Rows the side column actually gets: the grid minus the bottom panel, status
+-- line and tab line. Measured from the live windows when up, estimated otherwise.
 local function column_rows()
   local win = panel.win(slot(1))
   if win and vim.api.nvim_win_is_valid(win) then
@@ -107,11 +101,8 @@ local function column_rows()
   return math.max(0, math.floor(vim.o.lines * 0.66) - 2)
 end
 
--- How many panels the side column stacks: whatever the cell grid can carry
--- without squeezing the source window or cutting the first panel short, capped
--- by M.side_max.  The cap is 1 by request: the side column is for one panel at
--- full height, and everything else lives in the bottom bar.  ]p / [p still
--- cycle which panel occupies the column.
+-- Cap is 1 by request: the side column carries one panel at full height and
+-- everything else lives in the bottom bar. ]p / [p cycle which one it is.
 M.side_max = 1
 
 function M.slots()
@@ -148,8 +139,7 @@ local function shown_outside(p, own)
   return false
 end
 
--- Walk the panel ring from the current position and take the first `count`
--- panels that no other window is already showing.
+-- Take the first `count` panels from the ring that no other window is showing.
 local function selection(count)
   local own = live_slots()
   local out, taken = {}, {}
@@ -220,9 +210,8 @@ end
 local opening = false
 
 function M.sidebar_open()
-  -- Opening the column moves buffers into windows, which fires the very
-  -- autocmds that ask for the column to be rebuilt; without this guard the two
-  -- feed each other forever.
+  -- Opening the column moves buffers into windows, which fires the autocmds
+  -- that ask for a rebuild; without this guard the two feed each other forever.
   if opening then
     return
   end
@@ -294,10 +283,9 @@ function M.sidebar_open_unguarded()
   end
 end
 
--- Without a line table there is no source line to point at, so the nearest
--- thing to "the code window follows the program counter" is the disassembly.
--- The console is left alone when it is the visible section: you are typing in
--- it, and gdb's own answer is already echoed there.
+-- Without a line table there is no source line to point at, so disassembly is
+-- the closest thing to "the code window follows the program counter". The
+-- console is left alone when visible: you are typing in it and gdb echoes there.
 function M.show_disassembly()
   local ok, state = pcall(require, "dap-view.state")
   if not ok then
@@ -325,8 +313,8 @@ function M.sidebar_cycle(delta)
   M.sidebar_open()
 end
 
--- Called when a panel turns up in a window the sidebar does not own; the
--- sidebar rebuilds itself around whatever is still free.
+-- Called when a panel turns up in a window the sidebar does not own; rebuild
+-- around whatever is still free.
 function M.sidebar_next_free()
   M.sidebar_open()
 end
@@ -382,11 +370,8 @@ function M.apply()
   M.fit()
 end
 
--- Re-measure against the current cell grid: side column width, the stacked
--- heights, the winbar labels, and each visible panel, whose own column maths
--- (bytes per row, register grid) is recomputed as it renders.
--- Sizing only: cheap enough to run whenever a window appears or the target
--- stops, which is when dap-view reflows the column out from under us.
+-- Sizing only, so it is cheap enough to run whenever a window appears or the
+-- target stops, which is when dap-view reflows the column out from under us.
 function M.resize()
   local win = panel.win(slot(1))
   if win then
@@ -448,8 +433,8 @@ local function debug_windows()
   return out
 end
 
--- Remember the window layout the user had before the debugger took over, so
--- that ending a session can put it back the way an IDE does.
+-- Remember the layout from before the debugger took over so ending a session
+-- can put it back.
 function M.snapshot()
   if restore then
     return
@@ -479,8 +464,7 @@ function M.snapshot()
 end
 
 -- The debugger lists whatever source it jumped into, which is how a glibc
--- header ends up in the tabline.  Anything it brought in that the user has not
--- touched goes away with the session.
+-- header ends up in the tabline; drop what it brought in and nobody touched.
 local function drop_borrowed(listed)
   if not listed then
     return
@@ -537,10 +521,9 @@ function M.source_window()
       return win
     end
   end
-  -- Starting a session straight from the start screen leaves no window holding a
-  -- file, so the search above finds nothing and the source ends up in a new split
-  -- with the start screen still occupying the editor area.  A start screen is the
-  -- editor area, it just has no file in it yet, so take it over.
+  -- Starting from the start screen leaves no window holding a file, so the
+  -- source would land in a new split with the start screen still sitting there.
+  -- It is the editor area, just without a file in it yet, so take it over.
   local START = {
     snacks_dashboard = true,
     alpha = true,
@@ -563,9 +546,28 @@ function M.source_window()
   return nil
 end
 
+-- True while the editor window is showing the graph rather than a file.
+local function cfg_tab_showing()
+  local ok, cfg = pcall(require, "dbg.cfg")
+  if not ok then
+    return false
+  end
+  local host = cfg.host()
+  return host ~= nil and vim.api.nvim_win_get_buf(host) == cfg.buffer()
+end
+
 function M.jump(bufnr, line, column)
   local win = M.source_window()
   if not win then
+    -- With the graph up, stepping updates it and leaves the windows alone.
+    -- Taking its window back, or splitting a new one, would mean switching back
+    -- by hand after every step.
+    if cfg_tab_showing() then
+      -- Remember where the source would have gone, so switching back to the
+      -- file tab lands on the current line instead of wherever it was left.
+      M.pending_jump = { buf = bufnr, line = line, column = column }
+      return
+    end
     local prev = vim.api.nvim_get_current_win()
     vim.cmd("topleft split")
     win = vim.api.nvim_get_current_win()
@@ -584,14 +586,95 @@ function M.jump(bufnr, line, column)
 end
 
 function M.enter()
-  -- Every session starts with Registers on the right; the ring position only
-  -- moves when you cycle it with ]p / [p.
+  -- Every session starts with Registers on the right; ]p / [p move from there.
   index = 1
   M.snapshot()
   M.apply()
 end
 
--- Close everything the debugger opened and restore the saved layout.
+-- Put the windows back without touching the session.  A mistyped key can close
+-- a panel or leave a stray split behind, and the fix should cost nothing: gdb,
+-- the breakpoints and every panel's contents are untouched, only the windows are
+-- rebuilt.
+function M.rebuild()
+  local ok, dap = pcall(require, "dap")
+  local session = ok and dap.session() or nil
+
+  -- Close what the debugger owns, leaving the user's own windows alone.
+  M.sidebar_close()
+  pcall(function()
+    require("dap-view").close()
+  end)
+  for _, win in ipairs(debug_windows()) do
+    if vim.api.nvim_win_is_valid(win) and #vim.api.nvim_list_wins() > 1 then
+      pcall(vim.api.nvim_win_close, win, true)
+    end
+  end
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_is_valid(win) and vim.w[win].dbg_cfg_host then
+      vim.w[win].dbg_cfg_host = nil
+    end
+  end
+
+  -- An empty unnamed buffer left over from a closed window is not a source
+  -- window; drop it so the layout does not build around it.
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_is_valid(win) and #vim.api.nvim_list_wins() > 1 then
+      local buf = vim.api.nvim_win_get_buf(win)
+      if
+        vim.api.nvim_buf_get_name(buf) == ""
+        and vim.bo[buf].buftype == ""
+        and not vim.bo[buf].modified
+        and vim.api.nvim_buf_line_count(buf) <= 1
+        and (vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1] or "") == ""
+      then
+        pcall(vim.api.nvim_win_close, win, true)
+      end
+    end
+  end
+
+  -- Windows holding a debugger buffer cannot all be closed -- one always
+  -- survives -- so give the last window a file back.  Without this the layout
+  -- gets built around a leftover panel and there is nowhere to show source.
+  local left = vim.api.nvim_list_wins()
+  if #left == 1 and is_debug_buf(vim.api.nvim_win_get_buf(left[1])) then
+    local win = left[1]
+    require("dbg.ui").unstyle_window(win)
+    local target
+    local frame = session and session.current_frame
+    if frame and frame.source and frame.source.path then
+      target = vim.fn.bufadd(frame.source.path)
+      pcall(vim.fn.bufload, target)
+    end
+    if not (target and vim.api.nvim_buf_is_valid(target)) then
+      target = vim.api.nvim_create_buf(true, false)
+    end
+    pcall(vim.api.nvim_win_set_buf, win, target)
+  end
+
+  if not session then
+    require("dbg.notify").info("Windows reset. No debug session is running.")
+    return
+  end
+
+  index = 1
+  pcall(function()
+    require("dap-view").open()
+  end)
+  M.apply()
+  M.resize()
+  for _, p in ipairs(PANELS) do
+    refresh(p)
+  end
+  local frame = session.current_frame
+  if frame and frame.source and frame.source.path and frame.line then
+    local bufnr = vim.fn.bufadd(frame.source.path)
+    pcall(vim.fn.bufload, bufnr)
+    M.jump(bufnr, frame.line, frame.column)
+  end
+  require("dbg.notify").info("Windows reset. The session, breakpoints and gdb state are untouched.")
+end
+
 function M.leave()
   M.sidebar_close()
   pcall(function()
@@ -625,5 +708,51 @@ function M.leave()
   end
   drop_borrowed(saved.listed)
 end
+
+-- The debugger's panels are pinned with winfixbuf so a stray :buffer cannot
+-- replace one.  bufferline does not know that, so its keys raise E1513 when the
+-- cursor happens to be in a panel.  Move to a window that can take a buffer
+-- first; the panels keep their protection and the keys keep working.
+function M.unfix_for_buffer_switch()
+  local ok, fixed = pcall(function()
+    return vim.wo.winfixbuf
+  end)
+  if not (ok and fixed) then
+    return
+  end
+  local target = M.source_window()
+  if target and vim.api.nvim_win_is_valid(target) then
+    pcall(vim.api.nvim_set_current_win, target)
+    return
+  end
+  -- No editor window at all: make one rather than letting the key fail.
+  local prev = vim.api.nvim_get_current_win()
+  pcall(vim.cmd, "topleft split")
+  if vim.api.nvim_get_current_win() == prev then
+    return
+  end
+  pcall(function()
+    vim.wo.winfixbuf = false
+  end)
+end
+
+-- Applies a jump that was skipped while the graph had the window.
+vim.api.nvim_create_autocmd("BufWinEnter", {
+  callback = function(ev)
+    local p = M.pending_jump
+    if not p or ev.buf ~= p.buf then
+      return
+    end
+    M.pending_jump = nil
+    local win = vim.fn.bufwinid(ev.buf)
+    if win == -1 then
+      return
+    end
+    pcall(vim.api.nvim_win_set_cursor, win, { p.line, math.max(0, (p.column or 1) - 1) })
+    pcall(vim.api.nvim_win_call, win, function()
+      vim.cmd("normal! zz")
+    end)
+  end,
+})
 
 return M
