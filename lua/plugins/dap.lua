@@ -503,6 +503,28 @@ return {
         callback({ type = "executable", command = "gdb", args = args })
       end
 
+      -- QEMU virt machine parameters, keyed by the ELF machine name the kernel
+      -- adapter resolves.  These live here rather than in gdbtools because a
+      -- constant like this is right until the day it is not, and when it is wrong
+      -- the session looks calibrated while every address is quietly off.
+      local MACHINE_FACTS = {
+        aarch64 = {
+          GDBTOOLS_ENTRY_PA = "0x40200000",
+          GDBTOOLS_SCAN = "0x40000000:0x40800000",
+          GDBTOOLS_PHYS_WINDOW = "0x40000000:0x50000000",
+        },
+        riscv64 = {
+          GDBTOOLS_ENTRY_PA = "0x80200000",
+          GDBTOOLS_SCAN = "0x80200000:0x80C00000",
+          GDBTOOLS_PHYS_WINDOW = "0x80200000:0x81000000",
+        },
+        x86_64 = {
+          GDBTOOLS_ENTRY_PA = "0x1000000",
+          GDBTOOLS_PHYS_WINDOW = "0x100000:0x100000000",
+          GDBTOOLS_X86_DECOMP_PA = "0x100000",
+        },
+      }
+
       dap.adapters.gdb_kernel = function(callback, config)
         local bin = config.gdb_bin or discover.gdb_for(config.arch or "x86_64")
         local args = { "-q", "-i", "dap", "-iex", "set pagination off" }
@@ -521,6 +543,23 @@ return {
         end
         if config.kgdb_auto then
           env.GDBTOOLS_AUTO = "1"
+        end
+        -- The debugger extension carries no machine constants: it debugs whatever
+        -- it is pointed at and has no business knowing that this lab boots QEMU
+        -- virt at 0x40200000.  Whoever launches it states the machine, so we do.
+        -- Anything already in the environment wins, so a shell override still works.
+        for k, v in pairs(MACHINE_FACTS[config.arch] or {}) do
+          if not env[k] or env[k] == "" then
+            env[k] = v
+          end
+        end
+        -- x86 KASLR recovery reads the compressed image; where it sits relative to
+        -- the build tree is our fact to supply, not something for it to guess.
+        if config.kernel_root and (config.arch == "x86_64" or config.arch == "i386") then
+          local decomp = config.kernel_root .. "/arch/x86/boot/compressed/vmlinux"
+          if vim.uv.fs_stat(decomp) and not env.GDBTOOLS_X86_DECOMP_VMLINUX then
+            env.GDBTOOLS_X86_DECOMP_VMLINUX = decomp
+          end
         end
         -- x86 needs this in the process environment, not as a command: the
         -- decompressor-randomized base is recovered while the session starts.
