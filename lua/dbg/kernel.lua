@@ -329,7 +329,7 @@ function M.start(opts)
     end
     -- Both ways in, offered together: attach where the kernel already is, or arm
     -- the early-boot machinery and stop on the first head.S instruction.
-    -- `kaslr_auto` only puts KGDB_X86_KASLR in gdb's environment, which x86 needs
+    -- `kaslr_auto` only puts GDBTOOLS_X86_KASLR in gdb's environment, which x86 needs
     -- to find the decompressor-relocated kernel and which no console command sets.
     local function launch(cfg, early)
       cfg.kgdb_auto = early and true or false

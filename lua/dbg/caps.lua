@@ -24,7 +24,7 @@ local COMMANDS = {
   "heap",
   "bins",
   "kearly",
-  "ksym",
+  "sym",
   "p2v",
   "mmview",
   "lx-version",

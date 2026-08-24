@@ -489,12 +489,13 @@ return {
         dap_utils.dbg_quiet_source_missing = true
       end
 
-      -- The userspace adapter loads the same toolkit as the kernel one, so the
-      -- control-flow panel works against an ordinary binary too.  It registers
-      -- its commands and stays inert without a kernel.
+      -- The userspace adapter loads the same toolkit as the kernel one: the
+      -- control-flow panel's backend is architecture-generic and answers for an
+      -- ordinary binary exactly as it does for a kernel.  The kernel-only
+      -- commands register alongside it and stay inert without a vmlinux.
       dap.adapters.gdb = function(callback, config)
         local args = { "-q", "-i", "dap", "-iex", "set pagination off" }
-        local tool = discover.kgdb_tool(config and config.program and vim.fs.dirname(config.program))
+        local tool = discover.gdbtools_loader(config and config.program and vim.fs.dirname(config.program))
         if tool then
           table.insert(args, "-ex")
           table.insert(args, "source " .. tool)
@@ -509,22 +510,22 @@ return {
           table.insert(args, "-iex")
           table.insert(args, "add-auto-load-safe-path " .. config.kernel_root)
         end
-        local tool = discover.kgdb_tool(config.kernel_root)
+        local tool = discover.gdbtools_loader(config.kernel_root)
         if tool then
           table.insert(args, "-ex")
           table.insert(args, "source " .. tool)
         end
         local env = vim.fn.environ()
         if config.kernel_root then
-          env.KGDB_KERNEL_ROOT = config.kernel_root
+          env.GDBTOOLS_KERNEL_ROOT = config.kernel_root
         end
         if config.kgdb_auto then
-          env.KGDB_AUTO = "1"
+          env.GDBTOOLS_AUTO = "1"
         end
         -- x86 needs this in the process environment, not as a command: the
         -- decompressor-randomized base is recovered while the session starts.
         if config.kaslr_auto and (config.arch == "x86_64" or config.arch == "i386") then
-          env.KGDB_X86_KASLR = "1"
+          env.GDBTOOLS_X86_KASLR = "1"
         end
         local env_list = {}
         for k, v in pairs(env) do
@@ -928,7 +929,7 @@ return {
 
       vim.api.nvim_create_user_command("DbgKernelEarly", function()
         require("dbg.kernel").start({ kgdb_auto = true })
-      end, { desc = "Attach with the kgdb early-boot machinery armed (KGDB_AUTO=1)" })
+      end, { desc = "Attach with the early-boot machinery armed (GDBTOOLS_AUTO=1)" })
 
       vim.api.nvim_create_user_command("DbgLog", function()
         require("dbg.notify").show_log()

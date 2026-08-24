@@ -8,13 +8,21 @@ local EM_NAMES = {
   [243] = "riscv64",
 }
 
+-- Cross-gdb naming is not portable: Debian and Arch ship aarch64-linux-gnu-gdb,
+-- other toolchains spell it -none-linux-gnu- or -none-elf-, and a distribution
+-- that builds gdb --enable-targets=all ships no cross binary at all.  Probe, and
+-- fall back on the host gdb only after checking it really is multi-target.
 local GDB_CANDIDATES = {
-  aarch64 = { "aarch64-linux-gnu-gdb", "gdb-multiarch", "gdb" },
-  riscv64 = { "riscv64-linux-gnu-gdb", "gdb-multiarch", "gdb" },
-  arm = { "arm-none-eabi-gdb", "gdb-multiarch", "gdb" },
+  aarch64 = { "aarch64-linux-gnu-gdb", "aarch64-none-linux-gnu-gdb", "aarch64-none-elf-gdb", "gdb-multiarch" },
+  riscv64 = { "riscv64-linux-gnu-gdb", "riscv64-unknown-linux-gnu-gdb", "riscv64-unknown-elf-gdb", "gdb-multiarch" },
+  arm = { "arm-none-eabi-gdb", "arm-linux-gnueabihf-gdb", "gdb-multiarch" },
   x86_64 = { "gdb" },
   i386 = { "gdb" },
 }
+
+-- The kernel trees speak "arm64" (their qemu.conf and the kernel's own ARCH=),
+-- the ELF header speaks "aarch64".  One name reaches this table either way.
+local ARCH_ALIASES = { arm64 = "aarch64", amd64 = "x86_64", riscv = "riscv64", x86 = "i386" }
 
 local function slurp(path, size)
   local fd = vim.uv.fs_open(path, "r", 438)
@@ -304,9 +312,19 @@ function M.kaslr(inst, kernel_root)
 end
 
 function M.gdb_for(arch)
-  for _, cand in ipairs(GDB_CANDIDATES[arch] or { "gdb" }) do
+  local key = ARCH_ALIASES[arch] or arch
+  for _, cand in ipairs(GDB_CANDIDATES[key] or { "gdb" }) do
     if vim.fn.executable(cand) == 1 then
       return cand
+    end
+  end
+  -- No cross-gdb.  The host one is only an answer if it was built for every
+  -- target; saying "gdb" regardless would attach an x86 debugger to an arm64
+  -- kernel and report nonsense rather than refusing.
+  if vim.fn.executable("gdb") == 1 then
+    local conf = vim.fn.system({ "gdb", "--configuration" })
+    if vim.v.shell_error == 0 and conf:find("--enable-targets=all", 1, true) then
+      return "gdb"
     end
   end
   return "gdb"
@@ -322,31 +340,63 @@ function M.gdb_supports_dap(bin)
   return (major or 0) >= 14
 end
 
--- Where the kgdb toolkit lives.  The kernel adapter finds it by walking up from
--- the kernel root; a userspace session has no kernel root, so the known places
--- are searched instead.  Absent is a normal answer: the control-flow panel gates
--- on the command being there.
-function M.kgdb_tool(near)
-  local env = vim.env.KGDB_EARLYBOOT
-  if env and vim.uv.fs_stat(env) then
-    return env
+-- Where the gdbtools loader lives.  Every source of the answer is asked in turn
+-- and none of them is a path baked in here, so the repository can be cloned
+-- anywhere on any machine.  Absent is a normal answer; the caller decides what
+-- that means -- the control-flow panel simply reports that nothing answered.
+local function first_readable(paths)
+  for _, p in ipairs(paths) do
+    if p and vim.uv.fs_stat(p) then
+      return p
+    end
+  end
+  return nil
+end
+
+local function pointer_file()
+  local conf = vim.env.XDG_CONFIG_HOME
+  if not conf or conf == "" then
+    conf = (vim.uv.os_homedir() or "") .. "/.config"
+  end
+  local f = conf .. "/gdbtools/root"
+  if not vim.uv.fs_stat(f) then
+    return nil
+  end
+  local root = (vim.fn.readfile(f)[1] or ""):gsub("%s+$", "")
+  return root ~= "" and (root .. "/gdbtools.py") or nil
+end
+
+-- Both repositories are commonly checked out side by side.  Resolving nvim's own
+-- config directory through its symlink and looking next to it finds gdbtools
+-- without naming a user, a parent directory, or a machine.
+local function sibling_checkout()
+  local self = vim.uv.fs_realpath(vim.fn.stdpath("config"))
+  if not self then
+    return nil
+  end
+  return vim.fs.dirname(self) .. "/gdbtools/gdbtools.py"
+end
+
+function M.gdbtools_loader(near)
+  local data = vim.env.XDG_DATA_HOME
+  if not data or data == "" then
+    data = (vim.uv.os_homedir() or "") .. "/.local/share"
+  end
+  local found = first_readable({ vim.env.GDBTOOLS_PATH })
+  if found then
+    return found
   end
   if near then
-    local found = vim.fs.find("kgdb-earlyboot.py", { path = near, upward = true, type = "file", limit = 1 })[1]
+    found = vim.fs.find("gdbtools.py", { path = near, upward = true, type = "file", limit = 1 })[1]
     if found then
       return found
     end
   end
-  local home = vim.uv.os_homedir() or ""
-  for _, candidate in ipairs({
-    home .. "/workspace/linux-kernel-research/kgdb-earlyboot.py",
-    home .. "/linux-kernel-research/kgdb-earlyboot.py",
-  }) do
-    if vim.uv.fs_stat(candidate) then
-      return candidate
-    end
-  end
-  return nil
+  return first_readable({
+    pointer_file(), -- written by gdbtools setup.sh
+    sibling_checkout(), -- checked out next to this config
+    data .. "/gdbtools/gdbtools.py",
+  })
 end
 
 return M

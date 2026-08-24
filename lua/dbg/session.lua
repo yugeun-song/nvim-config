@@ -232,7 +232,7 @@ function M.render()
     row("kernel root", cfg.kernel_root)
   end
   if cfg.type == "gdb_kernel" then
-    row("early boot", cfg.kgdb_auto and "KGDB_AUTO=1, kearly armed" or "inert, commands registered only")
+    row("early boot", cfg.kgdb_auto and "GDBTOOLS_AUTO=1, kearly armed" or "inert, commands registered only")
   end
   row("stopped", session.stopped_thread_id and ("thread " .. session.stopped_thread_id) or "running")
   local frame = session.current_frame

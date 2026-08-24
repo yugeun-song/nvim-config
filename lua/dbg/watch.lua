@@ -81,14 +81,14 @@ local function liveness(value)
   return "live"
 end
 
--- What an address is, asked of kgdb rather than worked out here.  `ksym` resolves
+-- What an address is, asked of gdbtools rather than worked out here.  `sym` resolves
 -- a PHYSICAL or a VIRTUAL address against the same shadow symbols the session is
 -- already using, so it answers before the MMU is on as well as after, which is
 -- the point during early boot.
 --
 -- It stops there on purpose: nothing in a u64 says whether it is a pointer, and
 -- reading a wrong one is exactly the case that takes QEMU down.  `kpt` / `kpgd`
--- / `ktel` dereference and walk page tables in the console, where you have told
+-- / `chain` dereference and walk page tables in the console, where you have told
 -- the tool what the value is.
 function M.explain()
   local addr = vim.api.nvim_get_current_line():match("(0x%x+)")
@@ -102,14 +102,14 @@ function M.explain()
     return
   end
   require("dbg.caps").detect(session, function(c)
-    if not (c and c.commands and c.commands.ksym) then
-      require("dbg.notify").warn("This target has no `ksym`; an address cannot be resolved here.")
+    if not (c and c.commands and c.commands.sym) then
+      require("dbg.notify").warn("This target has no `sym`; an address cannot be resolved here.")
       return
     end
-    gdbq.run("ksym " .. addr, function(out)
+    gdbq.run("sym " .. addr, function(out)
       local text = vim.trim(tostring(out or ""))
       if text == "" then
-        require("dbg.notify").warn(addr .. ": no answer from ksym")
+        require("dbg.notify").warn(addr .. ": no answer from sym")
         return
       end
       require("dbg.notify").info(text:gsub("%s+$", ""))
