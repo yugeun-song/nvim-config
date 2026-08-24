@@ -377,6 +377,34 @@ local function sibling_checkout()
   return vim.fs.dirname(self) .. "/gdbtools/gdbtools.py"
 end
 
+-- What the tree says about its own machine, for handing to the debugger.
+--
+-- The tree already describes itself in qemu.conf -- QEMU_BIN, MACHINE, CPU, the
+-- gdb port -- so the debugger's view of it lives in the same file rather than
+-- being restated here.  The extension carries no board constants of its own, and
+-- a copy kept in this config would drift from the one the shell launcher reads,
+-- which produces a session that looks calibrated while every address is off.
+-- Absent or without GDBTOOLS_ lines is a normal answer: nothing is injected, and
+-- the extension then refuses wherever it actually needs a value.
+function M.machine_facts(kernel_root)
+  local out = {}
+  if not kernel_root then
+    return out
+  end
+  for _, cand in ipairs({ kernel_root .. "/qemu.conf", vim.fs.dirname(kernel_root) .. "/qemu.conf" }) do
+    if vim.uv.fs_stat(cand) then
+      for _, line in ipairs(vim.fn.readfile(cand)) do
+        local k, v = line:match("^%s*(GDBTOOLS_[A-Z0-9_]+)%s*=%s*(.-)%s*$")
+        if k then
+          out[k] = (v:gsub("%s*#.*$", ""):gsub("%s+$", ""))
+        end
+      end
+      return out
+    end
+  end
+  return out
+end
+
 function M.gdbtools_loader(near)
   local data = vim.env.XDG_DATA_HOME
   if not data or data == "" then
