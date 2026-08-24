@@ -516,9 +516,6 @@ return {
           table.insert(args, "source " .. tool)
         end
         local env = vim.fn.environ()
-        if config.kernel_root then
-          env.GDBTOOLS_KERNEL_ROOT = config.kernel_root
-        end
         if config.kgdb_auto then
           env.GDBTOOLS_AUTO = "1"
         end

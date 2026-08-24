@@ -25,7 +25,7 @@ local COMMANDS = {
   "bins",
   "kearly",
   "sym",
-  "p2v",
+  "kp2v",
   "mmview",
   "lx-version",
   "lx-dmesg",
