@@ -173,6 +173,7 @@ nvim-config/
         ├── asm.lua           # asm/linkerscript parsers + at-line-start? cpp-injection predicate
         ├── diagnostics.lua   # CursorHold auto floating diagnostics
         ├── elixir.lua        # elixir/heex/eex Tree-sitter parsers (Neovim ships no regex syntax for them)
+        ├── formatting.lua    # oxfmt as the conform formatter for web filetypes; its LSP mode stays off
         ├── fs_refresh.lua    # external change auto-reload + :FsRefresh
         ├── lsp_filter.lua    # wires up lsp_filter + <leader>cF* keys
         ├── mason.lua         # Mason packages this config expects (ensure_installed)
