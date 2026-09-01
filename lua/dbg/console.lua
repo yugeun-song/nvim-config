@@ -144,6 +144,9 @@ function M.setup(dap)
   })
 
   dap.listeners.after.event_stopped["dbg_console"] = function(session)
+    if not require("dbg.context").is_low_level(session) then
+      return
+    end
     local wanted = echo_next_stop
     echo_next_stop = false
     local tries = 0

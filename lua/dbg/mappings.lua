@@ -113,6 +113,9 @@ function M.probe()
 end
 
 function M.open()
+  if require("dbg.context").block_if_managed("The mappings view") then
+    return
+  end
   local buf = M.buffer()
   panel.show(buf, 14, "Mappings")
   M.probe()

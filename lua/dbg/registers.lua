@@ -470,6 +470,9 @@ function M.set_filter(pattern)
 end
 
 function M.open()
+  if require("dbg.context").block_if_managed("The register view") then
+    return
+  end
   local buf = M.buffer()
   M.render()
   panel.show(buf, 14, "Registers")

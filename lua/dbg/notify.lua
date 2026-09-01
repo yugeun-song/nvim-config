@@ -210,13 +210,23 @@ local function on_disconnect(session)
 end
 
 function M.setup(dap)
-  dap.listeners.after.event_initialized["dbg_notify"] = on_initialized
-  dap.listeners.after.setBreakpoints["dbg_notify"] = on_set_breakpoints
-  dap.listeners.after.event_breakpoint["dbg_notify"] = on_breakpoint_event
-  dap.listeners.after.event_stopped["dbg_notify"] = on_stopped
-  dap.listeners.after.event_exited["dbg_notify"] = on_exited
-  dap.listeners.after.event_terminated["dbg_notify"] = on_terminated
-  dap.listeners.after.disconnect["dbg_notify"] = on_disconnect
+  -- These messages are written for gdb/kernel sessions; a managed adapter keeps
+  -- nvim-dap's own reporting.
+  local function gated(fn)
+    return function(session, ...)
+      if not require("dbg.context").is_low_level(session) then
+        return
+      end
+      return fn(session, ...)
+    end
+  end
+  dap.listeners.after.event_initialized["dbg_notify"] = gated(on_initialized)
+  dap.listeners.after.setBreakpoints["dbg_notify"] = gated(on_set_breakpoints)
+  dap.listeners.after.event_breakpoint["dbg_notify"] = gated(on_breakpoint_event)
+  dap.listeners.after.event_stopped["dbg_notify"] = gated(on_stopped)
+  dap.listeners.after.event_exited["dbg_notify"] = gated(on_exited)
+  dap.listeners.after.event_terminated["dbg_notify"] = gated(on_terminated)
+  dap.listeners.after.disconnect["dbg_notify"] = gated(on_disconnect)
 end
 
 -- One place to look after something scrolled past: what the debugger said, then

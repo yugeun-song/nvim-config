@@ -432,7 +432,16 @@ return {
         end,
         desc = "Debug: memory view",
       },
-      { "<leader>dD", "<cmd>DapDisasm<cr>", desc = "Debug: disassembly" },
+      {
+        "<leader>dD",
+        function()
+          if require("dbg.context").block_if_managed("The disassembly view") then
+            return
+          end
+          vim.cmd("DapDisasm")
+        end,
+        desc = "Debug: disassembly",
+      },
       {
         "<leader>dq",
         function()
@@ -451,6 +460,7 @@ return {
     config = function()
       local dap = require("dap")
       local discover = require("dbg.discover")
+      local context = require("dbg.context")
 
       -- bufferline's keys act on the current window, and the debugger's panels are
       -- winfixbuf, so pressing one with the cursor in a panel raises E1513.  Wrap
@@ -481,7 +491,7 @@ return {
       if not dap_utils.dbg_quiet_source_missing then
         local report = dap_utils.notify
         dap_utils.notify = function(msg, ...)
-          if type(msg) == "string" and msg:find("^Source missing, cannot jump to frame") then
+          if type(msg) == "string" and msg:find("^Source missing, cannot jump to frame") and context.is_low_level() then
             return
           end
           return report(msg, ...)
@@ -615,6 +625,11 @@ return {
       vim.api.nvim_create_autocmd("FileType", {
         pattern = "dap-repl",
         callback = function(ev)
+          -- The gdb-console behaviour (send the line under the cursor to gdb) is for
+          -- gdb sessions; a managed adapter keeps nvim-dap's own REPL.
+          if not context.is_low_level() then
+            return
+          end
           local buf = ev.buf
           -- blink.cmp makes an explicit exception for dap-repl and completes from buffer
           -- words there; a command line wants no popup. GDB's own completion is still
@@ -688,6 +703,9 @@ return {
         if dap.session() ~= session then
           return
         end
+        if not context.is_low_level(session) then
+          return
+        end
         pcall(function()
           require("dbg.registers").render()
           require("dbg.watch").probe()
@@ -715,7 +733,21 @@ return {
         end)
       end
 
+      -- Keep the winbar in step with whichever session is active, so switching
+      -- between a managed and a gdb session shows the right sections. Runs for
+      -- every profile; the gdb-only painting below stays gated.
+      dap.listeners.after.event_stopped["dbg_winbar"] = function(session)
+        if require("dap").session() == session then
+          pcall(function()
+            context.apply_winbar(session)
+          end)
+        end
+      end
+
       dap.listeners.after.event_stopped["dbg_panels"] = function(session, body)
+        if not context.is_low_level(session) then
+          return
+        end
         pcall(function()
           require("dbg.registers").mark_stop()
         end)
@@ -728,6 +760,9 @@ return {
       end
 
       dap.listeners.after.stackTrace["dbg_panels"] = function(session, err, _, payload)
+        if not context.is_low_level(session) then
+          return
+        end
         if not awaiting[session.id] then
           return
         end
@@ -747,7 +782,10 @@ return {
         end)
       end
 
-      local function snapshot_layout()
+      local function snapshot_layout(session)
+        if not context.is_low_level(session) then
+          return
+        end
         pcall(function()
           require("dbg.layout").snapshot()
         end)
@@ -758,8 +796,14 @@ return {
 
       dap.listeners.after.event_initialized["dbg_panels"] = function(session)
         pcall(function()
+          -- Winbar follows the profile for every session, so a managed one shows
+          -- nvim-dap-view's own sections instead of the gdb/kernel panels.
+          context.apply_winbar(session)
           require("dbg.caps").invalidate(session)
           require("dbg.session").remember(session.config)
+          if not context.is_low_level(session) then
+            return
+          end
           require("dbg.layout").enter()
           require("dbg.kernel").arm_kaslr(session)
           require("dbg.kernel").watch_target(session)
@@ -776,6 +820,9 @@ return {
             return
           end
           pcall(function()
+            require("dbg.context").reset_winbar()
+          end)
+          pcall(function()
             require("dbg.layout").leave()
           end)
         end)
@@ -788,6 +835,9 @@ return {
       -- actually show.  Nothing is rebuilt and nothing is disabled beyond what
       -- the missing information already makes impossible.
       dap.listeners.after.event_initialized["dbg_debuginfo"] = function(session)
+        if not context.is_low_level(session) then
+          return
+        end
         pcall(function()
           local prog = (session.config or {}).program
           local kind = prog and require("dbg.discover").elf_debug_info(prog)
@@ -806,6 +856,9 @@ return {
       end
 
       dap.listeners.after.event_initialized["dbg_watchdog"] = function(session)
+        if not context.is_kernel(session) then
+          return
+        end
         pcall(function()
           require("dbg.watchdog").start(session)
         end)

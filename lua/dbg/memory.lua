@@ -870,6 +870,9 @@ bind = function(buf)
 end
 
 function M.open(arg)
+  if require("dbg.context").block_if_managed("The memory view") then
+    return
+  end
   local buf = M.buffer()
   panel.show(buf, 18, "Memory")
   if arg and arg ~= "" then

@@ -671,6 +671,9 @@ end
 -- Switch the host window between its file and the graph; the first call makes
 -- the host.
 function M.toggle_in_editor()
+  if require("dbg.context").block_if_managed("The control-flow graph") then
+    return
+  end
   local win = M.host()
   local buf = M.buffer()
   if not win or vim.api.nvim_win_get_buf(win) ~= buf then

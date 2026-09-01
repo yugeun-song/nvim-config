@@ -181,6 +181,9 @@ function M.setup(dap)
   -- Queued before nvim-dap's own breakpoints and configurationDone, so these
   -- arrive before the target is running.
   dap.listeners.before.event_initialized["dbg_breakpoints"] = function(session)
+    if not require("dbg.context").is_low_level(session) then
+      return
+    end
     status = {}
     M.sync(session)
   end
