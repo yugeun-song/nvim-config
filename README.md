@@ -9,7 +9,7 @@ The config is primarily targeted at Linux. Several features (the Korean IME rese
 ## Highlights
 
 - **LazyVim base.** Plugins are managed by [lazy.nvim](https://github.com/folke/lazy.nvim); the LazyVim distribution is imported as the foundation, and everything under `lua/plugins/` layers on top.
-- **Linux kernel coding style.** C/C++ buffers get 8-wide hard tabs (`noexpandtab`), visible whitespace, and autoformat disabled so kernel sources are never reflowed on save.
+- **C/C++ indentation.** C/C++ buffers indent with 4 spaces (`expandtab`), show whitespace, and have autoformat disabled so sources are never reflowed on save.
 - **clangd, cscope & tags wired for big trees.** clangd runs with kernel-friendly flags and dynamic parallelism; cscope databases auto-load; `<C-]>` is redirected to the `tags` file instead of LSP.
 - **Low-level / cpp-preprocessed highlighting.** Kernel-style `.S`/`.s` assembly gets the C grammar Tree-sitter-injected into its `#` directive lines (so `#define`/`#include`/`#ifdef` and macro names read as C, not flat comments); inline `asm("…")` bodies inside C/C++ get the assembly grammar injected; `.S`/`.s` are pinned to GNU-as (avoiding the `vmasm` fallback on `.macro` files); linker scripts (`.lds`/`.ld`, and cpp-preprocessed `.lds.S` like `vmlinux.lds.S`) use the `linkerscript` parser; and device trees (`.dts`/`.dtsi`) use `devicetree`.
 - **Debugger built on GDB's own DAP.** `nvim-dap` drives `gdb -i dap` (GDB 14+ speaks the Debug Adapter Protocol natively), so userspace C/C++ and cross-architecture Linux Kernel debugging against a QEMU gdbstub both work without a third-party adapter. Rust picks between `codelldb`, `lldb-dap` and `gdb`; JavaScript/TypeScript and Python light up when their adapters are installed. For a GDB session it adds panels for registers, a two-column locals/globals view, a configurable hex view, memory mappings and target queries on top of `nvim-dap-view`; other languages keep nvim-dap-view's own views.
@@ -161,7 +161,7 @@ nvim-config/
     │   ├── lazy.lua          # lazy.nvim + LazyVim bootstrap
     │   ├── options.lua       # editor options (tags, guicursor, no swap/modeline) + .S/.s/.lds/.lds.S filetypes
     │   ├── keymaps.lua       # ChKeys setup + <leader>uK toggle
-    │   └── autocmds.lua      # kernel coding style, cscope auto-load, tagfunc reset
+    │   └── autocmds.lua      # C/C++ 4-space indent, cscope auto-load, tagfunc reset
     ├── lsp_filter/           # custom per-path LSP gating module
     │   ├── init.lua          # public API, LspAttach gating, registry persistence
     │   ├── rules.lua         # rule engine (within/contains → disable/diagnostics_off)
@@ -172,6 +172,7 @@ nvim-config/
         ├── cscope.lua        # cscope_maps.nvim + Telescope, <leader>i* navigation
         ├── asm.lua           # asm/linkerscript parsers + at-line-start? cpp-injection predicate
         ├── diagnostics.lua   # CursorHold auto floating diagnostics
+        ├── elixir.lua        # elixir/heex/eex Tree-sitter parsers (Neovim ships no regex syntax for them)
         ├── fs_refresh.lua    # external change auto-reload + :FsRefresh
         ├── lsp_filter.lua    # wires up lsp_filter + <leader>cF* keys
         ├── mason.lua         # Mason packages this config expects (ensure_installed)
@@ -213,7 +214,7 @@ Layered on top of LazyVim's defaults:
 
 ### Linux kernel C workflow (`lua/config/autocmds.lua`, `lua/plugins/clangd.lua`, `lua/plugins/cscope.lua`)
 
-- **Coding style** — for `c`/`cpp` buffers: `tabstop = shiftwidth = 8`, `expandtab = false`, `softtabstop = 0`, `list = true`, and `vim.b.autoformat = false` (no clang-format-on-save). This matches the kernel's `Documentation/process/coding-style.rst`.
+- **Indentation** — `c`/`cpp` buffers default to 4 spaces (`tabstop = shiftwidth = softtabstop = 4`, `expandtab`). A `.clang-format` found upward from the file overrides that width (`IndentWidth`, `UseTab`, `TabWidth`, or the `BasedOnStyle` default), and a project `.editorconfig` takes precedence over both. This does not depend on clangd, so it holds where `lsp_filter` has turned the server off. `list = true` and `vim.b.autoformat = false` (no clang-format-on-save) apply in every case.
 - **clangd** is launched as `clangd --background-index --clang-tidy --completion-style=detailed --header-insertion=never -j=<N>`, where `<N>` is **half the logical CPUs** (at least 1, so it's host-dependent). `--header-insertion=never` avoids auto-inserting `#include`s, which matters for kernel code. Inlay hints are disabled.
 - **cscope** — `cscope_maps.nvim` (with a Telescope picker) provides navigation under the `<leader>i` prefix; its own default mappings and tag keymap are disabled so only the explicit bindings apply. On reading a `*.c`/`*.h`/`*.S` file, the nearest `cscope.out` found upward is auto-added once per session.
 - **`<C-]>` → tags, not LSP** — on `LspAttach` to `c`/`cpp`/`h` buffers the LSP `tagfunc` is cleared, so `<C-]>` jumps through the `tags` file (ctags) instead of LSP go-to-definition. This is a deliberate override; generate a `tags` file (`make tags`) to use it.
