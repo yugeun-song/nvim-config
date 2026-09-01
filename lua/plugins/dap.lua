@@ -504,13 +504,45 @@ return {
       -- ordinary binary exactly as it does for a kernel.  The kernel-only
       -- commands register alongside it and stay inert without a vmlinux.
       dap.adapters.gdb = function(callback, config)
+        -- Cross-arch usermode: a config that names a QEMU gdbstub -- its own via
+        -- dbg_qemuser, or an external one via target -- debugs a foreign-arch
+        -- binary. Read the arch from the ELF so the right cross gdb, sysroot and
+        -- (for a launch) usermode QEMU follow from the binary, not from a restated
+        -- constant. The plain host-arch launch/attach configs set neither, so this
+        -- is a no-op for them.
+        if config.program and (config.dbg_qemuser or config.target) then
+          config.arch = config.arch or discover.elf_arch(config.program)
+          if config.dbg_qemuser and config.qemu_port and not config.target then
+            config.target = ":" .. tostring(config.qemu_port)
+          end
+          if config.sysroot == nil then
+            config.sysroot = require("dbg.qemuser").default_sysroot(config.arch)
+          end
+        end
+        local bin = config.gdb_bin or (config.arch and discover.gdb_for(config.arch)) or "gdb"
         local args = { "-q", "-i", "dap", "-iex", "set pagination off" }
+        -- A cross target's shared libraries live under the sysroot; without it gdb
+        -- resolves nothing past the main binary. QEMU is handed the same root by -L.
+        if config.sysroot and config.sysroot ~= "" then
+          table.insert(args, "-iex")
+          table.insert(args, "set sysroot " .. config.sysroot)
+        end
         local tool = discover.gdbtools_loader(config and config.program and vim.fs.dirname(config.program))
         if tool then
           table.insert(args, "-ex")
           table.insert(args, "source " .. tool)
         end
-        callback({ type = "executable", command = "gdb", args = args })
+        local spec = { type = "executable", command = bin, args = args }
+        if config.dbg_qemuser and config.qemu_port then
+          require("dbg.qemuser").spawn(config, function()
+            callback(spec)
+          end, function(msg)
+            require("dbg.notify").error(msg)
+            callback(spec)
+          end)
+        else
+          callback(spec)
+        end
       end
 
       dap.adapters.gdb_kernel = function(callback, config)
@@ -616,11 +648,55 @@ return {
             return tonumber(vim.fn.input("PID: "))
           end,
         },
+        {
+          -- Launch a foreign-arch binary under this editor's own usermode QEMU and
+          -- attach to it. QEMU freezes the guest at its entry until gdb connects,
+          -- so the session opens stopped at _start; drive it from there with the
+          -- gutter breakpoints and <leader>dc.
+          name = "Run on QEMU user (cross-arch)",
+          type = "gdb",
+          request = "attach",
+          dbg_qemuser = true,
+          program = input_path("Guest executable: ", cwd_exe),
+          qemu_args = input_args("Guest arguments: "),
+          qemu_port = function()
+            return tonumber(vim.fn.input("QEMU gdbstub port: ", "1234"))
+          end,
+        },
+        {
+          -- Attach to a usermode QEMU the user already launched, e.g.
+          --   qemu-aarch64 -g 1234 -L /usr/aarch64-linux-gnu ./a.out
+          -- The binary is read for symbols; the arch and sysroot follow from it.
+          name = "Attach to a QEMU user gdbstub (cross-arch)",
+          type = "gdb",
+          request = "attach",
+          program = input_path("Guest executable (for symbols): ", cwd_exe),
+          target = function()
+            local t = vim.trim(vim.fn.input("gdbstub (host:port or :port): ", ":1234"))
+            if t:match("^%d+$") then
+              t = ":" .. t
+            end
+            return t
+          end,
+        },
       }
 
       dap.configurations.c = c_configs
       dap.configurations.cpp = c_configs
       dap.configurations.asm = c_configs
+
+      -- A launched usermode QEMU is this editor's to stop: tear down exactly the
+      -- one this session started when the session ends. jobstart also terminates
+      -- it on nvim exit, so quitting never leaks one either.
+      local function stop_qemuser(session)
+        local port = session and session.config and session.config.qemu_port
+        if port then
+          require("dbg.qemuser").stop(tonumber(port))
+        end
+      end
+      dap.listeners.after.event_terminated["dbg_qemuser"] = stop_qemuser
+      dap.listeners.after.event_exited["dbg_qemuser"] = stop_qemuser
+      dap.listeners.after.disconnect["dbg_qemuser"] = stop_qemuser
 
       require("dbg.languages").setup(dap, {
         program = input_path,

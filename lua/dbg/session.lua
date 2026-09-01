@@ -198,6 +198,11 @@ function M.shutdown()
       dap.close()
     end)
   end
+  -- Stop exactly the usermode QEMUs this editor launched; an external one the
+  -- user attached to is not in the table and is left running.
+  pcall(function()
+    require("dbg.qemuser").stop_all()
+  end)
 end
 
 function M.pick()
