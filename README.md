@@ -120,6 +120,10 @@ NVIM_APPNAME=test-nvim nvim
 - **Plugins:** `:Lazy update`. Versions are pinned in `lazy-lock.json`. Note this config tracks the *latest commit* of each plugin (`defaults.version = false`) and silently checks for updates in the background (`checker.enabled = true`, `checker.notify = false`).
 - **Config:** `git -C ~/workspace/nvim-config pull` (Method A) or `git -C ~/.config/nvim pull` (Methods B/C).
 
+### Mason packages
+
+Mason installs into `~/.local/share/nvim/mason/`, outside this repository, so a fresh clone starts without any of its packages. `lua/plugins/mason.lua` lists the packages every machine needs in `ensure_installed`; LazyVim installs the missing ones on first launch.
+
 ---
 
 ## Repository structure
@@ -170,6 +174,7 @@ nvim-config/
         ├── diagnostics.lua   # CursorHold auto floating diagnostics
         ├── fs_refresh.lua    # external change auto-reload + :FsRefresh
         ├── lsp_filter.lua    # wires up lsp_filter + <leader>cF* keys
+        ├── mason.lua         # Mason packages this config expects (ensure_installed)
         ├── im_control.lua    # Korean langmap + IME auto-reset
         ├── imstate.lua       # Caps Lock + fcitx5 lualine indicators
         ├── lualine.lua       # full path + encoding/format flag
