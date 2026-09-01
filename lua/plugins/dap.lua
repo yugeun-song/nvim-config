@@ -562,6 +562,12 @@ return {
         -- decompressor-randomized base is recovered while the session starts.
         if config.kaslr_auto and (config.arch == "x86_64" or config.arch == "i386") then
           env.GDBTOOLS_X86_KASLR = "1"
+          -- Under KASLR the kernel sits at a randomized physical base, so the
+          -- tree's nominal ENTRY_PA is wrong AND, being set, it suppresses the
+          -- decompressor base recovery (gdbtools runs that only when ENTRY_PA is
+          -- unset). Drop it here -- the shell launcher keeps it out of the env for
+          -- the same reason -- so the recovery finds the relocated base.
+          env.GDBTOOLS_ENTRY_PA = nil
         end
         local env_list = {}
         for k, v in pairs(env) do
