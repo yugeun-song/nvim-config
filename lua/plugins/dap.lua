@@ -542,8 +542,20 @@ return {
         -- the build tree is our fact to supply, not something for it to guess.
         if config.kernel_root and (config.arch == "x86_64" or config.arch == "i386") then
           local decomp = config.kernel_root .. "/arch/x86/boot/compressed/vmlinux"
-          if vim.uv.fs_stat(decomp) and not env.GDBTOOLS_X86_DECOMP_VMLINUX then
-            env.GDBTOOLS_X86_DECOMP_VMLINUX = decomp
+          if vim.uv.fs_stat(decomp) then
+            if not env.GDBTOOLS_X86_DECOMP_VMLINUX then
+              env.GDBTOOLS_X86_DECOMP_VMLINUX = decomp
+            end
+            -- 0x100000 is where QEMU's `-kernel` places the bzImage decompressor
+            -- (the x86 boot protocol's high load address). It is a QEMU/loader
+            -- convention, NOT a hardware guarantee -- a real board or a different
+            -- bootloader may load it elsewhere. This adapter debugs a QEMU gdbstub,
+            -- so it holds here; the KASLR base recovery breaks there. The shell
+            -- launcher sets the same value, so an editor session gets the same
+            -- early-boot x86 KASLR recovery.
+            if not env.GDBTOOLS_X86_DECOMP_PA then
+              env.GDBTOOLS_X86_DECOMP_PA = "0x100000"
+            end
           end
         end
         -- x86 needs this in the process environment, not as a command: the
