@@ -106,13 +106,21 @@ function M.cont()
     dap.continue()
     return
   end
-  -- Never replay a configuration that cannot start: a mistyped executable would
-  -- be repeated by every later press.
+  -- Never replay a configuration that cannot start: a mistyped native executable
+  -- would be repeated by every later press. The exec bit only means anything for a
+  -- native launch -- gdb/lldb exec an ELF; a managed adapter hands its program to a
+  -- runtime (a python/js script carries no exec bit), and an attach never launches
+  -- the program at all. So a script or attach target is checked for readability
+  -- only, or not at all, instead of being wrongly rejected as gone.
   if last_config then
     local program = last_config.program
-    if program and (vim.fn.filereadable(program) ~= 1 or vim.fn.executable(program) ~= 1) then
-      require("dbg.notify").warn(vim.fs.basename(program) .. " is gone; choose a configuration again")
-      last_config = nil
+    if program and last_config.request ~= "attach" then
+      local native = require("dbg.context").profile_of_config(last_config) == "native"
+      local broken = vim.fn.filereadable(program) ~= 1 or (native and vim.fn.executable(program) ~= 1)
+      if broken then
+        require("dbg.notify").warn(vim.fs.basename(program) .. " is gone; choose a configuration again")
+        last_config = nil
+      end
     end
   end
   if last_config then

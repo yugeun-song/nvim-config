@@ -8,13 +8,18 @@ local M = {}
 -- are Linux-specific, so the profile names it as such.
 local PROFILE_BY_TYPE = { gdb_kernel = "linux_kernel", gdb = "native" }
 
+-- Classify a raw config the same way as M.of, before a session exists.
+function M.profile_of_config(cfg)
+  cfg = cfg or {}
+  return cfg.dbg_profile or PROFILE_BY_TYPE[cfg.type] or "managed"
+end
+
 function M.of(session)
   session = session or (package.loaded["dap"] and require("dap").session()) or nil
   if not session then
     return "managed"
   end
-  local cfg = session.config or {}
-  return cfg.dbg_profile or PROFILE_BY_TYPE[cfg.type] or "managed"
+  return M.profile_of_config(session.config or {})
 end
 
 function M.is_kernel(s)
