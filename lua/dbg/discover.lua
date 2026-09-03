@@ -1,7 +1,6 @@
 local M = {}
 
 local EM_NAMES = {
-  [3] = "i386",
   [40] = "arm",
   [62] = "x86_64",
   [183] = "aarch64",
@@ -17,12 +16,11 @@ local GDB_CANDIDATES = {
   riscv64 = { "riscv64-linux-gnu-gdb", "riscv64-unknown-linux-gnu-gdb", "riscv64-unknown-elf-gdb", "gdb-multiarch" },
   arm = { "arm-none-eabi-gdb", "arm-linux-gnueabihf-gdb", "gdb-multiarch" },
   x86_64 = { "gdb" },
-  i386 = { "gdb" },
 }
 
 -- The kernel trees speak "arm64" (their qemu.conf and the kernel's own ARCH=),
 -- the ELF header speaks "aarch64".  One name reaches this table either way.
-local ARCH_ALIASES = { arm64 = "aarch64", amd64 = "x86_64", riscv = "riscv64", x86 = "i386" }
+local ARCH_ALIASES = { arm64 = "aarch64", amd64 = "x86_64", riscv = "riscv64" }
 
 local function slurp(path, size)
   local fd = vim.uv.fs_open(path, "r", 438)
@@ -278,6 +276,50 @@ function M.kernel_root_from_image(image)
   return nil, nil
 end
 
+-- Every filesystem path on a qemu command line, including the ones inside
+-- comma-separated option values such as -drive if=none,file=...
+function M.qemu_paths(inst)
+  local out, seen = {}, {}
+  for i = 2, #((inst or {}).argv or {}) do
+    for path in tostring(inst.argv[i]):gmatch("/[^,%s=]+") do
+      path = vim.fs.normalize(path)
+      if #path > 1 and not seen[path] then
+        seen[path] = true
+        out[#out + 1] = path
+      end
+    end
+  end
+  return out
+end
+
+-- A guest booted through firmware carries no -kernel: u-boot or UEFI loads the
+-- image itself, so the only trace of the tree is a disk or firmware path. Walk up
+-- from one, looking for a kernel build beside it, and report how far up it was so
+-- the nearest match wins.
+function M.vmlinux_near(path)
+  local dir = vim.fs.dirname(path)
+  for distance = 0, 7 do
+    if not dir or dir == "" or dir == "/" then
+      return nil
+    end
+    if vim.uv.fs_stat(dir .. "/vmlinux") then
+      return dir .. "/vmlinux", distance
+    end
+    local scan = vim.uv.fs_scandir(dir)
+    while scan do
+      local name, kind = vim.uv.fs_scandir_next(scan)
+      if not name then
+        break
+      end
+      if kind == "directory" and vim.uv.fs_stat(dir .. "/" .. name .. "/vmlinux") then
+        return dir .. "/" .. name .. "/vmlinux", distance
+      end
+    end
+    dir = vim.fs.dirname(dir)
+  end
+  return nil
+end
+
 function M.vmlinux_upward(start)
   if not start or start == "" then
     return nil
@@ -377,29 +419,82 @@ local function sibling_checkout()
   return vim.fs.dirname(self) .. "/gdbtools/gdbtools.py"
 end
 
+-- tree.conf is the file the shell launcher reads, so it is read first here too;
+-- qemu.conf is the older name of the same thing and stays a fallback.
+local function tree_conf(kernel_root)
+  if not kernel_root then
+    return nil
+  end
+  for _, dir in ipairs({ kernel_root, vim.fs.dirname(kernel_root) }) do
+    for _, name in ipairs({ "tree.conf", "qemu.conf" }) do
+      local path = dir .. "/" .. name
+      if vim.uv.fs_stat(path) then
+        return path
+      end
+    end
+  end
+  return nil
+end
+
+-- One key out of the tree description, with the directory it was read from, so a
+-- relative path stated there resolves against the right place. Parsed, never sourced.
+function M.tree_value(kernel_root, key)
+  local path = tree_conf(kernel_root)
+  if not path then
+    return nil
+  end
+  local dir = vim.fs.dirname(path)
+  for _, line in ipairs(vim.fn.readfile(path)) do
+    local v = line:match("^%s*" .. key:gsub("%W", "%%%0") .. "%s*=%s*(.-)%s*$")
+    if v then
+      return (v:gsub("%s*#.*$", ""):gsub("%s+$", "")), dir
+    end
+  end
+  return nil, dir
+end
+
 -- What the tree says about its own machine, for handing to the debugger.
 --
--- The tree already describes itself in qemu.conf -- QEMU_BIN, MACHINE, CPU, the
--- gdb port -- so the debugger's view of it lives in the same file rather than
--- being restated here.  The extension carries no board constants of its own, and
--- a copy kept in this config would drift from the one the shell launcher reads,
--- which produces a session that looks calibrated while every address is off.
--- Absent or without GDBTOOLS_ lines is a normal answer: nothing is injected, and
--- the extension then refuses wherever it actually needs a value.
+-- The tree already describes itself -- QEMU_BIN, MACHINE, CPU, the gdb port -- so
+-- the debugger's view of it lives in the same file rather than being restated
+-- here. The extension carries no board constants of its own, and a copy kept in
+-- this config would drift from the one the shell launcher reads, which produces a
+-- session that looks calibrated while every address is off. Absent or without
+-- GDBTOOLS_ lines is a normal answer: nothing is injected, and the extension then
+-- refuses wherever it actually needs a value.
 function M.machine_facts(kernel_root)
   local out = {}
-  if not kernel_root then
+  local path = tree_conf(kernel_root)
+  if not path then
     return out
   end
-  for _, cand in ipairs({ kernel_root .. "/qemu.conf", vim.fs.dirname(kernel_root) .. "/qemu.conf" }) do
-    if vim.uv.fs_stat(cand) then
-      for _, line in ipairs(vim.fn.readfile(cand)) do
-        local k, v = line:match("^%s*(GDBTOOLS_[A-Z0-9_]+)%s*=%s*(.-)%s*$")
-        if k then
-          out[k] = (v:gsub("%s*#.*$", ""):gsub("%s+$", ""))
-        end
-      end
-      return out
+  for _, line in ipairs(vim.fn.readfile(path)) do
+    local k, v = line:match("^%s*(GDBTOOLS_[A-Z0-9_]+)%s*=%s*(.-)%s*$")
+    if k then
+      out[k] = (v:gsub("%s*#.*$", ""):gsub("%s+$", ""))
+    end
+  end
+  return out
+end
+
+-- What kbuildlab recorded for the guest on this gdb port: the boot mode it was
+-- actually started in and, for a firmware chain, where the bootloader lands the
+-- kernel. The tree states only its default mode, so this is the only evidence of
+-- the combination running right now. Written by kbuildlab lib/run-qemu.sh; absent
+-- is a normal answer, for a guest nothing else started.
+function M.run_state(port)
+  if not port then
+    return nil
+  end
+  local path = ("/dev/shm/kbl-run-%d.env"):format(tonumber(port) or -1)
+  if not vim.uv.fs_stat(path) then
+    return nil
+  end
+  local out = { path = path }
+  for _, line in ipairs(vim.fn.readfile(path)) do
+    local k, v = line:match("^%s*(KBL_[A-Z0-9_]+)%s*=%s*(.-)%s*$")
+    if k then
+      out[k] = v
     end
   end
   return out

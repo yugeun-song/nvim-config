@@ -44,6 +44,28 @@ function M.candidates()
           c.kernel_root = c.kernel_root or vim.fs.dirname(up)
         end
       end
+      if not c.vmlinux then
+        -- Booted through firmware: no -kernel to derive anything from.
+        local best, best_src, best_dist, best_arch
+        for _, path in ipairs(D.qemu_paths(inst)) do
+          local vm, dist = D.vmlinux_near(path)
+          if vm then
+            local arch = D.elf_arch(vm)
+            local better = not best
+              or dist < best_dist
+              or (dist == best_dist and arch == inst.qemu_arch and best_arch ~= inst.qemu_arch)
+            if better then
+              best, best_dist, best_arch = vm, dist, arch
+              best_src = "found beside " .. path .. " on the qemu command line, which carries no -kernel"
+            end
+          end
+        end
+        if best then
+          c.vmlinux, c.vmlinux_src = best, best_src
+          c.kernel_root = c.kernel_root or vim.fs.dirname(best)
+        end
+      end
+
       if not c.vmlinux and inst.kernel_image and D.elf_arch(inst.kernel_image) then
         c.vmlinux = inst.kernel_image
         c.vmlinux_src = "qemu -kernel is an ELF, used as the symbol file"
@@ -80,6 +102,16 @@ function M.candidates()
       end
 
       c.kaslr = D.kaslr(inst, c.kernel_root)
+      -- A firmware chain passes the cmdline itself, so there is no -append to read
+      -- KASLR from; the launcher recorded what it started this port with.
+      c.run_state = D.run_state(inst.gdb_port)
+      if c.run_state and c.run_state.KBL_KASLR then
+        local on = c.run_state.KBL_KASLR
+        c.kaslr = {
+          state = (on == "1" or on == "on" or on == "yes") and "on" or "off",
+          source = "KBL_KASLR in " .. c.run_state.path .. ", recorded when this port was started",
+        }
+      end
       c.frozen = inst.frozen
       if not c.vmlinux then
         c.notes[#c.notes + 1] = "no symbol file found, enter one manually"
@@ -91,11 +123,12 @@ function M.candidates()
 end
 
 function M.describe(c)
-  return ("%s  %s  pid %d  %s  KASLR %s%s"):format(
+  return ("%s  %s  pid %d  %s  %s  KASLR %s%s"):format(
     pad(c.arch or "?", 8),
     pad(c.target or "?", 18),
     c.qemu and c.qemu.pid or 0,
     c.frozen and "frozen (-S)" or "running",
+    pad((c.run_state and c.run_state.KBL_BOOT) or "boot?", 6),
     c.kaslr and c.kaslr.state or "unknown",
     c.busy and "  [busy]" or (c.vmlinux and "" or "  [no symbols]")
   )
@@ -116,6 +149,16 @@ function M.report()
       { "arch", c.arch, c.arch_src },
       { "kaslr", c.kaslr and c.kaslr.state, c.kaslr and c.kaslr.source },
       { "state", c.frozen and "frozen at the reset vector (-S)" or "already running", "qemu command line" },
+      {
+        "boot",
+        c.run_state and c.run_state.KBL_BOOT,
+        c.run_state and ("recorded in " .. c.run_state.path .. " when this port was started"),
+      },
+      {
+        "entry",
+        c.run_state and c.run_state.KBL_LOADADDR,
+        c.run_state and c.run_state.KBL_LOADADDR and "where the bootloader lands the kernel, from the same file",
+      },
       { "machine", c.qemu.machine, "qemu command line" },
       { "port", c.listening and (c.busy and "LISTEN, busy" or "LISTEN, free") or "not observed", "/proc/net/tcp" },
     }
@@ -171,6 +214,12 @@ local function build(c)
     kernel_root = c.kernel_root,
     kgdb_auto = c.kgdb_auto and true or false,
     arch = arch,
+    -- Carried here, not only where a target was picked from the list: the adapter
+    -- decides what to tell gdbtools about KASLR from these two, and a hand-entered
+    -- target that left them nil would be read as "cannot tell", which counts as on.
+    run_state = c.run_state,
+    kaslr_state = c.kaslr and c.kaslr.state or "unknown",
+    kaslr_source = c.kaslr and c.kaslr.source or nil,
   }
 end
 
@@ -189,14 +238,51 @@ function M.manual(cb)
         return
       end
       local arch = D.elf_arch(vm)
+      -- A typed-in target still names a port, and the launcher may well have
+      -- recorded that port's boot. Read it rather than calling the guest unknown.
+      local port = tonumber(tostring(t):match(":(%d+)$"))
+      local rs = port and D.run_state(port) or nil
+      local kaslr = { state = "unknown", source = "entered manually" }
+      if rs and rs.KBL_KASLR then
+        kaslr = {
+          state = rs.KBL_KASLR == "1" and "on" or "off",
+          source = "KBL_KASLR in " .. tostring(rs.path) .. ", recorded when this port was started",
+        }
+      end
       cb(build({
         vmlinux = vm,
         target = t,
         arch = arch,
         kernel_root = vim.fs.dirname(vm),
-        kaslr = { state = "unknown", source = "entered manually" },
+        run_state = rs,
+        kaslr = kaslr,
       }))
     end)
+  end)
+end
+
+-- The u-boot ELF names the firmware stages, from the reset vector to the hand-off.
+-- Kernel symbols come from vmlinux and the two address ranges do not overlap, so
+-- both resolve. gdb's DAP loads the program only once the attach request lands, so
+-- this runs from the session rather than as a -ex argument.
+function M.load_firmware_symbols(session, done)
+  done = done or function() end
+  local cfg = session and session.config or {}
+  local state = cfg.run_state
+  if not (state and state.KBL_BOOT == "uboot" and cfg.kernel_root) then
+    return done()
+  end
+  local rel, dir = require("dbg.discover").tree_value(cfg.kernel_root, "UBOOT")
+  if not (rel and rel ~= "" and dir) then
+    return done()
+  end
+  local path = rel:match("^/") and rel or (dir .. "/" .. rel)
+  local elf = (path:gsub("%.bin$", ""))
+  if not vim.uv.fs_stat(elf) then
+    return done()
+  end
+  require("dbg.gdbq").run("add-symbol-file " .. elf .. " -o 0", function()
+    done()
   end)
 end
 
@@ -293,15 +379,14 @@ function M.watch_target(session)
       pcall(function()
         dap.disconnect({ terminateDebuggee = false })
       end)
+      -- Close the session, not the windows: whatever the guest printed before it
+      -- died is on screen, and that is the first thing anyone wants after a crash.
       vim.defer_fn(function()
         if require("dap").session() then
           pcall(function()
             require("dap").close()
           end)
         end
-        pcall(function()
-          require("dbg.layout").leave()
-        end)
       end, 1200)
     end)
   )
@@ -328,19 +413,24 @@ function M.start(opts)
       return
     end
     -- Both ways in, offered together: attach where the kernel already is, or arm
-    -- the early-boot machinery and stop on the first head.S instruction.
-    -- `kaslr_auto` only puts GDBTOOLS_X86_KASLR in gdb's environment, which x86 needs
-    -- to find the decompressor-relocated kernel and which no console command sets.
+    -- the early-boot machinery and stop on the first head.S instruction. Whether
+    -- GDBTOOLS_X86_KASLR is exported is NOT decided here: the guest either runs with
+    -- KASLR or it does not, whichever way in was picked, so the adapter reads that
+    -- from the recorded run and from kaslr_state, the same order the shell launcher
+    -- reads it.
     local function launch(cfg, early)
       cfg.kgdb_auto = early and true or false
       local kaslr = cfg.kaslr_state
-      if early and kaslr and kaslr ~= "off" then
-        cfg.kaslr_auto = true
-      else
-        cfg.kaslr_auto = nil
-      end
       if not early and kaslr == "unknown" then
         require("dbg.notify").warn("KASLR state is unknown here; if symbols do not line up, attach in early-boot mode")
+      elseif not early and kaslr == "on" then
+        -- Attaching to a running KASLR kernel leaves vmlinux's symbols at their
+        -- link addresses while the kernel runs at a randomized one, so nothing
+        -- lines up until the slide is measured.
+        require("dbg.notify").warn(
+          "This guest booted with KASLR on. vmlinux symbols are at their link addresses until the slide "
+            .. "is measured: run `kearly on` then `kearly calibrate <symbol>` in the gdb console, or attach in early-boot mode."
+        )
       end
       require("dap").run(cfg)
     end
@@ -384,9 +474,11 @@ function M.start(opts)
       return
     end
     local cfg = build(choice)
-    cfg.qemu_pid = choice.pid
-    cfg.kaslr_state = choice.kaslr and choice.kaslr.state or "unknown"
-    cfg.kaslr_source = choice.kaslr and choice.kaslr.source or nil
+    -- The pid lives on the qemu instance the candidate was built from; without it
+    -- the watchdog has nothing to watch and a dying gdbstub goes unreported.
+    cfg.qemu_pid = choice.qemu and choice.qemu.pid or nil
+    -- run_state / kaslr_state / kaslr_source come from build(); only the pid, which
+    -- exists solely for a discovered target, is added here.
     -- The early-boot symbolizer calibrates the phys<->virt offset at runtime and
     -- so copes with KASLR itself; relocating gdb's symbols to the slide is a
     -- separate step, asked for here rather than left as a note to type it.
