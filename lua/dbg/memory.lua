@@ -1,5 +1,5 @@
 local panel = require("dbg.panel")
-local safemem = require("dbg.safemem")
+local qemumon = require("dbg.qemumon")
 local ui = require("dbg.ui")
 
 local M = {}
@@ -236,7 +236,7 @@ local function refuse(addr, verdict, why)
     banner,
     "",
     ("  %s was not read."):format(addr),
-    ("  verdict: %s"):format(safemem.explain(verdict, why)),
+    ("  verdict: %s"):format(qemumon.explain(verdict, why)),
     "",
     "  A debug read that translates outside RAM makes QEMU dispatch into a device",
     "  model, and that path can take the guest down with it, so unverified addresses",
@@ -333,7 +333,7 @@ local function do_read_phys(addr)
     return
   end
   local count = window_bytes()
-  safemem.read_phys(session, addr, count, function(raw, err)
+  qemumon.qemu_read_phys(session, addr, count, function(raw, err)
     vim.schedule(function()
       if not raw then
         fail("failed", "Physical read failed at " .. addr .. ": " .. tostring(err))
@@ -382,13 +382,13 @@ local function read_at(addr)
     do_read_phys(addr)
     return
   end
-  if state.force or not safemem.active(session) then
+  if state.force or not qemumon.active(session) then
     state.force = false
     state.phys = false
     do_read(addr)
     return
   end
-  safemem.check(session, addr, function(verdict, why)
+  qemumon.qemu_check(session, addr, function(verdict, why)
     vim.schedule(function()
       if verdict == "ram" then
         state.phys = false
@@ -518,7 +518,7 @@ function M.page(delta)
 end
 
 function M.on_stopped()
-  safemem.invalidate()
+  qemumon.invalidate()
   if state.auto and state.source.kind ~= "file" then
     M.refresh()
   end

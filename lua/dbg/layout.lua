@@ -592,6 +592,27 @@ function M.enter()
   M.apply()
 end
 
+-- Give back the file a window was showing before the control-flow graph took it
+-- over, and say whether it was such a window. cfg.open_in_editor parks the
+-- displaced buffer in w:dbg_cfg_prev and puts the graph into an ORDINARY editor
+-- window, so that window carries a dbg- filetype without being a panel; closing
+-- it would take the source view with it.
+local function release_cfg_host(win)
+  local prev = vim.w[win].dbg_cfg_prev
+  vim.w[win].dbg_cfg_prev = nil
+  if not (prev and vim.api.nvim_buf_is_valid(prev)) then
+    return false
+  end
+  -- Only a real file goes back. The marker records whatever the window held when
+  -- the graph took it, which can itself be a panel if the graph was opened over
+  -- one; restoring that would pin a debugger buffer into a window and make the
+  -- close paths keep a window they meant to close.
+  if is_debug_buf(prev) then
+    return false
+  end
+  return (pcall(vim.api.nvim_win_set_buf, win, prev))
+end
+
 -- Put the windows back without touching the session.  A mistyped key can close
 -- a panel or leave a stray split behind, and the fix should cost nothing: gdb,
 -- the breakpoints and every panel's contents are untouched, only the windows are
@@ -606,13 +627,15 @@ function M.rebuild()
     require("dap-view").close()
   end)
   for _, win in ipairs(debug_windows()) do
-    if vim.api.nvim_win_is_valid(win) and #vim.api.nvim_list_wins() > 1 then
-      pcall(vim.api.nvim_win_close, win, true)
+    if vim.api.nvim_win_is_valid(win) and not release_cfg_host(win) then
+      if #vim.api.nvim_list_wins() > 1 then
+        pcall(vim.api.nvim_win_close, win, true)
+      end
     end
   end
   for _, win in ipairs(vim.api.nvim_list_wins()) do
-    if vim.api.nvim_win_is_valid(win) and vim.w[win].dbg_cfg_host then
-      vim.w[win].dbg_cfg_host = nil
+    if vim.api.nvim_win_is_valid(win) and vim.w[win].dbg_cfg_prev ~= nil then
+      vim.w[win].dbg_cfg_prev = nil
     end
   end
 
@@ -675,6 +698,26 @@ function M.rebuild()
   require("dbg.notify").info("Windows reset. The session, breakpoints and gdb state are untouched.")
 end
 
+-- Close the gdb panels without touching dap-view: a managed session must not
+-- inherit windows an earlier gdb session or DbgLayout left up. The pre-session
+-- snapshot is deliberately kept, so :DbgClose can still put the layout back.
+function M.drop_panels()
+  M.sidebar_close()
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_is_valid(win) then
+      local ft = vim.bo[vim.api.nvim_win_get_buf(win)].filetype
+      if type(ft) == "string" and ft:match("^dbg%-") then
+        -- The count guard belongs to the close path alone. Giving a window its file
+        -- back never removes one, and gating it on the count left the graph on screen
+        -- whenever it was the last window standing.
+        if not release_cfg_host(win) and #vim.api.nvim_list_wins() > 1 then
+          pcall(vim.api.nvim_win_close, win, true)
+        end
+      end
+    end
+  end
+end
+
 function M.leave()
   M.sidebar_close()
   pcall(function()
@@ -686,8 +729,10 @@ function M.leave()
     require("dap").repl.close({ mode = "toggle" })
   end)
   for _, win in ipairs(debug_windows()) do
-    if vim.api.nvim_win_is_valid(win) and #vim.api.nvim_list_wins() > 1 then
-      pcall(vim.api.nvim_win_close, win, true)
+    if vim.api.nvim_win_is_valid(win) and not release_cfg_host(win) then
+      if #vim.api.nvim_list_wins() > 1 then
+        pcall(vim.api.nvim_win_close, win, true)
+      end
     end
   end
   local saved = restore

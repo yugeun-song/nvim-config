@@ -45,11 +45,23 @@ function M.block_if_managed(what, session)
   return false
 end
 
--- A managed session uses nvim-dap-view's own sections; a low-level one keeps the
--- full custom set. The full set is captured from the configured superset so it is
--- never duplicated here.
-local MANAGED_SECTIONS = { "scopes", "watches", "exceptions", "breakpoints", "threads", "sessions", "repl", "console" }
-local full_sections = nil
+-- Same guard, but only while a session runs: with none up it is plain cleanup.
+function M.block_if_managed_session(what)
+  local ok, dap = pcall(require, "dap")
+  if not (ok and dap.session()) then
+    return false
+  end
+  return M.block_if_managed(what)
+end
+
+-- A managed session keeps nvim-dap-view's winbar as set up. A gdb one gets the
+-- ring the configuration layer injects, since it owns the panels the ring names.
+local low_level = nil
+local stock = nil
+
+function M.set_low_level_winbar(spec)
+  low_level = spec
+end
 
 local function dapview_config()
   -- nvim-dap-view's setup() rebinds its config to a new merged table, so the live
@@ -62,37 +74,80 @@ local function dapview_config()
   end
 end
 
+local function remember_stock(cfg)
+  if stock then
+    return
+  end
+  local labels = {}
+  for name, section in pairs(cfg.winbar.base_sections or {}) do
+    labels[name] = section.label
+  end
+  stock = {
+    sections = vim.deepcopy(cfg.winbar.sections),
+    default_section = cfg.winbar.default_section,
+    show_keymap_hints = cfg.winbar.show_keymap_hints,
+    labels = labels,
+  }
+end
+
+local function put(cfg, want)
+  local base = cfg.winbar.base_sections or {}
+  local custom = cfg.winbar.custom_sections or {}
+  local filtered = {}
+  for _, name in ipairs(want.sections) do
+    if base[name] or custom[name] then
+      filtered[#filtered + 1] = name
+    end
+  end
+  if #filtered == 0 then
+    filtered = vim.deepcopy(want.sections)
+  end
+  cfg.winbar.sections = filtered
+  cfg.winbar.default_section = vim.tbl_contains(filtered, want.default_section) and want.default_section or filtered[1]
+  cfg.winbar.show_keymap_hints = want.show_keymap_hints
+  for name, section in pairs(base) do
+    section.label = (want.labels or {})[name] or stock.labels[name]
+  end
+  return filtered
+end
+
+-- The selected section outlives a session, so a gdb one can leave Registers
+-- showing and nvim-dap-view restores it on its next open. Move the selection
+-- itself, not just the window, when the ring no longer lists it.
+local function reselect(cfg, filtered)
+  local ok, state = pcall(require, "dap-view.state")
+  if not ok or not state.current_section then
+    return
+  end
+  if vim.tbl_contains(filtered, state.current_section) then
+    return
+  end
+  -- wrapped_action moves the selection itself, and it has to see the OLD one as
+  -- last_section: only then does nvim-dap-view put its own buffer back in the
+  -- window and swap the section keymaps. Assigning first makes its new_view test
+  -- false, and a gdb panel buffer stays on screen inside a managed session.
+  local target = cfg.winbar.default_section
+  pcall(function()
+    require("dap-view.options.winbar").wrapped_action(target)
+  end)
+  if state.current_section ~= target then
+    state.current_section = target      -- no window to act on; at least do not restore a gdb section
+  end
+end
+
 function M.apply_winbar(session)
   local cfg = dapview_config()
   if not cfg then
     return
   end
-  full_sections = full_sections or vim.deepcopy(cfg.winbar.sections)
-  local want = M.is_managed(session) and MANAGED_SECTIONS or full_sections
-  local base = cfg.winbar.base_sections or {}
-  local custom = cfg.winbar.custom_sections or {}
-  local filtered = {}
-  for _, s in ipairs(want) do
-    if base[s] or custom[s] then
-      filtered[#filtered + 1] = s
-    end
-  end
-  if #filtered == 0 then
-    filtered = vim.deepcopy(want)
-  end
-  cfg.winbar.sections = filtered
-  cfg.winbar.default_section = filtered[1] or cfg.winbar.default_section
+  remember_stock(cfg)
+  local want = (not M.is_managed(session)) and low_level or stock
+  local filtered = put(cfg, want or stock)
   pcall(function()
     require("dap-view.options.winbar").refresh_winbar()
   end)
+  reselect(cfg, filtered)
 end
 
-function M.reset_winbar()
-  local cfg = dapview_config()
-  if cfg and full_sections then
-    cfg.winbar.sections = vim.deepcopy(full_sections)
-    cfg.winbar.default_section = full_sections[1]
-  end
-end
 
 return M

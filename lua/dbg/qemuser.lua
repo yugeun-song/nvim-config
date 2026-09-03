@@ -23,12 +23,11 @@ local ARCH = {
   aarch64 = { qemu = "qemu-aarch64", sysroot = "/usr/aarch64-linux-gnu" },
   riscv64 = { qemu = "qemu-riscv64", sysroot = "/usr/riscv64-linux-gnu" },
   arm = { qemu = "qemu-arm", sysroot = "/usr/arm-linux-gnueabihf" },
-  i386 = { qemu = "qemu-i386", sysroot = nil },
 }
 
 -- The kernel side names arches "arm64"/"riscv"; the ELF header names them
 -- "aarch64"/"riscv64". One spelling reaches the table either way.
-local ALIAS = { arm64 = "aarch64", amd64 = "x86_64", riscv = "riscv64", x86 = "i386" }
+local ALIAS = { arm64 = "aarch64", amd64 = "x86_64", riscv = "riscv64" }
 
 function M.norm(arch)
   return ALIAS[arch] or arch

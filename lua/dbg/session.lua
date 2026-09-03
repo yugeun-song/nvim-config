@@ -98,6 +98,22 @@ function M.focus(session)
   return nil
 end
 
+-- ${file} resolves against the current buffer, so starting a session from a
+-- debugger panel launches the panel. Stand in a file window first.
+local function leave_panel()
+  local buf = vim.api.nvim_get_current_buf()
+  if vim.bo[buf].buftype == "" and vim.api.nvim_buf_get_name(buf) ~= "" then
+    return
+  end
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    local b = vim.api.nvim_win_get_buf(win)
+    if vim.bo[b].buftype == "" and vim.api.nvim_buf_get_name(b) ~= "" then
+      pcall(vim.api.nvim_set_current_win, win)
+      return
+    end
+  end
+end
+
 function M.cont()
   local dap = require("dap")
   local session = dap.session()
@@ -106,6 +122,7 @@ function M.cont()
     dap.continue()
     return
   end
+  leave_panel()
   -- Never replay a configuration that cannot start: a mistyped native executable
   -- would be repeated by every later press. The exec bit only means anything for a
   -- native launch -- gdb/lldb exec an ELF; a managed adapter hands its program to a
@@ -143,7 +160,10 @@ function M.step(kind)
   end
   M.focus(session)
   local frame = session.current_frame
-  local sourceless = not (frame and frame.source and (frame.source.path or frame.source.sourceReference))
+  -- Only gdb steps by instruction: a managed adapter has no such granularity and
+  -- its own frames are never really sourceless.
+  local sourceless = require("dbg.context").is_low_level(session)
+    and not (frame and frame.source and (frame.source.path or frame.source.sourceReference))
   local opts = nil
   if sourceless then
     opts = { granularity = "instruction" }
@@ -211,6 +231,7 @@ function M.pick()
     M.stop()
   end
   last_config = nil
+  leave_panel()
   dap.continue()
 end
 
@@ -316,6 +337,11 @@ function M.probe()
 end
 
 function M.open()
+  -- A gdb view: it reads the target through gdb's own commands. A managed
+  -- session has dap-view's Sessions section instead.
+  if require("dbg.context").block_if_managed("The target panel") then
+    return
+  end
   local buf = M.buffer()
   M.probe()
   panel.show(buf, 16, "Target")

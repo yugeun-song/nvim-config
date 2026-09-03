@@ -1,3 +1,7 @@
+-- Everything here speaks QEMU's human monitor through the gdbstub's `monitor`
+-- passthrough: gpa2hva, gva2gpa, xp, cpu. None of it exists on a target that is
+-- not a QEMU guest -- kgdb over a serial line has no monitor to ask -- so the
+-- guard reports "unknown" there rather than pretending to know.
 local M = {}
 
 M.mode = "auto"
@@ -58,7 +62,7 @@ local function pin_cpu(session, cb)
   end)
 end
 
-function M.check(session, addr, cb)
+function M.qemu_check(session, addr, cb)
   if not M.active(session) then
     cb("ram", "guard disabled")
     return
@@ -123,7 +127,7 @@ function M.check(session, addr, cb)
   end)
 end
 
-function M.read_phys(session, addr, count, cb)
+function M.qemu_read_phys(session, addr, count, cb)
   local frame = session.current_frame
   session:request(
     "evaluate",

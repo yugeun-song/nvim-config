@@ -40,6 +40,9 @@ function M.sync(session)
   if not session then
     return
   end
+  if not require("dbg.context").is_low_level(session) then
+    return
+  end
   local caps = session.capabilities or {}
   if #functions > 0 and caps.supportsFunctionBreakpoints == false then
     notify().warn("This adapter cannot set breakpoints on a function name")
@@ -73,6 +76,9 @@ function M.toggle(spec)
   if spec == "" then
     return
   end
+  if require("dbg.context").block_if_managed_session("Breaking on a function name or address") then
+    return
+  end
   spec = spec:gsub("^%*", "")
   local is_address = spec:match("^0[xX]%x+$") ~= nil
   local list = is_address and addresses or functions
@@ -96,6 +102,9 @@ function M.clear()
 end
 
 function M.prompt()
+  if require("dbg.context").block_if_managed_session("Breaking on a function name or address") then
+    return
+  end
   local default = vim.fn.expand("<cword>")
   vim.ui.input({ prompt = "Break on function or 0xADDRESS: ", default = default }, function(answer)
     if answer then
