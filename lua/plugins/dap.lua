@@ -81,43 +81,6 @@ local function cwd_exe()
   return vim.fn.getcwd() .. "/"
 end
 
-local function cargo_target()
-  local root = vim.fs.root(0, { "Cargo.toml" }) or vim.fn.getcwd()
-  local manifest = root .. "/Cargo.toml"
-  local name
-  local fd = io.open(manifest, "r")
-  if fd then
-    local inside = false
-    for line in fd:lines() do
-      if line:match("^%s*%[package%]") then
-        inside = true
-      elseif line:match("^%s*%[") then
-        inside = false
-      elseif inside then
-        name = name or line:match('^%s*name%s*=%s*"([^"]+)"')
-      end
-    end
-    fd:close()
-  end
-  local guess = name and (root .. "/target/debug/" .. name) or (root .. "/target/debug/")
-  return guess
-end
-
-local function rust_init_commands()
-  local sysroot = vim.fn.system({ "rustc", "--print", "sysroot" })
-  if vim.v.shell_error ~= 0 then
-    return {}
-  end
-  local etc = vim.trim(sysroot) .. "/lib/rustlib/etc"
-  if vim.fn.filereadable(etc .. "/lldb_lookup.py") ~= 1 then
-    return {}
-  end
-  return {
-    "command script import " .. etc .. "/lldb_lookup.py",
-    "command source -s 0 " .. etc .. "/lldb_commands",
-  }
-end
-
 local function adaptive(full, short)
   return function(width)
     return (width or 0) >= 140 and full or short
@@ -133,33 +96,12 @@ return {
         opts = {
           winbar = {
             show = true,
-            show_keymap_hints = false,
-            sections = {
-              "scopes",
-              "watch",
-              "watches",
-              "registers",
-              "memory",
-              "mappings",
-              "controlflow",
-              "disassembly",
-              "threads",
-              "breakpoints",
-              "session",
-              "repl",
-              "console",
-            },
-            default_section = "scopes",
-            base_sections = {
-              scopes = { label = adaptive("Scopes(S)", "Sco(S)"), keymap = "S" },
-              watches = { label = adaptive("Watches(W)", "Wat(W)"), keymap = "W" },
-              threads = { label = adaptive("Call stack(T)", "Stk(T)"), keymap = "T" },
-              breakpoints = { label = adaptive("Breakpoints(B)", "Brk(B)"), keymap = "B" },
-              repl = { label = adaptive("gdb console(R)", "gdb(R)"), keymap = "R" },
-              console = { label = adaptive("Output(C)", "Out(C)"), keymap = "C" },
-              exceptions = { label = adaptive("Exceptions(E)", "Exc(E)"), keymap = "E" },
-              sessions = { label = adaptive("Sessions(K)", "Ses(K)"), keymap = "K" },
-            },
+            -- No sections, no labels, no default here: a session with no gdb behind
+            -- it gets nvim-dap-view exactly as it ships. The custom sections below
+            -- only have to exist so the gdb ring can name them; dbg.context picks
+            -- the ring or the stock one per session, when a session initializes and
+            -- at every stop. Nothing takes the ring down when a session ends: the
+            -- panels stay up to be read, so they keep the winbar that names them.
             custom_sections = {
               watch = {
                 label = adaptive("Locals+Globals(A)", "Var(A)"),
@@ -229,7 +171,11 @@ return {
             terminal = { position = "left", hide = { "gdb", "gdb_kernel" } },
           },
           virtual_text = { enabled = true },
-          auto_toggle = true,
+          -- "open", not true: the panel comes up with the session and STAYS up
+          -- when it ends. What the program printed and where it stopped are worth
+          -- reading after the fact, and a window that vanishes takes them with it.
+          -- <leader>du closes it.
+          auto_toggle = "open",
         },
       },
       {
@@ -252,7 +198,7 @@ return {
         "<leader>db",
         function()
           local dap = require("dap")
-          if dap.session() then
+          if require("dbg.context").is_low_level() then
             local ok, reason = require("dbg.caps").supports("line_breakpoints")
             if not ok then
               require("dbg.notify").warn(reason .. " (<leader>dF)")
@@ -380,7 +326,7 @@ return {
         function()
           require("dap").repl.toggle()
         end,
-        desc = "Debug: toggle gdb console",
+        desc = "Debug: toggle the debug console",
       },
       {
         "<leader>du",
@@ -462,6 +408,46 @@ return {
       local discover = require("dbg.discover")
       local context = require("dbg.context")
 
+      -- The winbar of a gdb / Linux Kernel session; dbg.context only switches to it.
+      context.set_low_level_winbar({
+        sections = {
+          "scopes",
+          "watch",
+          "watches",
+          "registers",
+          "memory",
+          "mappings",
+          "controlflow",
+          "disassembly",
+          "threads",
+          "breakpoints",
+          "session",
+          "repl",
+          "console",
+        },
+        default_section = "scopes",
+        show_keymap_hints = false,
+        labels = {
+          scopes = adaptive("Scopes(S)", "Sco(S)"),
+          watches = adaptive("Watches(W)", "Wat(W)"),
+          threads = adaptive("Call stack(T)", "Stk(T)"),
+          breakpoints = adaptive("Breakpoints(B)", "Brk(B)"),
+          repl = adaptive("gdb console(R)", "gdb(R)"),
+          console = adaptive("Output(C)", "Out(C)"),
+          exceptions = adaptive("Exceptions(E)", "Exc(E)"),
+          sessions = adaptive("Sessions(K)", "Ses(K)"),
+        },
+      })
+
+      -- nvim-dap reads .vscode/launch.json on demand; allow the comments in it.
+      pcall(function()
+        local vscode = require("dap.ext.vscode")
+        local json = require("plenary.json")
+        vscode.json_decode = function(str)
+          return vim.json.decode(json.json_strip_comments(str))
+        end
+      end)
+
       -- bufferline's keys act on the current window, and the debugger's panels are
       -- winfixbuf, so pressing one with the cursor in a panel raises E1513.  Wrap
       -- the commands rather than rebinding whatever keys are configured.
@@ -479,8 +465,12 @@ return {
         end
       end)
 
-      dap.defaults.fallback.switchbuf = function(bufnr, line, column)
-        require("dbg.layout").jump(bufnr, line, column)
+      -- The gdb panels own the window grid, so only a gdb stop jumps through the
+      -- layout. Every other adapter keeps nvim-dap's own jump.
+      for _, adapter in ipairs({ "gdb", "gdb_kernel" }) do
+        dap.defaults[adapter].switchbuf = function(bufnr, line, column)
+          require("dbg.layout").jump(bufnr, line, column)
+        end
       end
 
       -- nvim-dap says "Source missing, cannot jump to frame" on every stop in code with
@@ -558,48 +548,129 @@ return {
           table.insert(args, "source " .. tool)
         end
         local env = vim.fn.environ()
+        -- An address an operator exported by hand outranks every derivation below;
+        -- it is the documented way to override the base recovery, so remember that it
+        -- came from outside before anything here writes to the same key.
+        local operator_entry = env.GDBTOOLS_ENTRY_PA
         if config.kgdb_auto then
           env.GDBTOOLS_AUTO = "1"
         end
         -- The extension carries no machine constants: it debugs whatever it is
-        -- pointed at.  The tree describes its own machine in qemu.conf, so read it
-        -- from there rather than restating it here, where it would drift from what
-        -- the shell launcher reads.  Anything already in the environment wins.
-        for k, v in pairs(discover.machine_facts(config.kernel_root)) do
+        -- pointed at. The tree describes its own machine, so read it from there
+        -- rather than restating it here, where it would drift from what the shell
+        -- launcher reads. Anything already in the environment wins.
+        local facts = discover.machine_facts(config.kernel_root)
+        -- GDBTOOLS_ENTRY_PA is the exception. The tree states the address its
+        -- DEFAULT boot mode lands the kernel at; this port may be running another
+        -- one. Hold it back and let the recorded run decide, exactly as the shell
+        -- launcher does.
+        local entry_from_tree = facts.GDBTOOLS_ENTRY_PA
+        facts.GDBTOOLS_ENTRY_PA = nil
+        for k, v in pairs(facts) do
           if not env[k] or env[k] == "" then
             env[k] = v
           end
         end
-        -- x86 KASLR recovery reads the compressed image; where it sits relative to
-        -- the build tree is our fact to supply, not something for it to guess.
-        if config.kernel_root and (config.arch == "x86_64" or config.arch == "i386") then
+
+        -- What this port was actually started as. A firmware chain lands the kernel
+        -- at an address the launcher recorded, so break there; a direct boot has no
+        -- such address and the arch recovers or scans for the entry instead, which
+        -- gdbtools only does while ENTRY_PA is unset.
+        -- Re-read it here rather than trusting what the config carries. A config is
+        -- remembered and replayed by <leader>dc, so the snapshot taken when the
+        -- target was picked can describe a guest that has since been restarted in
+        -- another boot mode on the same port. The shell launcher reads the file on
+        -- every connect; this does the same, and falls back to the snapshot only
+        -- when the target names no port to look up.
+        local state = discover.run_state(tonumber(tostring(config.target or ""):match(":(%d+)$")))
+          or config.run_state
+        local mode = state and state.KBL_BOOT
+        if (mode == "uboot" or mode == "uefi") and state.KBL_LOADADDR and state.KBL_LOADADDR ~= "" then
+          if not env.GDBTOOLS_ENTRY_PA or env.GDBTOOLS_ENTRY_PA == "" then
+            env.GDBTOOLS_ENTRY_PA = state.KBL_LOADADDR
+          end
+          -- The bootloader copies the image to that address after reset, so a
+          -- software breakpoint planted there while the guest is frozen is
+          -- overwritten before the CPU ever arrives.
+          if not env.GDBTOOLS_BREAK_KIND or env.GDBTOOLS_BREAK_KIND == "" then
+            env.GDBTOOLS_BREAK_KIND = "hw"
+          end
+        elseif entry_from_tree then
+          -- Direct boot, or nothing recorded for this port. The address the tree
+          -- states describes the mode the tree defaults to, so it holds only while
+          -- that is the mode actually running; otherwise leave the entry unstated
+          -- and let the architecture discover it.
+          local stated = discover.tree_value(config.kernel_root, "BOOT")
+          if not stated or stated == "" then
+            stated = "direct"
+          end
+          if (mode or stated) == stated and (not env.GDBTOOLS_ENTRY_PA or env.GDBTOOLS_ENTRY_PA == "") then
+            env.GDBTOOLS_ENTRY_PA = entry_from_tree
+          end
+        end
+        -- The compressed image is what both KASLR recoveries read: the direct one
+        -- walks the decompressor's stages, the UEFI one takes its symbol offsets and
+        -- the signature it searches for from it. Where it sits relative to the build
+        -- tree is our fact to supply, not something for it to guess.
+        -- x86_64 only: the recoveries below are written against the 64-bit boot
+        -- path, and a 32-bit kernel neither relocates the same way nor hands over
+        -- through the same stub.
+        -- The port's own run state answers which boot is running; with none
+        -- recorded the tree's stated default does, and a tree that states nothing
+        -- boots direct. The shell launcher resolves it the same way, so a terminal
+        -- and an editor session send gdbtools down the same recovery.
+        local eff_boot = mode
+        if not eff_boot or eff_boot == "" then
+          eff_boot = discover.tree_value(config.kernel_root, "BOOT")
+        end
+        if not eff_boot or eff_boot == "" then
+          eff_boot = "direct"
+        end
+        local firmware_boot = eff_boot == "uboot" or eff_boot == "uefi"
+        if config.kernel_root and config.arch == "x86_64" then
           local decomp = config.kernel_root .. "/arch/x86/boot/compressed/vmlinux"
           if vim.uv.fs_stat(decomp) then
             if not env.GDBTOOLS_X86_DECOMP_VMLINUX then
               env.GDBTOOLS_X86_DECOMP_VMLINUX = decomp
             end
-            -- 0x100000 is where QEMU's `-kernel` places the bzImage decompressor
-            -- (the x86 boot protocol's high load address). It is a QEMU/loader
-            -- convention, NOT a hardware guarantee -- a real board or a different
-            -- bootloader may load it elsewhere. This adapter debugs a QEMU gdbstub,
-            -- so it holds here; the KASLR base recovery breaks there. The shell
-            -- launcher sets the same value, so an editor session gets the same
-            -- early-boot x86 KASLR recovery.
-            if not env.GDBTOOLS_X86_DECOMP_PA then
+            -- 0x100000 belongs to the x86 boot protocol, not to QEMU:
+            -- Documentation/arch/x86/boot.rst states it as the load address of a
+            -- bzImage's protected-mode kernel, and every loader honouring
+            -- LOADED_HIGH puts the decompressor there -- QEMU's `-kernel`, and GRUB
+            -- on real hardware alike. A protocol constant, not a hardware
+            -- guarantee: a loader that ignores the protocol may put it elsewhere.
+            -- The KASLR base recovery breaks there. The shell launcher states the
+            -- same value, so an editor session gets the same recovery.
+            -- Only for a direct boot: a firmware chain loads the image as PE,
+            -- wherever its allocator chose, and gdbtools finds that by searching.
+            if not firmware_boot and not env.GDBTOOLS_X86_DECOMP_PA then
               env.GDBTOOLS_X86_DECOMP_PA = "0x100000"
             end
           end
         end
         -- x86 needs this in the process environment, not as a command: the
-        -- decompressor-randomized base is recovered while the session starts.
-        if config.kaslr_auto and (config.arch == "x86_64" or config.arch == "i386") then
+        -- randomized base is recovered while the session starts.
+        --
+        -- Whether the guest runs with KASLR is a fact about the GUEST, not about the
+        -- mode the editor picked. Gating it on the early-boot pick handed a terminal
+        -- session and an editor session different environments for the same guest, so
+        -- the evidence is read in the launcher's order: the recorded run first, then
+        -- what target discovery scored, with "cannot tell" counting as on.
+        local kaslr_on
+        if state and state.KBL_KASLR and state.KBL_KASLR ~= "" then
+          kaslr_on = state.KBL_KASLR == "1"
+        else
+          kaslr_on = (config.kaslr_state or "unknown") ~= "off"
+        end
+        if config.arch == "x86_64" and kaslr_on then
           env.GDBTOOLS_X86_KASLR = "1"
-          -- Under KASLR the kernel sits at a randomized physical base, so the
-          -- tree's nominal ENTRY_PA is wrong AND, being set, it suppresses the
-          -- decompressor base recovery (gdbtools runs that only when ENTRY_PA is
-          -- unset). Drop it here -- the shell launcher keeps it out of the env for
-          -- the same reason -- so the recovery finds the relocated base.
-          env.GDBTOOLS_ENTRY_PA = nil
+          -- Under KASLR the kernel sits at a randomized physical base, so every
+          -- address derived above is wrong AND, being set, it suppresses the base
+          -- recovery (gdbtools runs that only when ENTRY_PA is unset). Take it back --
+          -- the shell launcher does the same -- unless an operator pinned one.
+          if not operator_entry or operator_entry == "" then
+            env.GDBTOOLS_ENTRY_PA = nil
+          end
         end
         local env_list = {}
         for k, v in pairs(env) do
@@ -614,11 +685,6 @@ return {
           options = { env = env_list },
         })
       end
-
-      dap.adapters.lldb = {
-        type = "executable",
-        command = "lldb-dap",
-      }
 
       local c_configs = {
         {
@@ -697,13 +763,6 @@ return {
       dap.listeners.after.event_terminated["dbg_qemuser"] = stop_qemuser
       dap.listeners.after.event_exited["dbg_qemuser"] = stop_qemuser
       dap.listeners.after.disconnect["dbg_qemuser"] = stop_qemuser
-
-      require("dbg.languages").setup(dap, {
-        program = input_path,
-        args = input_args,
-        cargo_target = cargo_target,
-        rust_init_commands = rust_init_commands,
-      })
 
       vim.fn.sign_define("DapBreakpoint", { text = "●", texthl = "DiagnosticError", numhl = "" })
       vim.fn.sign_define("DapBreakpointCondition", { text = "◆", texthl = "DiagnosticWarn", numhl = "" })
@@ -787,6 +846,17 @@ return {
         end,
         desc = "Keep the debugger panel highlights defined across colorscheme changes",
       })
+
+      -- Several sessions can run at once, so the panels stay up as long as any gdb
+      -- one is alive.
+      local function low_level_session_running()
+        for _, s in pairs(dap.sessions() or {}) do
+          if context.is_low_level(s) then
+            return true
+          end
+        end
+        return false
+      end
 
       -- nvim-dap settles on a frame only once the stackTrace response lands, so paint
       -- from that response and not from the stopped event: reading `current_frame` any
@@ -896,29 +966,30 @@ return {
           require("dbg.caps").invalidate(session)
           require("dbg.session").remember(session.config)
           if not context.is_low_level(session) then
+            -- DbgLayout can build the panels with no session up, and they would
+            -- otherwise stay on screen through a session that has no gdb behind it.
+            if not low_level_session_running() then
+              require("dbg.layout").drop_panels()
+            end
             return
           end
           require("dbg.layout").enter()
-          require("dbg.kernel").arm_kaslr(session)
-          require("dbg.kernel").watch_target(session)
+          local kernel = require("dbg.kernel")
+          kernel.load_firmware_symbols(session, function()
+            kernel.arm_kaslr(session)
+          end)
+          kernel.watch_target(session)
         end)
       end
 
+      -- Ending a session drops what the session held, and nothing else. The windows
+      -- stay exactly as they were: the last stop, the console and the program's output
+      -- are the things you read after it finishes. :DbgClose puts the layout back, and
+      -- <leader>du closes the panel; both are asked for.
       local function teardown(session)
         pcall(function()
           require("dbg.caps").invalidate(session)
           require("dbg.kernel").stop_watchdog()
-        end)
-        vim.schedule(function()
-          if require("dap").session() then
-            return
-          end
-          pcall(function()
-            require("dbg.context").reset_winbar()
-          end)
-          pcall(function()
-            require("dbg.layout").leave()
-          end)
         end)
       end
 
@@ -996,6 +1067,9 @@ return {
       end, { nargs = "?", desc = "Break on a function name or 0xADDRESS" })
 
       vim.api.nvim_create_user_command("DbgInline", function(o)
+        if context.block_if_managed_session("Inline values") then
+          return
+        end
         local mode = o.args
         require("dbg.inline").toggle(mode == "" and nil or mode == "on")
       end, {
@@ -1007,6 +1081,9 @@ return {
       })
 
       vim.api.nvim_create_user_command("DbgClose", function()
+        if context.block_if_managed_session("The debugger layout") then
+          return
+        end
         require("dbg.layout").leave()
       end, { desc = "Close every debugger window and restore the previous layout" })
 
@@ -1015,6 +1092,9 @@ return {
       end, { desc = "List every breakpoint the debugger will stop on" })
 
       vim.api.nvim_create_user_command("DbgState", function()
+        if context.block_if_managed_session("This report") then
+          return
+        end
         local state = require("dbg.caps").state()
         if not state then
           require("dbg.notify").info("No debug session is running")
@@ -1054,7 +1134,7 @@ return {
 
       vim.api.nvim_create_autocmd("VimResized", {
         callback = function()
-          if not dap.session() then
+          if not context.is_low_level() then
             return
           end
           vim.schedule(function()
@@ -1068,7 +1148,7 @@ return {
 
       vim.api.nvim_create_autocmd({ "WinNew", "WinClosed" }, {
         callback = function()
-          if not dap.session() then
+          if not context.is_low_level() then
             return
           end
           vim.schedule(function()
@@ -1097,6 +1177,9 @@ return {
       end, { desc = "Everything the debugger reported, including messages that scrolled past" })
 
       vim.api.nvim_create_user_command("DbgLayoutReset", function()
+        if context.block_if_managed_session("The debugger layout") then
+          return
+        end
         require("dbg.layout").rebuild()
       end, { desc = "Rebuild the debugger windows, leaving the session and breakpoints alone" })
 
@@ -1135,13 +1218,16 @@ return {
       })
 
       vim.api.nvim_create_user_command("DbgSafeMem", function(o)
+        if context.block_if_managed_session("The memory read guard") then
+          return
+        end
         local mode = o.args ~= "" and o.args or "auto"
         if mode ~= "on" and mode ~= "off" and mode ~= "auto" then
           vim.notify("DbgSafeMem takes on, off or auto", vim.log.levels.ERROR)
           return
         end
-        require("dbg.safemem").mode = mode
-        require("dbg.safemem").invalidate()
+        require("dbg.qemumon").mode = mode
+        require("dbg.qemumon").invalidate()
         vim.notify("Memory read guard: " .. mode, vim.log.levels.INFO)
       end, {
         nargs = "?",
@@ -1156,6 +1242,9 @@ return {
       end, { desc = "Show the target memory map" })
 
       vim.api.nvim_create_user_command("DbgLayout", function(o)
+        if context.block_if_managed_session("The debugger layout") then
+          return
+        end
         local layout = require("dbg.layout")
         if o.args ~= "" then
           layout.preset = o.args
