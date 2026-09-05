@@ -113,6 +113,44 @@ function M.candidates()
         }
       end
       c.frozen = inst.frozen
+
+      -- Last resort, and the one that matters for a firmware chain: such a guest
+      -- carries no -kernel, which is the stated reason the run state exists at
+      -- all ("the facts /proc cannot carry -- which tree this is").  kbuildlab
+      -- uses KBL_TREE to reach <src>/vmlinux; without the same step here every
+      -- u-boot/UEFI guest read "no symbol file found" in the editor while the
+      -- terminal loaded symbols for it.
+      if not c.vmlinux and c.run_state and c.run_state.KBL_TREE then
+        local root = c.run_state.KBL_TREE
+        local cand = {}
+        local sd = D.tree_value(root, "SRC_DIR")
+        if sd and sd ~= "" then
+          cand[#cand + 1] = root .. "/" .. sd .. "/vmlinux"
+        end
+        cand[#cand + 1] = root .. "/kernel/vmlinux"
+        local dir = vim.uv.fs_scandir(root)
+        while dir do
+          local name, kind = vim.uv.fs_scandir_next(dir)
+          if not name then
+            break
+          end
+          if kind == "directory" then
+            cand[#cand + 1] = root .. "/" .. name .. "/vmlinux"
+          end
+        end
+        for _, vm in ipairs(cand) do
+          if vim.uv.fs_stat(vm) then
+            c.vmlinux = vm
+            c.vmlinux_src = "KBL_TREE in " .. tostring(c.run_state.path)
+            c.kernel_root = c.kernel_root or vim.fs.dirname(vm)
+            if not c.arch then
+              c.arch, c.arch_src = D.elf_arch(vm), "e_machine field of the symbol file"
+            end
+            break
+          end
+        end
+      end
+
       if not c.vmlinux then
         c.notes[#c.notes + 1] = "no symbol file found, enter one manually"
       end
