@@ -551,11 +551,46 @@ end
 -- kernel. The tree states only its default mode, so this is the only evidence of
 -- the combination running right now. Written by kbuildlab lib/run-qemu.sh; absent
 -- is a normal answer, for a guest nothing else started.
-function M.run_state(port)
+-- /proc/PID/stat field 22 (starttime).  Parsed from after the LAST ')' rather
+-- than by column number: comm sits in parentheses and may contain spaces, which
+-- shifts every field after it.  Same rule as kbuildlab's kbl_proc_starttime.
+function M.proc_starttime(pid)
+  local data = slurp("/proc/" .. pid .. "/stat", 8192)
+  if not data then
+    return nil
+  end
+  local rest = data:match("%)%s*(.*)$")
+  if not rest then
+    return nil
+  end
+  local n, out = 0, nil
+  for w in rest:gmatch("%S+") do
+    n = n + 1
+    if n == 20 then -- 22nd overall = 20th after state, which follows comm
+      out = w
+      break
+    end
+  end
+  return out
+end
+
+-- `pid` is optional but every caller has one, and passing it is what makes this
+-- agree with `kbuildlab attach --list`.  A state file whose recorded qemu pid and
+-- start time do not match the process actually on that port describes a PREVIOUS
+-- run: kbl_instances rejects it, and without the same test here the editor would
+-- calibrate to it -- adding u-boot symbols to a guest that never ran u-boot, and
+-- disagreeing with the terminal about one guest.
+function M.run_state(port, pid)
   if not port then
     return nil
   end
-  local path = ("/dev/shm/kbl-run-%d.env"):format(tonumber(port) or -1)
+  -- Same rule as kbuildlab's kbl_statedir(): $KBL_STATE_DIR wins, /dev/shm is
+  -- the default.  The two must agree, so neither hardcodes the path alone.
+  local dir = vim.env.KBL_STATE_DIR
+  if not dir or dir == "" then
+    dir = "/dev/shm"
+  end
+  local path = ("%s/kbl-run-%d.env"):format(dir, tonumber(port) or -1)
   if not vim.uv.fs_stat(path) then
     return nil
   end
@@ -564,6 +599,16 @@ function M.run_state(port)
     local k, v = line:match("^%s*(KBL_[A-Z0-9_]+)%s*=%s*(.-)%s*$")
     if k then
       out[k] = v
+    end
+  end
+  if pid and out.KBL_QEMU_PID and out.KBL_QEMU_PID ~= tostring(pid) then
+    return nil, "state file names qemu pid " .. out.KBL_QEMU_PID .. ", not " .. tostring(pid)
+  end
+  if pid and out.KBL_QEMU_START then
+    local now = M.proc_starttime(pid)
+    if now and now ~= out.KBL_QEMU_START then
+      return nil, "state file names a process started at " .. out.KBL_QEMU_START
+        .. "; pid " .. tostring(pid) .. " started at " .. now
     end
   end
   return out

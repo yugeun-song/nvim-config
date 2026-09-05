@@ -582,8 +582,9 @@ return {
         -- another boot mode on the same port. The shell launcher reads the file on
         -- every connect; this does the same, and falls back to the snapshot only
         -- when the target names no port to look up.
-        local state = discover.run_state(tonumber(tostring(config.target or ""):match(":(%d+)$")))
-          or config.run_state
+        local state = discover.run_state(
+          tonumber(tostring(config.target or ""):match(":(%d+)$")),
+          config.qemu and config.qemu.pid or nil) or config.run_state
         local mode = state and state.KBL_BOOT
         if (mode == "uboot" or mode == "uefi") and state.KBL_LOADADDR and state.KBL_LOADADDR ~= "" then
           if not env.GDBTOOLS_ENTRY_PA or env.GDBTOOLS_ENTRY_PA == "" then

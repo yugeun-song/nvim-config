@@ -86,15 +86,49 @@ function M.candidates()
       end
 
       if inst.gdb_port then
-        c.target = "localhost:" .. inst.gdb_port
+        -- The host the stub was BOUND to, from qemu's own -gdb tcp:HOST:PORT.
+        -- A wildcard bind means every interface and loopback is the way in; a
+        -- specific one must be honoured, or a guest deliberately reachable from
+        -- elsewhere shows as listening here and connects from nowhere.
+        local ghost = tostring(inst.gdb_dev or ""):match("^tcp:(.*):%d+$")
+        if not ghost or ghost == "" or ghost == "0.0.0.0" or ghost == "::" or ghost == "[::]" then
+          ghost = "localhost"
+        end
+        c.target = ghost .. ":" .. inst.gdb_port
         c.target_src = ("-gdb %s of qemu pid %d"):format(inst.gdb_dev, inst.pid)
         c.listening = listen[inst.gdb_port] == true
-        c.busy = established[inst.gdb_port] == true
+        -- Attached means qemu OWNS an established socket on that port, not that
+        -- one exists.  The stub keeps listening after it accepts, so a second
+        -- client finishes its handshake and shows as ESTABLISHED while waiting in
+        -- the accept queue; counting rows alone reports that as attached.  An
+        -- unreadable fd table (another uid) is unknown, and stays unknown --
+        -- kbuildlab's CLI applies the identical rule, so the terminal and the
+        -- editor cannot disagree about one guest.
+        local owned = D.socket_inodes(inst.pid)
+        local rows = established[inst.gdb_port] or {}
+        if owned == nil then
+          c.busy, c.busy_src = nil, "qemu's fd table is unreadable"
+        else
+          local mine, queued = 0, 0
+          for _, ino in ipairs(rows) do
+            if owned[ino] then mine = mine + 1 else queued = queued + 1 end
+          end
+          c.busy = mine > 0
+          c.queued = queued
+          c.busy_src = ("%d owned / %d queued established socket(s)"):format(mine, queued)
+        end
         if not c.listening then
           c.notes[#c.notes + 1] = "the port is not in LISTEN state"
         end
         if c.busy then
-          c.notes[#c.notes + 1] = "a client is already attached (the gdbstub accepts only one)"
+          c.notes[#c.notes + 1] = "a client is already attached (the gdbstub serves one; "
+            .. "this session would wait in the accept queue)"
+        elseif c.busy == nil then
+          c.notes[#c.notes + 1] = "cannot tell whether a debugger is attached "
+            .. "(" .. (c.busy_src or "?") .. ")"
+        elseif (c.queued or 0) > 0 then
+          c.notes[#c.notes + 1] = ("%d client(s) queued on the stub but none accepted yet")
+            :format(c.queued)
         end
       else
         c.target = inst.gdb_other
@@ -104,7 +138,7 @@ function M.candidates()
       c.kaslr = D.kaslr(inst, c.kernel_root)
       -- A firmware chain passes the cmdline itself, so there is no -append to read
       -- KASLR from; the launcher recorded what it started this port with.
-      c.run_state = D.run_state(inst.gdb_port)
+      c.run_state = D.run_state(inst.gdb_port, inst.pid)
       if c.run_state and c.run_state.KBL_KASLR then
         local on = c.run_state.KBL_KASLR
         c.kaslr = {
@@ -168,7 +202,10 @@ function M.describe(c)
     c.frozen and "frozen (-S)" or "running",
     pad((c.run_state and c.run_state.KBL_BOOT) or "boot?", 6),
     c.kaslr and c.kaslr.state or "unknown",
-    c.busy and "  [busy]" or (c.vmlinux and "" or "  [no symbols]")
+    c.busy and "  [attached]"
+      or (c.busy == nil and "  [attach state unknown]")
+      or ((c.queued or 0) > 0 and ("  [%d queued]"):format(c.queued))
+      or (c.vmlinux and "" or "  [no symbols]")
   )
 end
 
@@ -279,6 +316,11 @@ function M.manual(cb)
       -- A typed-in target still names a port, and the launcher may well have
       -- recorded that port's boot. Read it rather than calling the guest unknown.
       local port = tonumber(tostring(t):match(":(%d+)$"))
+      -- A hand-typed target names no process, so there is no pid to check the
+      -- state file against.  Read it anyway -- it is still the only record of how
+      -- that port was booted -- but the freshness test that candidates() applies
+      -- cannot run here, so a file left by a previous guest on the same port is
+      -- believed.  Naming the guest through the picker instead avoids that.
       local rs = port and D.run_state(port) or nil
       local kaslr = { state = "unknown", source = "entered manually" }
       if rs and rs.KBL_KASLR then
@@ -306,7 +348,14 @@ end
 function M.load_firmware_symbols(session, done)
   done = done or function() end
   local cfg = session and session.config or {}
-  local state = cfg.run_state
+  -- Re-read the run state instead of trusting the snapshot taken when this
+  -- target was picked.  dap.lua already does this on connect, for the reason
+  -- that applies here too: a remembered config can describe a guest that has
+  -- since been restarted in another boot mode, and replaying it would add
+  -- u-boot's ELF symbols to a session that booted through UEFI or -kernel.
+  local port = tonumber(tostring(cfg.target or ""):match(":(%d+)$"))
+  local qpid = cfg.qemu and cfg.qemu.pid or nil
+  local state = (port and D.run_state(port, qpid)) or cfg.run_state
   if not (state and state.KBL_BOOT == "uboot" and cfg.kernel_root) then
     return done()
   end
