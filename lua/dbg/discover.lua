@@ -150,25 +150,87 @@ function M.elf_debug_info(path)
   return "none"
 end
 
+-- Read a /proc file whole.  Its st_size is 0, so a single fixed-size read is a
+-- guess: /proc/net/tcp on a busy host runs past any round number, and a short
+-- read silently drops the tail -- which here would flip a listening port to
+-- "not listening" with no sign that anything was missing.
+local function slurp_proc(path)
+  local fd = vim.uv.fs_open(path, "r", 438)
+  if not fd then
+    return nil
+  end
+  local parts, off = {}, 0
+  while true do
+    local chunk = vim.uv.fs_read(fd, 262144, off)
+    if not chunk or chunk == "" then
+      break
+    end
+    parts[#parts + 1] = chunk
+    off = off + #chunk
+  end
+  vim.uv.fs_close(fd)
+  return table.concat(parts)
+end
+
+-- Socket inodes a process holds, from its own fd table.
+function M.socket_inodes(pid)
+  local out = {}
+  local dir = vim.uv.fs_scandir("/proc/" .. pid .. "/fd")
+  if not dir then
+    return nil -- unreadable (another uid): unknown, which is not the same as none
+  end
+  while true do
+    local name = vim.uv.fs_scandir_next(dir)
+    if not name then
+      break
+    end
+    local link = vim.uv.fs_readlink("/proc/" .. pid .. "/fd/" .. name)
+    local ino = link and link:match("^socket:%[(%d+)%]$")
+    if ino then
+      out[ino] = true
+    end
+  end
+  return out
+end
+
+-- listen[port] = true, estab[port] = { inode, ... }
+--
+-- The inodes matter.  qemu's gdbstub keeps listening after it accepts, so a
+-- SECOND client completes its TCP handshake and appears as ESTABLISHED while
+-- qemu holds no fd for it -- it is queued behind the first.  Reporting "a client
+-- is already attached" from the bare existence of an ESTABLISHED row therefore
+-- counts a queued client as an attached one.  Ownership is decided by
+-- intersecting these inodes with the qemu process's own, in kernel.lua.
+--
+-- Both families are read: `-gdb tcp::N` binds 0.0.0.0 and [::], so a client from
+-- ::1 appears only in /proc/net/tcp6.
 function M.tcp_states()
-  local listen, established = {}, {}
+  local listen, estab = {}, {}
   for _, f in ipairs({ "/proc/net/tcp", "/proc/net/tcp6" }) do
-    local data = slurp(f, 1048576)
+    local data = slurp_proc(f)
     if data then
       for line in data:gmatch("[^\n]+") do
-        local lport, st = line:match("^%s*%d+:%s+%x+:(%x%x%x%x)%s+%x+:%x+%s+(%x%x)")
-        if lport then
-          local port = tonumber(lport, 16)
-          if st == "0A" then
-            listen[port] = true
-          elseif st == "01" then
-            established[port] = true
+        local col = {}
+        for w in line:gmatch("%S+") do
+          col[#col + 1] = w
+        end
+        -- sl local rem st tx:rx tr:when retrnsmt uid timeout inode
+        if #col >= 10 then
+          local hex = col[2]:match(":(%x+)$")
+          local port = hex and tonumber(hex, 16)
+          if port then
+            if col[4] == "0A" then
+              listen[port] = true
+            elseif col[4] == "01" then
+              estab[port] = estab[port] or {}
+              estab[port][#estab[port] + 1] = col[10]
+            end
           end
         end
       end
     end
   end
-  return listen, established
+  return listen, estab
 end
 
 function M.parse_qemu(pid, exe, qemu_arch, argv)
