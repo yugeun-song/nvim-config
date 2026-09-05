@@ -509,7 +509,13 @@ function M.tree_value(kernel_root, key)
   for _, line in ipairs(vim.fn.readfile(path)) do
     local v = line:match("^%s*" .. key:gsub("%W", "%%%0") .. "%s*=%s*(.-)%s*$")
     if v then
-      return (v:gsub("%s*#.*$", ""):gsub("%s+$", "")), dir
+      -- Same grammar as kbuildlab's kbl_tree_get: trailing comment and space
+      -- stripped, then one layer of surrounding double quotes removed.  Only
+      -- one of the five parsers used to unquote, so a quoted value reached the
+      -- terminal bare and the editor with its quotes still attached.
+      v = v:gsub("%s*#.*$", ""):gsub("%s+$", "")
+      v = v:gsub('^"(.*)"$', "%1")
+      return v, dir
     end
   end
   return nil, dir
@@ -533,7 +539,8 @@ function M.machine_facts(kernel_root)
   for _, line in ipairs(vim.fn.readfile(path)) do
     local k, v = line:match("^%s*(GDBTOOLS_[A-Z0-9_]+)%s*=%s*(.-)%s*$")
     if k then
-      out[k] = (v:gsub("%s*#.*$", ""):gsub("%s+$", ""))
+      v = v:gsub("%s*#.*$", ""):gsub("%s+$", "")
+      out[k] = v:gsub('^"(.*)"$', "%1")
     end
   end
   return out
