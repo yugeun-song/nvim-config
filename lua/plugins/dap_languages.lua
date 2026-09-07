@@ -165,6 +165,23 @@ return {
           adapter = require("rustaceanvim.config").get_codelldb_adapter(codelldb, vim.uv.fs_stat(lib) and lib or nil),
         }
       end
+      opts.server = {
+        settings = function(project_root, default_settings)
+          local settings = require("rustaceanvim.config.server").load_rust_analyzer_settings(project_root, {
+            default_settings = default_settings,
+          })
+          local detached = not project_root
+            or not vim.fs.find({ "Cargo.toml", "rust-project.json" }, { path = project_root, upward = true })[1]
+          if detached then
+            local ra = settings["rust-analyzer"]
+            ra.cargo = vim.tbl_deep_extend("force", ra.cargo or {}, {
+              extraEnv = { RUSTC_BOOTSTRAP = "1" },
+              autoreload = false,
+            })
+          end
+          return settings
+        end,
+      }
       vim.g.rustaceanvim = vim.tbl_deep_extend("keep", vim.g.rustaceanvim or {}, opts)
     end,
   },
