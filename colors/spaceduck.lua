@@ -1222,7 +1222,7 @@ hi("manOptionDesc",      { fg = p.yellow })
 hi("manReference",       { fg = p.blue, underline = true })
 hi("manCFuncDefinition", { fg = p.green })
 hi("manUnderline",       { fg = p.purple, italic = true })
-hi("manBold",            { fg = p.white, bold = true })
+hi("manBold",            { fg = p.yellow, bold = true })
 hi("manItalic",          { fg = p.purple, italic = true })
 
 -- Rainbow parentheses (for ts-rainbow / rainbow-delimiters.nvim)
