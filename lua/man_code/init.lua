@@ -12,6 +12,8 @@
 
 local M = {}
 
+local uv = vim.uv or vim.loop
+
 local ns = vim.api.nvim_create_namespace("man_code")
 
 -- Above syntax, below diagnostics. Extmarks already outrank syntax, so this
@@ -27,6 +29,17 @@ local MAX_ERROR_RATIO = 0.15
 
 -- How many times to shrink a block and retry before giving up on it.
 local MAX_SHRINKS = 3
+
+-- An example program in a man page runs to tens of lines, not thousands: the
+-- EXAMPLES block of mmap(2) is seventy. A block far past that is prose, and
+-- handing one to a parser is what made cmake-modules(7) -- 37,260 lines, with a
+-- single 20,123-line block -- take 774 ms to open.
+local MAX_BLOCK_LINES = 800
+
+-- Second guard, for a page that is pathological in some way this does not
+-- predict. Opening a man page is interactive, so the work is bounded rather
+-- than finished: blocks already painted stay painted.
+local TIME_BUDGET_MS = 100
 
 -- Prose does not open a line with a preprocessor directive, a storage class or
 -- a type, and does not end one in a semicolon or a brace.
@@ -190,16 +203,18 @@ end
 function M.highlight(buf, lang)
   buf = (buf == nil or buf == 0) and vim.api.nvim_get_current_buf() or buf
   lang = lang or "c"
-  if not pcall(vim.treesitter.language.add, lang) then return 0 end
-  if not vim.treesitter.language.add(lang) then return 0 end
+  local has_parser, added = pcall(vim.treesitter.language.add, lang)
+  if not has_parser or added == false then return 0 end
 
   vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 
   local painted = 0
+  local started = uv.hrtime()
   for _, block in ipairs(candidate_blocks(lines)) do
+    if (uv.hrtime() - started) / 1e6 > TIME_BUDGET_MS then break end
     local first, last = trim_blanks(lines, block[1], block[2])
-    if last - first + 1 >= MIN_LINES then
+    if last - first + 1 >= MIN_LINES and last - first + 1 <= MAX_BLOCK_LINES then
       local from = code_start(lines, first, last)
       local to = from and code_end(lines, from, last)
       -- The indent test belongs to the code, not to the block around it: a
