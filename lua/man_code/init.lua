@@ -16,9 +16,14 @@ local uv = vim.uv or vim.loop
 
 local ns = vim.api.nvim_create_namespace("man_code")
 
--- Above syntax, below diagnostics. Extmarks already outrank syntax, so this
--- only orders the marks against each other.
-local BASE_PRIORITY = 150
+-- nvim's man.lua paints roff's bold and italic as extmarks at priority 4096,
+-- which is above anything a syntax file can say. Inside a code block that is
+-- the wrong answer: roff's bold means "this is emphasised" while the parser
+-- knows the token is a call, a parameter or a type. Measured on open(2), 82%
+-- of this module's marks were being covered by manBold before this number went
+-- above 4096. Outside a code block nothing here paints, so the emphasis roff
+-- put in the prose is untouched.
+local BASE_PRIORITY = 5000
 
 local MIN_INDENT = 2
 local MIN_LINES = 2
@@ -55,12 +60,36 @@ local CODE_OPENERS = {
   "^%s*unsigned%s",
   "^%s*void%s",
   "^%s*int%s*$",
-  "^%s*[%w_]+%s+[%w_*]+%s*%(",
+  "^%s*[%w_]+%s+[%w_*]+%(",
 }
 
 -- @spell and @nospell steer the spell checker, @conceal the conceal machinery.
 -- None of them names a highlight group.
 local META_CAPTURE = { spell = true, nospell = true, conceal = true }
+
+-- Before a parser is asked anything: code terminates most of its lines and
+-- prose terminates almost none. Counting rather than looking for a fixed number
+-- is what separates them -- the DESCRIPTION of bash(1) is 360 lines with two
+-- lines ending in a brace, from shell syntax being described in prose, while
+-- the EXAMPLES of mmap(2) ends about half its lines in a semicolon.
+local MIN_CODE_DENSITY = 0.1
+
+local function block_has_code(lines, first, last)
+  local directives, terminators, nonblank = 0, 0, 0
+  for i = first, last do
+    local l = lines[i]
+    if vim.trim(l) ~= "" then
+      nonblank = nonblank + 1
+      if l:match("^%s*#%s*%a") then
+        directives = directives + 1
+      elseif l:match("[;{}]%s*$") then
+        terminators = terminators + 1
+      end
+    end
+  end
+  if nonblank == 0 then return false end
+  return (terminators + directives) / nonblank >= MIN_CODE_DENSITY
+end
 
 local function code_start(lines, first, last)
   for i = first, last do
@@ -147,7 +176,11 @@ local function paint(buf, root, chunk, from, lang)
       -- @function.call. The query lists the more specific capture later, so
       -- raising the priority as the walk proceeds lets it win, which is the
       -- rule the real highlighter follows.
-      local prio = tonumber(metadata.priority) or (BASE_PRIORITY + seq)
+      -- A query can set its own priority to order captures against each
+      -- other -- C's @variable asks for 95 so more specific captures win --
+      -- and that ordering is kept, shifted up as a whole.
+      local q = tonumber(metadata.priority)
+      local prio = BASE_PRIORITY + (q and (q - 100) or seq)
       pcall(vim.api.nvim_buf_set_extmark, buf, ns, from - 1 + sr, sc, {
         end_row = from - 1 + er,
         end_col = ec,
@@ -215,7 +248,8 @@ function M.highlight(buf, lang)
     if (uv.hrtime() - started) / 1e6 > TIME_BUDGET_MS then break end
     local first, last = trim_blanks(lines, block[1], block[2])
     if last - first + 1 >= MIN_LINES and last - first + 1 <= MAX_BLOCK_LINES then
-      local from = code_start(lines, first, last)
+      local from = block_has_code(lines, first, last)
+          and code_start(lines, first, last) or nil
       local to = from and code_end(lines, from, last)
       -- The indent test belongs to the code, not to the block around it: a
       -- SYNOPSIS carries a one-column subheading ("Feature Test Macro
