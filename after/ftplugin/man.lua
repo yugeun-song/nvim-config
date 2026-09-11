@@ -24,6 +24,9 @@ local function language_for(buf)
 end
 
 local buf = vim.api.nvim_get_current_buf()
+
+pcall(function() require("man_code.structure").highlight(buf) end)
+
 local lang = language_for(buf)
 if lang then
   pcall(function() require("man_code").highlight(buf, lang) end)
