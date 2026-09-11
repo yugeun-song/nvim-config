@@ -1,7 +1,6 @@
 vim.opt_local.signcolumn = "no"
 vim.opt_local.cursorline = false
 vim.opt_local.scrolloff = 4
-vim.opt_local.conceallevel = 0
 
 -- The code inside a man page gets the same parser the editor uses on a source
 -- file of that language. Which language the page is written about comes from
