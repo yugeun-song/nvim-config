@@ -19,6 +19,10 @@ local ns = vim.api.nvim_create_namespace("man_structure")
 -- and never overlap a heading, so the two do not compete.
 local PRIORITY = 5200
 
+-- The parenthesis fix below sits above man.lua but below the code pass, so a
+-- call written out inside an example keeps the parser's colours.
+local CALL_PRIORITY = 4500
+
 --- @param buf integer? buffer handle, defaults to the current one
 --- @return integer lines painted
 function M.highlight(buf)
@@ -101,6 +105,43 @@ function M.highlight(buf)
     end
   end
   return painted
+end
+
+--- Extend a bold run over the parentheses that follow it.
+---
+--- man-pages writes a function as `.BR mmap ()`: the name is bold and the
+--- empty parentheses are roman, because roff cannot change font mid-word
+--- without splitting the macro. Rendered, that leaves mmap coloured and ()
+--- the body colour, which reads as the page having missed a character. There
+--- are 27 of them in mmap(2) alone.
+---
+--- Only an empty pair immediately after the run counts. `mmap(2)` is a
+--- cross-reference and already blue, and `mmap(void addr[.length]` in a
+--- SYNOPSIS is code the parser owns.
+--- @param buf integer? buffer handle, defaults to the current one
+--- @return integer runs extended
+function M.close_calls(buf)
+  buf = (buf == nil or buf == 0) and vim.api.nvim_get_current_buf() or buf
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  local extended = 0
+
+  for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(buf, -1, 0, -1, { details = true })) do
+    local d = mark[4]
+    if d.hl_group == "manBold" and d.end_row == mark[2] and d.end_col then
+      local line = lines[mark[2] + 1]
+      if line and line:sub(d.end_col + 1, d.end_col + 2) == "()" then
+        extended = extended + 1
+        pcall(vim.api.nvim_buf_set_extmark, buf, ns, mark[2], d.end_col, {
+          end_row = mark[2],
+          end_col = d.end_col + 2,
+          hl_group = "manBold",
+          priority = CALL_PRIORITY,
+          strict = false,
+        })
+      end
+    end
+  end
+  return extended
 end
 
 function M.clear(buf)
