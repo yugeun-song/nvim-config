@@ -1214,11 +1214,26 @@ hi("@type.doxygen",              { fg = p.yellow })
 hi("@variable.doxygen",          { fg = p.blue })
 
 -- Man pages (syntax/man.vim groups)
+--
+-- Four colours carry the page and three mark the few things worth singling
+-- out. Body text stays the foreground colour, so what is coloured is what is
+-- not body text.
+--
+--   green   section heading, the page's top level
+--   yellow  every bold run: constants, flags, option names in prose
+--   purple  every italic run: parameters, variables, file paths
+--   white   the body
+--
+--   red     subheadings, a handful per page
+--   blue    cross-references, the only text K can follow
+--   indigo  option names in a list, where they are the thing being defined
+--
+-- The running header and footer are neither, and drop to grey.
 hi("manHeader",          { fg = p.grey })
 hi("manFooter",          { fg = p.grey })
-hi("manSectionHeading",  { fg = p.purple, bold = true })
-hi("manSubHeading",      { fg = p.green, bold = true })
-hi("manOptionDesc",      { fg = p.green })
+hi("manSectionHeading",  { fg = p.green, bold = true })
+hi("manSubHeading",      { fg = p.red, bold = true })
+hi("manOptionDesc",      { fg = p.indigo })
 hi("manReference",       { fg = p.blue, underline = true })
 hi("manCFuncDefinition", { fg = p.green })
 hi("manUnderline",       { fg = p.purple, italic = true })
