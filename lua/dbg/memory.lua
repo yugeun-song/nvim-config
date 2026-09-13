@@ -388,7 +388,10 @@ local function read_at(addr)
     do_read(addr)
     return
   end
-  qemumon.qemu_check(session, addr, function(verdict, why)
+  -- The whole window, not just the page it starts in: what is about to be read is
+  -- window_bytes() long -- up to 8 KiB -- and a device region under any part of it
+  -- is the thing that takes qemu down.
+  qemumon.qemu_check_range(session, addr, window_bytes(), function(verdict, why)
     vim.schedule(function()
       if verdict == "ram" then
         state.phys = false

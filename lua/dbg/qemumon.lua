@@ -10,13 +10,37 @@ local cache = {}
 local ncpu = nil
 local monitor_ok = nil
 
-local function page_of(hex)
+-- Addresses are carried as 32-bit halves, not as Lua numbers: a kernel VA such as
+-- 0xffffff8008000000 is past 2^53 and would not survive one.
+local function split(hex)
   local s = hex:gsub("^0[xX]", "")
   s = string.rep("0", math.max(0, 16 - #s)) .. s
-  local hi = tonumber(s:sub(1, 8), 16) or 0
-  local lo = (tonumber(s:sub(9, 16), 16) or 0)
-  lo = lo - (lo % 4096)
+  return tonumber(s:sub(1, 8), 16) or 0, tonumber(s:sub(9, 16), 16) or 0
+end
+
+local function join(hi, lo)
   return string.format("0x%08x%08x", hi, lo)
+end
+
+local function page_of(hex)
+  local hi, lo = split(hex)
+  return join(hi, lo - (lo % 4096))
+end
+
+-- Every page a read of `count` bytes from `hex` touches, first one first.
+local function pages_of(hex, count)
+  local hi, lo = split(hex)
+  local base = lo - (lo % 4096)
+  local crossings = math.floor(((lo % 4096) + math.max(count, 1) - 1) / 4096)
+  local out = { join(hi, base) }
+  for k = 1, crossings do
+    local h, l = hi, base + k * 4096
+    if l > 0xffffffff then
+      h, l = hi + 1, l - 0x100000000
+    end
+    out[#out + 1] = join(h, l)
+  end
+  return out
 end
 
 function M.invalidate()
@@ -205,6 +229,40 @@ function M.qemu_check(session, addr, cb)
 
   cpu_count(session, function(n)
     sweep(0, n)
+  end)
+end
+
+-- A read is as long as its window, and the verdict above is about one page.  The hex
+-- view reads up to 8 KiB at a time and `x/128ag` annotates 1 KiB of it, so a window
+-- that starts in RAM routinely runs on into the pages after it -- and one of those
+-- being a device region is the entire hazard, wherever under the window it sits.
+--
+-- The first page still decides HOW the window is read (the ordinary path for a live
+-- VA, `monitor xp` for a physical one); the pages after it can only veto, never
+-- redirect, because a window cannot be half one and half the other.
+function M.qemu_check_range(session, addr, count, cb)
+  local pages = pages_of(addr, count or 1)
+  M.qemu_check(session, pages[1], function(verdict, why)
+    if verdict ~= "ram" and verdict ~= "phys_ram" or #pages == 1 then
+      cb(verdict, why)
+      return
+    end
+    local i = 1
+    local function step()
+      i = i + 1
+      if i > #pages then
+        cb(verdict, why)
+        return
+      end
+      M.qemu_check(session, pages[i], function(v, w)
+        if v == "device" then
+          cb("device", ("%s -- page %d of the %d this read covers"):format(w, i, #pages))
+        else
+          step()
+        end
+      end)
+    end
+    step()
   end)
 end
 
