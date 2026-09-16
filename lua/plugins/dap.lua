@@ -439,15 +439,6 @@ return {
         },
       })
 
-      -- nvim-dap reads .vscode/launch.json on demand; allow the comments in it.
-      pcall(function()
-        local vscode = require("dap.ext.vscode")
-        local json = require("plenary.json")
-        vscode.json_decode = function(str)
-          return vim.json.decode(json.json_strip_comments(str))
-        end
-      end)
-
       -- bufferline's keys act on the current window, and the debugger's panels are
       -- winfixbuf, so pressing one with the cursor in a panel raises E1513.  Wrap
       -- the commands rather than rebinding whatever keys are configured.
