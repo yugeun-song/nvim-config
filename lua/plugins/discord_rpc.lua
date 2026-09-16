@@ -97,11 +97,7 @@ local function socket_paths()
     end
     return paths
   end
-  local base = os.getenv("XDG_RUNTIME_DIR")
-    or os.getenv("TMPDIR")
-    or os.getenv("TMP")
-    or os.getenv("TEMP")
-    or "/tmp"
+  local base = os.getenv("XDG_RUNTIME_DIR") or os.getenv("TMPDIR") or os.getenv("TMP") or os.getenv("TEMP") or "/tmp"
   local templates = {
     "%s/discord-ipc-%d",
     "%s/snap.discord/discord-ipc-%d",
@@ -369,10 +365,7 @@ local function guarded(fn)
           if stop then
             stop()
           end
-          vim.notify(
-            "Discord RPC: disabled after repeated errors (" .. tostring(err) .. ")",
-            vim.log.levels.WARN
-          )
+          vim.notify("Discord RPC: disabled after repeated errors (" .. tostring(err) .. ")", vim.log.levels.WARN)
         end)
       end
     end

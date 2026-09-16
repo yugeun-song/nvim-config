@@ -131,7 +131,7 @@ local function reselect(cfg, filtered)
     require("dap-view.options.winbar").wrapped_action(target)
   end)
   if state.current_section ~= target then
-    state.current_section = target      -- no window to act on; at least do not restore a gdb section
+    state.current_section = target -- no window to act on; at least do not restore a gdb section
   end
 end
 
@@ -148,6 +148,5 @@ function M.apply_winbar(session)
   end)
   reselect(cfg, filtered)
 end
-
 
 return M

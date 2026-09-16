@@ -111,7 +111,11 @@ function M.candidates()
         else
           local mine, queued = 0, 0
           for _, ino in ipairs(rows) do
-            if owned[ino] then mine = mine + 1 else queued = queued + 1 end
+            if owned[ino] then
+              mine = mine + 1
+            else
+              queued = queued + 1
+            end
           end
           c.busy = mine > 0
           c.queued = queued
@@ -124,11 +128,9 @@ function M.candidates()
           c.notes[#c.notes + 1] = "a client is already attached (the gdbstub serves one; "
             .. "this session would wait in the accept queue)"
         elseif c.busy == nil then
-          c.notes[#c.notes + 1] = "cannot tell whether a debugger is attached "
-            .. "(" .. (c.busy_src or "?") .. ")"
+          c.notes[#c.notes + 1] = "cannot tell whether a debugger is attached " .. "(" .. (c.busy_src or "?") .. ")"
         elseif (c.queued or 0) > 0 then
-          c.notes[#c.notes + 1] = ("%d client(s) queued on the stub but none accepted yet")
-            :format(c.queued)
+          c.notes[#c.notes + 1] = ("%d client(s) queued on the stub but none accepted yet"):format(c.queued)
         end
       else
         c.target = inst.gdb_other

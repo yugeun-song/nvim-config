@@ -127,7 +127,15 @@ function M.add_rule(raw)
     return false
   end
   M.reload()
-  vim.notify("[lsp_filter] added " .. (raw.within or raw.contains) .. " [" .. servers_signature(raw.servers) .. " / " .. raw.action .. "]")
+  vim.notify(
+    "[lsp_filter] added "
+      .. (raw.within or raw.contains)
+      .. " ["
+      .. servers_signature(raw.servers)
+      .. " / "
+      .. raw.action
+      .. "]"
+  )
   return true
 end
 

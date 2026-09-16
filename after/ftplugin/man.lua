@@ -7,7 +7,13 @@ vim.opt_local.scrolloff = 4
 -- its section: 2 and 9 are kernel and syscall interfaces, 3 is the C library
 -- unless the page names another language in its extension.
 local SECTION_LANG = {
-  ["0"] = "c", ["2"] = "c", ["3"] = "c", ["4"] = "c", ["5"] = "c", ["7"] = "c", ["9"] = "c",
+  ["0"] = "c",
+  ["2"] = "c",
+  ["3"] = "c",
+  ["4"] = "c",
+  ["5"] = "c",
+  ["7"] = "c",
+  ["9"] = "c",
 }
 
 local function language_for(buf)
@@ -33,5 +39,7 @@ end)
 
 local lang = language_for(buf)
 if lang then
-  pcall(function() require("man_code").highlight(buf, lang) end)
+  pcall(function()
+    require("man_code").highlight(buf, lang)
+  end)
 end

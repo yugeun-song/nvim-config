@@ -607,8 +607,13 @@ function M.run_state(port, pid)
   if pid and out.KBL_QEMU_START then
     local now = M.proc_starttime(pid)
     if now and now ~= out.KBL_QEMU_START then
-      return nil, "state file names a process started at " .. out.KBL_QEMU_START
-        .. "; pid " .. tostring(pid) .. " started at " .. now
+      return nil,
+        "state file names a process started at "
+          .. out.KBL_QEMU_START
+          .. "; pid "
+          .. tostring(pid)
+          .. " started at "
+          .. now
     end
   end
   return out

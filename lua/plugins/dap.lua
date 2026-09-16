@@ -584,7 +584,8 @@ return {
         -- when the target names no port to look up.
         local state = discover.run_state(
           tonumber(tostring(config.target or ""):match(":(%d+)$")),
-          config.qemu and config.qemu.pid or nil) or config.run_state
+          config.qemu and config.qemu.pid or nil
+        ) or config.run_state
         local mode = state and state.KBL_BOOT
         if (mode == "uboot" or mode == "uefi") and state.KBL_LOADADDR and state.KBL_LOADADDR ~= "" then
           if not env.GDBTOOLS_ENTRY_PA or env.GDBTOOLS_ENTRY_PA == "" then

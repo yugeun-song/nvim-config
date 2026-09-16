@@ -87,16 +87,22 @@ local function block_has_code(lines, first, last)
       end
     end
   end
-  if nonblank == 0 then return false end
+  if nonblank == 0 then
+    return false
+  end
   return (terminators + directives) / nonblank >= MIN_CODE_DENSITY
 end
 
 local function code_start(lines, first, last)
   for i = first, last do
     local l = lines[i]
-    if l:match("[;{]%s*$") then return i end
+    if l:match("[;{]%s*$") then
+      return i
+    end
     for _, pat in ipairs(CODE_OPENERS) do
-      if l:match(pat) then return i end
+      if l:match(pat) then
+        return i
+      end
     end
   end
   return nil
@@ -118,29 +124,39 @@ local function walk_errors(root, fn)
       return fn(node)
     end
     for child in node:iter_children() do
-      if walk(child) then return true end
+      if walk(child) then
+        return true
+      end
     end
   end
   walk(root)
 end
 
 local function error_stats(root, len)
-  if len == 0 then return 1, nil end
+  if len == 0 then
+    return 1, nil
+  end
   local bad, first_row = 0, nil
   walk_errors(root, function(node)
     local sr, _, sb = node:start()
     local _, _, eb = node:end_()
     bad = bad + (eb - sb)
-    if not first_row or sr < first_row then first_row = sr end
+    if not first_row or sr < first_row then
+      first_row = sr
+    end
   end)
   return bad / len, first_row
 end
 
 local function parse(chunk, lang)
   local ok, parser = pcall(vim.treesitter.get_string_parser, chunk, lang)
-  if not ok or not parser then return nil end
+  if not ok or not parser then
+    return nil
+  end
   local ok2, trees = pcall(parser.parse, parser)
-  if not ok2 or not trees or not trees[1] then return nil end
+  if not ok2 or not trees or not trees[1] then
+    return nil
+  end
   return trees[1]:root()
 end
 
@@ -150,22 +166,34 @@ end
 -- paragraph under it, converges in one or two rounds.
 local function fit(lines, from, to, lang)
   for _ = 1, MAX_SHRINKS do
-    if to - from + 1 < MIN_LINES then return nil end
+    if to - from + 1 < MIN_LINES then
+      return nil
+    end
     local chunk = table.concat(vim.list_slice(lines, from, to), "\n")
     local root = parse(chunk, lang)
-    if not root then return nil end
+    if not root then
+      return nil
+    end
     local ratio, first_row = error_stats(root, #chunk)
-    if ratio <= MAX_ERROR_RATIO then return from, to, root, chunk end
-    if not first_row or first_row == 0 then return nil end
+    if ratio <= MAX_ERROR_RATIO then
+      return from, to, root, chunk
+    end
+    if not first_row or first_row == 0 then
+      return nil
+    end
     to = code_end(lines, from, from + first_row - 1)
-    if not to then return nil end
+    if not to then
+      return nil
+    end
   end
   return nil
 end
 
 local function paint(buf, root, chunk, from, lang)
   local query = vim.treesitter.query.get(lang, "highlights")
-  if not query then return false end
+  if not query then
+    return false
+  end
   local seq = 0
   for id, node, metadata in query:iter_captures(root, chunk, 0, -1) do
     local name = query.captures[id]
@@ -205,7 +233,9 @@ local function candidate_blocks(lines)
     if indented or (blank and first) then
       first = first or i
     else
-      if first and i - first >= MIN_LINES then out[#out + 1] = { first, i - 1 } end
+      if first and i - first >= MIN_LINES then
+        out[#out + 1] = { first, i - 1 }
+      end
       first = nil
     end
   end
@@ -213,8 +243,12 @@ local function candidate_blocks(lines)
 end
 
 local function trim_blanks(lines, first, last)
-  while first <= last and vim.trim(lines[first]) == "" do first = first + 1 end
-  while last >= first and vim.trim(lines[last]) == "" do last = last - 1 end
+  while first <= last and vim.trim(lines[first]) == "" do
+    first = first + 1
+  end
+  while last >= first and vim.trim(lines[last]) == "" do
+    last = last - 1
+  end
   return first, last
 end
 
@@ -223,7 +257,9 @@ local function min_indent(lines, first, last)
   for i = first, last do
     if vim.trim(lines[i]) ~= "" then
       local n = #(lines[i]:match("^%s*") or "")
-      if n < m then m = n end
+      if n < m then
+        m = n
+      end
     end
   end
   return m == math.huge and 0 or m
@@ -237,7 +273,9 @@ function M.highlight(buf, lang)
   buf = (buf == nil or buf == 0) and vim.api.nvim_get_current_buf() or buf
   lang = lang or "c"
   local has_parser, added = pcall(vim.treesitter.language.add, lang)
-  if not has_parser or added == false then return 0 end
+  if not has_parser or added == false then
+    return 0
+  end
 
   vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
@@ -245,11 +283,12 @@ function M.highlight(buf, lang)
   local painted = 0
   local started = uv.hrtime()
   for _, block in ipairs(candidate_blocks(lines)) do
-    if (uv.hrtime() - started) / 1e6 > TIME_BUDGET_MS then break end
+    if (uv.hrtime() - started) / 1e6 > TIME_BUDGET_MS then
+      break
+    end
     local first, last = trim_blanks(lines, block[1], block[2])
     if last - first + 1 >= MIN_LINES and last - first + 1 <= MAX_BLOCK_LINES then
-      local from = block_has_code(lines, first, last)
-          and code_start(lines, first, last) or nil
+      local from = block_has_code(lines, first, last) and code_start(lines, first, last) or nil
       local to = from and code_end(lines, from, last)
       -- The indent test belongs to the code, not to the block around it: a
       -- SYNOPSIS carries a one-column subheading ("Feature Test Macro
@@ -258,7 +297,9 @@ function M.highlight(buf, lang)
       -- declarations away with it.
       if from and to and min_indent(lines, from, to) >= MIN_INDENT then
         local f, _, root, chunk = fit(lines, from, to, lang)
-        if f and paint(buf, root, chunk, f, lang) then painted = painted + 1 end
+        if f and paint(buf, root, chunk, f, lang) then
+          painted = painted + 1
+        end
       end
     end
   end

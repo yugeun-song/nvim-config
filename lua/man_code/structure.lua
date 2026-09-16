@@ -67,7 +67,9 @@ function M.highlight(buf)
         from = line:find("%S")
         while true do
           local _, more = line:find("^,%s*[-+][^%s,]*", e + 1)
-          if not more then break end
+          if not more then
+            break
+          end
           e = more
         end
         if from and e >= from then
@@ -89,18 +91,18 @@ function M.highlight(buf)
       -- substring test: a reference needs a parenthesis, most lines have none,
       -- and a page like cmake-modules(7) is 37,000 lines of asking.
       if line:find("(", 1, true) then
-      for from, ref, to in line:gmatch("()([^%s()]+%(%d%a*%))()") do
-        if #ref <= 64 then
-          painted = painted + 1
-          pcall(vim.api.nvim_buf_set_extmark, buf, ns, i - 1, from - 1, {
-            end_row = i - 1,
-            end_col = to - 1,
-            hl_group = "manReference",
-            priority = PRIORITY,
-            strict = false,
-          })
+        for from, ref, to in line:gmatch("()([^%s()]+%(%d%a*%))()") do
+          if #ref <= 64 then
+            painted = painted + 1
+            pcall(vim.api.nvim_buf_set_extmark, buf, ns, i - 1, from - 1, {
+              end_row = i - 1,
+              end_col = to - 1,
+              hl_group = "manReference",
+              priority = PRIORITY,
+              strict = false,
+            })
+          end
         end
-      end
       end
     end
   end

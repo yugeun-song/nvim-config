@@ -589,11 +589,15 @@ local function on_key(_, typed)
     state.esc_pending = true
     local t = uv.new_timer()
     state.esc_timer = t
-    t:start(ESC_MERGE_MS, 0, vim.schedule_wrap(function()
-      state.esc_pending = false
-      state.esc_timer = nil
-      push_key("Esc")
-    end))
+    t:start(
+      ESC_MERGE_MS,
+      0,
+      vim.schedule_wrap(function()
+        state.esc_pending = false
+        state.esc_timer = nil
+        push_key("Esc")
+      end)
+    )
     return
   end
 
