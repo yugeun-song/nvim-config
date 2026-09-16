@@ -272,7 +272,7 @@ function M.render()
   local frame = session.current_frame
   if frame then
     row("frame", ("%s  %s:%s"):format(frame.name, (frame.source or {}).name or "?", frame.line or "?"))
-    row("pc", frame.instructionPointerReference)
+    row("pc", frame["instructionPointerReference"])
   end
 
   local queries = {}

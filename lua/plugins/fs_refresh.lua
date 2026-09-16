@@ -111,7 +111,7 @@ return {
       desc = "Drop pending-edit marks of wiped mini.files buffers",
     })
 
-    local timer = (vim.uv or vim.loop).new_timer()
+    local timer = assert((vim.uv or vim.loop).new_timer())
     timer:start(
       POLL_INTERVAL_MS,
       POLL_INTERVAL_MS,

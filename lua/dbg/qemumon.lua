@@ -8,7 +8,6 @@ M.mode = "auto"
 
 local cache = {}
 local ncpu = nil
-local monitor_ok = nil
 
 -- Addresses are carried as 32-bit halves, not as Lua numbers: a kernel VA such as
 -- 0xffffff8008000000 is past 2^53 and would not survive one.
@@ -145,11 +144,9 @@ function M.qemu_check(session, addr, cb)
   local function check_gpa(gpa, via, undecided)
     monitor(session, "gpa2hva " .. gpa, function(out)
       if not out or out == "" then
-        monitor_ok = false
         finish("unknown", "no reply from monitor gpa2hva")
         return
       end
-      monitor_ok = true
       if out:find("is not RAM") then
         finish("device", "gpa " .. gpa .. " is a device region (" .. via .. ")")
       elseif out:find("No memory is mapped") then

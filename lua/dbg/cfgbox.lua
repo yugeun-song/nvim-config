@@ -208,7 +208,7 @@ local function usable(n)
   return type(n) == "number" and n == n and n ~= math.huge and n ~= -math.huge
 end
 
-function M.render(data, width, detail)
+function M.render(data, _, detail)
   if type(data) ~= "table" or type(data.blocks) ~= "table" or type(data.insns) ~= "table" then
     return nil
   end

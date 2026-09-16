@@ -26,7 +26,9 @@ local CALL_PRIORITY = 4500
 --- @param buf integer? buffer handle, defaults to the current one
 --- @return integer lines painted
 function M.highlight(buf)
-  buf = (buf == nil or buf == 0) and vim.api.nvim_get_current_buf() or buf
+  if not buf or buf == 0 then
+    buf = vim.api.nvim_get_current_buf()
+  end
   vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
 
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
@@ -91,12 +93,12 @@ function M.highlight(buf)
       -- substring test: a reference needs a parenthesis, most lines have none,
       -- and a page like cmake-modules(7) is 37,000 lines of asking.
       if line:find("(", 1, true) then
-        for from, ref, to in line:gmatch("()([^%s()]+%(%d%a*%))()") do
+        for ref_from, ref, ref_to in line:gmatch("()([^%s()]+%(%d%a*%))()") do
           if #ref <= 64 then
             painted = painted + 1
-            pcall(vim.api.nvim_buf_set_extmark, buf, ns, i - 1, from - 1, {
+            pcall(vim.api.nvim_buf_set_extmark, buf, ns, i - 1, ref_from - 1, {
               end_row = i - 1,
-              end_col = to - 1,
+              end_col = ref_to - 1,
               hl_group = "manReference",
               priority = PRIORITY,
               strict = false,
@@ -123,13 +125,15 @@ end
 --- @param buf integer? buffer handle, defaults to the current one
 --- @return integer runs extended
 function M.close_calls(buf)
-  buf = (buf == nil or buf == 0) and vim.api.nvim_get_current_buf() or buf
+  if not buf or buf == 0 then
+    buf = vim.api.nvim_get_current_buf()
+  end
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   local extended = 0
 
   for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(buf, -1, 0, -1, { details = true })) do
     local d = mark[4]
-    if d.hl_group == "manBold" and d.end_row == mark[2] and d.end_col then
+    if d and d.hl_group == "manBold" and d.end_row == mark[2] and d.end_col then
       local line = lines[mark[2] + 1]
       if line and line:sub(d.end_col + 1, d.end_col + 2) == "()" then
         extended = extended + 1

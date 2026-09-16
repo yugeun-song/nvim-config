@@ -157,21 +157,21 @@ function M.candidates()
       -- u-boot/UEFI guest read "no symbol file found" in the editor while the
       -- terminal loaded symbols for it.
       if not c.vmlinux and c.run_state and c.run_state.KBL_TREE then
-        local root = c.run_state.KBL_TREE
+        local tree = c.run_state.KBL_TREE
         local cand = {}
-        local sd = D.tree_value(root, "SRC_DIR")
+        local sd = D.tree_value(tree, "SRC_DIR")
         if sd and sd ~= "" then
-          cand[#cand + 1] = root .. "/" .. sd .. "/vmlinux"
+          cand[#cand + 1] = tree .. "/" .. sd .. "/vmlinux"
         end
-        cand[#cand + 1] = root .. "/kernel/vmlinux"
-        local dir = vim.uv.fs_scandir(root)
+        cand[#cand + 1] = tree .. "/kernel/vmlinux"
+        local dir = vim.uv.fs_scandir(tree)
         while dir do
           local name, kind = vim.uv.fs_scandir_next(dir)
           if not name then
             break
           end
           if kind == "directory" then
-            cand[#cand + 1] = root .. "/" .. name .. "/vmlinux"
+            cand[#cand + 1] = tree .. "/" .. name .. "/vmlinux"
           end
         end
         for _, vm in ipairs(cand) do
@@ -449,7 +449,7 @@ function M.watch_target(session)
   if not pid then
     return
   end
-  local timer = vim.uv.new_timer()
+  local timer = assert(vim.uv.new_timer())
   watchdog = timer
   timer:start(
     2000,

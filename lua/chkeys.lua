@@ -177,7 +177,7 @@ end
 
 local function arm_timer()
   stop_timer()
-  local t = uv.new_timer()
+  local t = assert(uv.new_timer())
   state.timer = t
   t:start(
     config.timeout,
@@ -587,7 +587,7 @@ local function on_key(_, typed)
       end)
     end
     state.esc_pending = true
-    local t = uv.new_timer()
+    local t = assert(uv.new_timer())
     state.esc_timer = t
     t:start(
       ESC_MERGE_MS,

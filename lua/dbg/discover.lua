@@ -435,7 +435,7 @@ function M.gdb_for(arch)
 end
 
 function M.gdb_supports_dap(bin)
-  local out = vim.fn.system({ bin, "--configuration" })
+  vim.fn.system({ bin, "--configuration" })
   if vim.v.shell_error ~= 0 then
     return false
   end

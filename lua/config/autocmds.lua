@@ -80,7 +80,7 @@ vim.api.nvim_create_autocmd("BufRead", {
   pattern = { "*.c", "*.h", "*.S" },
   callback = function()
     local db = vim.fn.findfile("cscope.out", ".;")
-    if db == "" then
+    if type(db) ~= "string" or db == "" then
       return
     end
     local abs = vim.fn.fnamemodify(db, ":p")
@@ -91,7 +91,7 @@ vim.api.nvim_create_autocmd("BufRead", {
       return
     end
     cscope_loaded[abs] = true
-    pcall(vim.cmd, "silent! Cs db a " .. vim.fn.fnameescape(abs) .. "::@")
+    pcall(vim.api.nvim_command, "silent! Cs db a " .. vim.fn.fnameescape(abs) .. "::@")
   end,
   desc = "Auto-add cscope.out found upward from current buffer (once per session)",
 })

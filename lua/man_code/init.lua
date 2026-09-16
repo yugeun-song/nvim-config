@@ -270,7 +270,9 @@ end
 --- @param lang string? treesitter language, defaults to c
 --- @return integer blocks painted
 function M.highlight(buf, lang)
-  buf = (buf == nil or buf == 0) and vim.api.nvim_get_current_buf() or buf
+  if not buf or buf == 0 then
+    buf = vim.api.nvim_get_current_buf()
+  end
   lang = lang or "c"
   local has_parser, added = pcall(vim.treesitter.language.add, lang)
   if not has_parser or added == false then

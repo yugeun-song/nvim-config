@@ -121,14 +121,6 @@ local function bit_set(value, index)
   return nibble ~= nil and (math.floor(nibble / 2 ^ (index % 4)) % 2 == 1)
 end
 
-local function as_number(value)
-  local digits = tostring(value or ""):match("0[xX](%x+)")
-  if digits then
-    return tonumber(digits:sub(-15), 16)
-  end
-  return tonumber(value)
-end
-
 local function arm64_taken(mnemonic, operands, values)
   local f = flags_of(values, "cpsr") or flags_of(values, "CPSR")
   local reg = operands:match("^%s*([%w_]+)")

@@ -471,12 +471,12 @@ return {
       local dap_utils = require("dap.utils")
       if not dap_utils.dbg_quiet_source_missing then
         local report = dap_utils.notify
-        dap_utils.notify = function(msg, ...)
+        rawset(dap_utils, "notify", function(msg, ...)
           if type(msg) == "string" and msg:find("^Source missing, cannot jump to frame") and context.is_low_level() then
             return
           end
           return report(msg, ...)
-        end
+        end)
         dap_utils.dbg_quiet_source_missing = true
       end
 
@@ -911,7 +911,7 @@ return {
         -- Remember which thread reported the stop: with several halted vCPUs the client
         -- would otherwise ask, and moving the wrong one resumes the whole machine.
         if body and body.threadId then
-          session.dbg_stopped_thread = body.threadId
+          session["dbg_stopped_thread"] = body.threadId
         end
         awaiting[session.id] = true
       end
@@ -1002,7 +1002,7 @@ return {
           if kind ~= "none" and kind ~= "stripped" then
             return
           end
-          session.dbg_no_debug_info = true
+          session["dbg_no_debug_info"] = true
           local why = kind == "stripped"
               and "is stripped, so unless debuginfod or a debug package supplies it there are no source lines, locals or types"
             or "was built without -g, so there are no source lines, locals or types"

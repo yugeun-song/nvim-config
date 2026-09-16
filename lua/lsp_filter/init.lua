@@ -26,7 +26,7 @@ local function detach_client(bufnr, client)
     end
   end
   pcall(function()
-    vim.lsp.stop_client(client.id, false)
+    client:stop(false)
   end)
 end
 

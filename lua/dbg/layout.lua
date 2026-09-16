@@ -332,7 +332,7 @@ function M.focus(name)
     end
   end
   if #list > 0 then
-    index = idx
+    index = idx or index
     M.sidebar_open()
     local win = panel.win(slot(1))
     if win then
@@ -742,7 +742,7 @@ function M.leave()
   end
   if saved.tab == vim.api.nvim_get_current_tabpage() then
     if #vim.api.nvim_list_wins() == saved.count then
-      pcall(vim.cmd, saved.sizes)
+      pcall(vim.api.nvim_command, saved.sizes)
     end
     if saved.win and vim.api.nvim_win_is_valid(saved.win) then
       pcall(vim.api.nvim_set_current_win, saved.win)
@@ -772,7 +772,7 @@ function M.unfix_for_buffer_switch()
   end
   -- No editor window at all: make one rather than letting the key fail.
   local prev = vim.api.nvim_get_current_win()
-  pcall(vim.cmd, "topleft split")
+  pcall(vim.api.nvim_command, "topleft split")
   if vim.api.nvim_get_current_win() == prev then
     return
   end

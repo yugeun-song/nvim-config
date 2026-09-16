@@ -103,7 +103,7 @@ function M.start(session)
   if not port then
     return -- unparseable target still gets the message-based half
   end
-  local timer = vim.uv.new_timer()
+  local timer = assert(vim.uv.new_timer())
   state.timer = timer
   timer:start(
     INTERVAL_MS,

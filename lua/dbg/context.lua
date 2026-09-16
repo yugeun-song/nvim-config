@@ -106,7 +106,7 @@ local function put(cfg, want)
   cfg.winbar.default_section = vim.tbl_contains(filtered, want.default_section) and want.default_section or filtered[1]
   cfg.winbar.show_keymap_hints = want.show_keymap_hints
   for name, section in pairs(base) do
-    section.label = (want.labels or {})[name] or stock.labels[name]
+    section.label = (want.labels or {})[name] or (stock and stock.labels or {})[name]
   end
   return filtered
 end

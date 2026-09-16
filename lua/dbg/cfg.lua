@@ -219,7 +219,7 @@ local function as_int(v, fallback)
   end
   if type(v) == "string" then
     local n = tonumber(v)
-    if finite(n) then
+    if n and finite(n) then
       return math.floor(n)
     end
   end

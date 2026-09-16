@@ -35,7 +35,7 @@ end
 local function hlslens_search(forward_key, backward_key)
   return function()
     local key = vim.v.searchforward == 1 and forward_key or backward_key
-    local ok, err = pcall(vim.cmd, ("normal! %d%szv"):format(vim.v.count1, key))
+    local ok, err = pcall(vim.api.nvim_command, ("normal! %d%szv"):format(vim.v.count1, key))
     if ok then
       pcall(function()
         require("hlslens").start()
