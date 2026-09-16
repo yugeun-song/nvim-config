@@ -365,6 +365,11 @@ function M.render()
   end
   arch_label = (session.config or {}).arch or ""
   local frame = session.current_frame
+  if not frame then
+    local banner = ui.banner("REGISTERS", panel.width(buf, 100))
+    panel.render(buf, { banner, "", "  no current frame" }, ui.banner_hl(0, banner, "REGISTERS"))
+    return
+  end
   session:request("scopes", { frameId = frame.id }, function(err, res)
     if err or not res then
       vim.schedule(function()
