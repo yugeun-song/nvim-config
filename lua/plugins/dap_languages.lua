@@ -161,9 +161,18 @@ return {
       local codelldb = mason_bin("codelldb")
       if vim.uv.fs_stat(codelldb) then
         local lib = vim.fs.joinpath(vim.fn.stdpath("data"), "mason", "opt", "lldb", "lib", "liblldb.so")
-        opts.dap = {
-          adapter = require("rustaceanvim.config").get_codelldb_adapter(codelldb, vim.uv.fs_stat(lib) and lib or nil),
-        }
+        local adapter
+        if vim.uv.fs_stat(lib) then
+          adapter = require("rustaceanvim.config").get_codelldb_adapter(codelldb, lib)
+        else
+          adapter = {
+            type = "server",
+            port = "${port}",
+            host = "127.0.0.1",
+            executable = { command = codelldb, args = { "--port", "${port}" } },
+          }
+        end
+        opts.dap = { adapter = adapter }
       end
       opts.server = {
         settings = function(project_root, default_settings)
