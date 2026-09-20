@@ -51,6 +51,18 @@ local function clang_format_indent(bufname)
   }
 end
 
+local function indents_with_tabs(buf)
+  local tabs, spaces = 0, 0
+  for _, line in ipairs(vim.api.nvim_buf_get_lines(buf, 0, 2000, false)) do
+    if line:find("^\t") then
+      tabs = tabs + 1
+    elseif line:find("^  ") then
+      spaces = spaces + 1
+    end
+  end
+  return tabs > spaces
+end
+
 vim.api.nvim_create_autocmd("FileType", {
   group = augroup("c_cpp_indent"),
   pattern = { "c", "cpp" },
@@ -62,8 +74,13 @@ vim.api.nvim_create_autocmd("FileType", {
       opt.shiftwidth = style.shiftwidth
       opt.softtabstop = style.shiftwidth
       opt.expandtab = style.expandtab
+    elseif indents_with_tabs(args.buf) then
+      opt.tabstop = 8
+      opt.shiftwidth = 8
+      opt.softtabstop = 8
+      opt.expandtab = false
     else
-      opt.tabstop = 4
+      opt.tabstop = 8
       opt.shiftwidth = 4
       opt.softtabstop = 4
       opt.expandtab = true
@@ -71,7 +88,7 @@ vim.api.nvim_create_autocmd("FileType", {
     opt.list = true
     vim.b.autoformat = false
   end,
-  desc = "Indent C/C++ with 4 spaces unless .clang-format says otherwise; .editorconfig still wins",
+  desc = "Indent C/C++ per .clang-format, else 8-col tabs if the file uses tabs, else 4 spaces; .editorconfig still wins",
 })
 
 local cscope_loaded = {}
