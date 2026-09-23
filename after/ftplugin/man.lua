@@ -1,4 +1,6 @@
-vim.opt_local.signcolumn = "no"
+vim.opt_local.number = vim.go.number
+vim.opt_local.relativenumber = vim.go.relativenumber
+vim.opt_local.signcolumn = vim.go.signcolumn
 vim.opt_local.cursorline = false
 vim.opt_local.scrolloff = 4
 
