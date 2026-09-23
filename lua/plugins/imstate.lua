@@ -14,20 +14,47 @@ end
 
 local im_state = "en"
 local caps_state = ""
+local caps_in_flight = false
 local fcitx_in_flight = false
 
+local function set_im_state(res)
+  if res == "hangul" then
+    im_state = "한"
+  else
+    im_state = (caps_state ~= "") and "EN" or "en"
+  end
+  vim.g.im_state = im_state
+end
+
+local function set_caps_state(data)
+  caps_state = (data and data:find("1")) and "󰬈 CAPS" or ""
+  vim.g.caps_state = caps_state
+  if has_fcitx5 and im_state ~= "한" then
+    set_im_state(nil)
+  end
+end
+
 local function update_caps_status()
-  if not actual_caps_path then
+  if not actual_caps_path or caps_in_flight then
     return
   end
+  caps_in_flight = true
 
-  local f = io.open(actual_caps_path, "r")
-  if f then
-    local data = f:read("*a")
-    f:close()
-    caps_state = (data and data:find("1")) and "󰬈 CAPS" or ""
-    vim.g.caps_state = caps_state
-  end
+  uv.fs_open(actual_caps_path, "r", 438, function(err, fd)
+    if err or not fd then
+      caps_in_flight = false
+      return
+    end
+    uv.fs_read(fd, 8, 0, function(rerr, data)
+      uv.fs_close(fd)
+      caps_in_flight = false
+      if not rerr then
+        vim.schedule(function()
+          set_caps_state(data)
+        end)
+      end
+    end)
+  end)
 end
 
 local function poll_fcitx_async()
@@ -50,33 +77,31 @@ local function poll_fcitx_async()
         return
       end
       local res = table.concat(stdout_lines, ""):gsub("%s+", "")
-      if res == "hangul" then
-        im_state = "한"
-      else
-        im_state = (caps_state ~= "") and "EN" or "en"
-      end
-      vim.g.im_state = im_state
+      set_im_state(res)
     end,
   })
 end
 
 local function start_kbd_check()
-  local timer = uv.new_timer()
-  if not timer then
-    return false
+  if actual_caps_path then
+    local timer = uv.new_timer()
+    if not timer then
+      return false
+    end
+    timer:start(0, 200, update_caps_status)
   end
 
-  timer:start(
-    0,
-    200,
-    vim.schedule_wrap(function()
-      update_caps_status()
-
-      if has_fcitx5 then
-        poll_fcitx_async()
-      end
-    end)
-  )
+  if has_fcitx5 then
+    local timer = uv.new_timer()
+    if not timer then
+      return false
+    end
+    timer:start(0, 1000, vim.schedule_wrap(poll_fcitx_async))
+    vim.api.nvim_create_autocmd({ "InsertEnter", "InsertLeave", "FocusGained", "CursorHold", "CursorHoldI" }, {
+      group = vim.api.nvim_create_augroup("IMState", { clear = true }),
+      callback = vim.schedule_wrap(poll_fcitx_async),
+    })
+  end
   return true
 end
 

@@ -358,7 +358,7 @@ Turns LSP servers off for chosen files or directories, for silencing generated o
 
 - **`langmap`** maps Dubeolsik Hangul jamo to their QWERTY keys, so Normal-mode commands work while the OS IME emits Hangul.
 - **Auto-reset** — on `InsertLeave` and `FocusGained` the IME is forced back to English. Backend detected at startup: `fcitx5-remote -c` (Linux), `im-select.exe` (Windows), or `issw` (macOS); with none, only the `langmap` applies. It never switches you into Korean.
-- **Statusline indicators** — a 200 ms timer polls the Caps Lock LED and `fcitx5-remote -n`, exposing `vim.g.caps_state` and `vim.g.im_state`. Each lualine component is added only when its backend exists: `󰬈 CAPS`, and `한` for Hangul, otherwise `EN`/`en` with the case mirroring Caps Lock.
+- **Statusline indicators** — a 200 ms timer reads the Caps Lock LED asynchronously, and `fcitx5-remote -n` runs on insert/focus/idle events plus a 1 s fallback timer, exposing `vim.g.caps_state` and `vim.g.im_state`. Each lualine component is added only when its backend exists: `󰬈 CAPS`, and `한` for Hangul, otherwise `EN`/`en` with the case mirroring Caps Lock.
 
 ### UI & appearance
 
