@@ -12,6 +12,7 @@ The config is primarily targeted at Linux. Several features (the Korean IME rese
 - **C/C++ indentation.** C/C++ buffers follow the tree's `.editorconfig` / `.clang-format`; without either, a tab-indented file gets 8-column tabs and anything else 4 spaces. They show whitespace, and have autoformat disabled so sources are never reflowed on save.
 - **clangd, cscope & tags wired for big trees.** clangd runs with kernel-friendly flags and dynamic parallelism; cscope databases auto-load; `<C-]>` is redirected to the `tags` file instead of LSP.
 - **Low-level / cpp-preprocessed highlighting.** Kernel-style `.S`/`.s` assembly gets the C grammar Tree-sitter-injected into its `#` directive lines (so `#define`/`#include`/`#ifdef` and macro names read as C, not flat comments); inline `asm("…")` bodies inside C/C++ get the assembly grammar injected; `.S`/`.s` are pinned to GNU-as (avoiding the `vmasm` fallback on `.macro` files); linker scripts (`.lds`/`.ld`, and cpp-preprocessed `.lds.S` like `vmlinux.lds.S`) use the `linkerscript` parser; and device trees (`.dts`/`.dtsi`) use `devicetree`.
+- **Man pages read like source.** `:Man` buffers get the C grammar run over their code blocks, their headings and cross-references painted above roff's bold, and the same line-number and sign-column layout as any other buffer.
 - **Debugger built on GDB's own DAP.** `nvim-dap` drives `gdb -i dap` (GDB 14+ speaks the Debug Adapter Protocol natively), so userspace C/C++, a foreign-architecture userspace binary under a QEMU user-mode gdbstub, and cross-architecture Linux Kernel debugging against a QEMU gdbstub all work without a third-party adapter. Every other language debugs through its own ecosystem's DAP support instead — `nvim-dap-python` for Python, `rustaceanvim` for Rust, `js-debug-adapter` for JavaScript/TypeScript — and keeps that support's own configurations, options and views. For a GDB session it adds panels for registers, a two-column locals/globals view, a configurable hex view, memory mappings and target queries on top of `nvim-dap-view`; other languages keep nvim-dap-view's own views.
 - **Custom `lsp_filter` module.** Disable clangd (or any server) per file/directory via persisted rules — useful for excluding noisy generated files from a kernel tree.
 - **Korean IME integration.** A Dubeolsik → QWERTY `langmap` keeps Normal-mode commands working while the OS IME is in Hangul, the IME auto-resets to English on leaving Insert mode, and the statusline shows live fcitx5 / Caps Lock state.
@@ -137,6 +138,8 @@ nvim-config/
 ├── .neoconf.json             # lua_ls / neodev types for editing this config
 ├── stylua.toml               # StyLua style for the config's own Lua (2-space, 120 col)
 ├── after/
+│   ├── ftplugin/
+│   │   └── man.lua            # man buffers: window options, then the man_code passes
 │   └── queries/               # Tree-sitter query extensions (see lua/plugins/asm.lua)
 │       ├── asm/injections.scm # inject C into .S/.s cpp directive lines
 │       ├── c/injections.scm   # inject asm into inline asm("…") bodies
@@ -173,6 +176,9 @@ nvim-config/
     │   ├── options.lua       # editor options (tags, guicursor, no swap/modeline) + .S/.s/.lds/.lds.S filetypes
     │   ├── keymaps.lua       # ChKeys setup + <leader>uK toggle
     │   └── autocmds.lua      # C/C++ indent detection, cscope auto-load, tagfunc reset
+    ├── man_code/             # man page highlighting on top of nvim's own :Man
+    │   ├── init.lua          # parse the code blocks with the section's Tree-sitter grammar
+    │   └── structure.lua     # headings, option names and cross-references above the bold marks
     ├── lsp_filter/           # custom per-path LSP gating module
     │   ├── init.lua          # public API, LspAttach gating, registry persistence
     │   ├── rules.lua         # rule engine (within/contains → disable/diagnostics_off)
@@ -245,6 +251,14 @@ Kernel low-level sources mix several languages in one file, and the stock gramma
 - **device trees** — `*.dts`/`*.dtsi` use the `devicetree` grammar, which handles cpp `#include`/`#define` natively (no injection needed) and does not confuse them with `#address-cells`-style properties.
 
 Known ceiling: this is injection, not preprocessing, so `#if 0 … #endif` bodies are still highlighted (Tree-sitter cannot evaluate the preprocessor), and an assembler directive used as a `#define` body (`#define __HEAD .section …`) is tokenised by the C grammar rather than the assembly grammar.
+
+### Man pages (`after/ftplugin/man.lua`, `lua/man_code/`)
+
+nvim's `:Man` paints roff's bold and italic as extmarks at priority 4096, above anything a syntax file can say, so the distinctions `syntax/man.vim` draws never reached the screen and code in sections 2 and 3 got the legacy `c.vim` at best. The ftplugin runs two passes over the buffer after the page is rendered:
+
+- **code** (`lua/man_code/init.lua`) — every indented run is tested for code density, cut to the lines that open and close like code, and parsed with the Tree-sitter grammar the page's section implies (`c` for sections 0/2/3/4/5/7/9 and the `3p`/`3type`/`3const`/`3head`/`3attr` variants; any other suffix is tried as a grammar name). Blocks that parse mostly as errors are prose and are skipped; a block that runs into prose is shrunk back to before the first error and retried. The captures are painted at priority 5000, so `fprintf`, `fd` and `size_t` get the same colours as in a `.c` file. Bounded at 800 lines per block and 100 ms per page.
+- **structure** (`lua/man_code/structure.lua`) — the running header and footer, section headings, subheadings, option names in an option list and `name(section)` cross-references are re-marked at priority 5200 so the colorscheme's `man*` groups apply. A bold function name followed by `()` has the bold extended over the parentheses, which man-pages sets in roman.
+- **window** — `number`, `relativenumber` and `signcolumn` follow the global values (the stock ftplugin turns them off), `cursorline` is off and `scrolloff` is 4.
 
 ### Debugging (`lua/plugins/dap.lua`, `lua/dbg/`)
 
