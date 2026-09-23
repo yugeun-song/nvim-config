@@ -1,9 +1,8 @@
 local M = {}
 
--- GDB answers `setFunctionBreakpoints` and `setInstructionBreakpoints`, but
--- nvim-dap has no API for either, so the list is kept here and pushed to the
--- session.  This is what keeps a binary built without -g usable: `break main`
--- depends on no line table.
+-- nvim-dap has no API for setFunctionBreakpoints / setInstructionBreakpoints,
+-- so the list lives here. `break main` needs no line table, so a binary without
+-- -g stays usable.
 local functions = {}
 local addresses = {}
 local status = {}
@@ -187,8 +186,8 @@ function M.pick()
 end
 
 function M.setup(dap)
-  -- Queued before nvim-dap's own breakpoints and configurationDone, so these
-  -- arrive before the target is running.
+  -- Before nvim-dap's own breakpoints and configurationDone, so the target is not
+  -- running yet.
   dap.listeners.before.event_initialized["dbg_breakpoints"] = function(session)
     if not require("dbg.context").is_low_level(session) then
       return

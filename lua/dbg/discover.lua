@@ -7,10 +7,9 @@ local EM_NAMES = {
   [243] = "riscv64",
 }
 
--- Cross-gdb naming is not portable: Debian and Arch ship aarch64-linux-gnu-gdb,
--- other toolchains spell it -none-linux-gnu- or -none-elf-, and a distribution
--- that builds gdb --enable-targets=all ships no cross binary at all.  Probe, and
--- fall back on the host gdb only after checking it really is multi-target.
+-- Cross-gdb naming varies by distribution and toolchain, and a gdb built with
+-- --enable-targets=all ships no cross binary at all. Probe, then fall back on
+-- the host gdb only if it is multi-target.
 local GDB_CANDIDATES = {
   aarch64 = { "aarch64-linux-gnu-gdb", "aarch64-none-linux-gnu-gdb", "aarch64-none-elf-gdb", "gdb-multiarch" },
   riscv64 = { "riscv64-linux-gnu-gdb", "riscv64-unknown-linux-gnu-gdb", "riscv64-unknown-elf-gdb", "gdb-multiarch" },
@@ -18,8 +17,7 @@ local GDB_CANDIDATES = {
   x86_64 = { "gdb" },
 }
 
--- The kernel trees speak "arm64" (their qemu.conf and the kernel's own ARCH=),
--- the ELF header speaks "aarch64".  One name reaches this table either way.
+-- Kernel trees say "arm64" (ARCH=), the ELF header says "aarch64".
 local ARCH_ALIASES = { arm64 = "aarch64", amd64 = "x86_64", riscv = "riscv64" }
 
 local function slurp(path, size)
@@ -74,9 +72,8 @@ local function uint(str, pos, len, little)
   return v
 end
 
--- How an ELF carries its DWARF: "embedded", "external" (a separate debug file),
--- "none", or nil when it is not a readable ELF.  The section name string table
--- is read directly, so this holds for any ELF class, endianness and arch.
+-- How an ELF carries its DWARF: "embedded", "external", "none", or nil when it
+-- is not a readable ELF. Reads the section name table, so any class or endianness.
 function M.elf_debug_info(path)
   if not path or path == "" then
     return nil
@@ -139,21 +136,17 @@ function M.elf_debug_info(path)
   if names:find(".gnu_debuglink", 1, true) or names:find(".debug_sup", 1, true) then
     return "external"
   end
-  -- No debug sections and no symbol table either means the binary was stripped,
-  -- so debuginfod or a debug package may still supply what was removed.  A
-  -- build-id cannot be used to tell these apart: gcc emits one with or without
-  -- -g.  With .symtab still present nothing was removed, so the information was
-  -- never generated.
+  -- No debug sections and no .symtab means stripped, so a debug package may
+  -- still supply it; with .symtab present it was never generated. A build-id
+  -- cannot tell these apart: gcc emits one with or without -g.
   if not names:find(".symtab", 1, true) then
     return "stripped"
   end
   return "none"
 end
 
--- Read a /proc file whole.  Its st_size is 0, so a single fixed-size read is a
--- guess: /proc/net/tcp on a busy host runs past any round number, and a short
--- read silently drops the tail -- which here would flip a listening port to
--- "not listening" with no sign that anything was missing.
+-- Read a /proc file whole. st_size is 0 there, and a fixed-size read of
+-- /proc/net/tcp on a busy host silently drops the tail.
 local function slurp_proc(path)
   local fd = vim.uv.fs_open(path, "r", 438)
   if not fd then
@@ -194,16 +187,10 @@ function M.socket_inodes(pid)
 end
 
 -- listen[port] = true, estab[port] = { inode, ... }
---
--- The inodes matter.  qemu's gdbstub keeps listening after it accepts, so a
--- SECOND client completes its TCP handshake and appears as ESTABLISHED while
--- qemu holds no fd for it -- it is queued behind the first.  Reporting "a client
--- is already attached" from the bare existence of an ESTABLISHED row therefore
--- counts a queued client as an attached one.  Ownership is decided by
--- intersecting these inodes with the qemu process's own, in kernel.lua.
---
--- Both families are read: `-gdb tcp::N` binds 0.0.0.0 and [::], so a client from
--- ::1 appears only in /proc/net/tcp6.
+-- The inodes matter: qemu's gdbstub keeps listening after it accepts, so a
+-- second client shows as ESTABLISHED while queued behind the first. kernel.lua
+-- intersects these inodes with qemu's own fds to decide who is attached.
+-- Both families are read: a client from ::1 appears only in /proc/net/tcp6.
 function M.tcp_states()
   local listen, estab = {}, {}
   for _, f in ipairs({ "/proc/net/tcp", "/proc/net/tcp6" }) do
@@ -338,8 +325,8 @@ function M.kernel_root_from_image(image)
   return nil, nil
 end
 
--- Every filesystem path on a qemu command line, including the ones inside
--- comma-separated option values such as -drive if=none,file=...
+-- Every filesystem path on a qemu command line, including those inside
+-- comma-separated option values (-drive if=none,file=...).
 function M.qemu_paths(inst)
   local out, seen = {}, {}
   for i = 2, #((inst or {}).argv or {}) do
@@ -354,10 +341,8 @@ function M.qemu_paths(inst)
   return out
 end
 
--- A guest booted through firmware carries no -kernel: u-boot or UEFI loads the
--- image itself, so the only trace of the tree is a disk or firmware path. Walk up
--- from one, looking for a kernel build beside it, and report how far up it was so
--- the nearest match wins.
+-- A firmware-booted guest carries no -kernel, so walk up from a disk or
+-- firmware path looking for a kernel build beside it; nearest match wins.
 function M.vmlinux_near(path)
   local dir = vim.fs.dirname(path)
   for distance = 0, 7 do
@@ -422,9 +407,7 @@ function M.gdb_for(arch)
       return cand
     end
   end
-  -- No cross-gdb.  The host one is only an answer if it was built for every
-  -- target; saying "gdb" regardless would attach an x86 debugger to an arm64
-  -- kernel and report nonsense rather than refusing.
+  -- No cross-gdb: the host one only counts if built for every target.
   if vim.fn.executable("gdb") == 1 then
     local conf = vim.fn.system({ "gdb", "--configuration" })
     if vim.v.shell_error == 0 and conf:find("--enable-targets=all", 1, true) then
@@ -444,10 +427,8 @@ function M.gdb_supports_dap(bin)
   return (major or 0) >= 14
 end
 
--- Where the gdbtools loader lives.  Every source of the answer is asked in turn
--- and none of them is a path baked in here, so the repository can be cloned
--- anywhere on any machine.  Absent is a normal answer; the caller decides what
--- that means -- the control-flow panel simply reports that nothing answered.
+-- Where the gdbtools loader lives. No path is baked in; absent is a normal
+-- answer and the caller decides what it means.
 local function first_readable(paths)
   for _, p in ipairs(paths) do
     if p and vim.uv.fs_stat(p) then
@@ -470,9 +451,8 @@ local function pointer_file()
   return root ~= "" and (root .. "/gdbtools.py") or nil
 end
 
--- Both repositories are commonly checked out side by side.  Resolving nvim's own
--- config directory through its symlink and looking next to it finds gdbtools
--- without naming a user, a parent directory, or a machine.
+-- The two repositories are usually checked out side by side: look next to
+-- this config's real directory.
 local function sibling_checkout()
   local self = vim.uv.fs_realpath(vim.fn.stdpath("config"))
   if not self then
@@ -481,8 +461,7 @@ local function sibling_checkout()
   return vim.fs.dirname(self) .. "/gdbtools/gdbtools.py"
 end
 
--- tree.conf is the file the shell launcher reads, so it is read first here too;
--- qemu.conf is the older name of the same thing and stays a fallback.
+-- tree.conf is what the shell launcher reads; qemu.conf is its older name.
 local function tree_conf(kernel_root)
   if not kernel_root then
     return nil
@@ -498,8 +477,8 @@ local function tree_conf(kernel_root)
   return nil
 end
 
--- One key out of the tree description, with the directory it was read from, so a
--- relative path stated there resolves against the right place. Parsed, never sourced.
+-- One key out of the tree description, with its directory so a relative path
+-- resolves. Parsed, never sourced.
 function M.tree_value(kernel_root, key)
   local path = tree_conf(kernel_root)
   if not path then
@@ -509,10 +488,8 @@ function M.tree_value(kernel_root, key)
   for _, line in ipairs(vim.fn.readfile(path)) do
     local v = line:match("^%s*" .. key:gsub("%W", "%%%0") .. "%s*=%s*(.-)%s*$")
     if v then
-      -- Same grammar as kbuildlab's kbl_tree_get: trailing comment and space
-      -- stripped, then one layer of surrounding double quotes removed.  Only
-      -- one of the five parsers used to unquote, so a quoted value reached the
-      -- terminal bare and the editor with its quotes still attached.
+      -- Same grammar as kbuildlab's kbl_tree_get: strip trailing comment and
+      -- space, then one layer of double quotes.
       v = v:gsub("%s*#.*$", ""):gsub("%s+$", "")
       v = v:gsub('^"(.*)"$', "%1")
       return v, dir
@@ -521,15 +498,9 @@ function M.tree_value(kernel_root, key)
   return nil, dir
 end
 
--- What the tree says about its own machine, for handing to the debugger.
---
--- The tree already describes itself -- QEMU_BIN, MACHINE, CPU, the gdb port -- so
--- the debugger's view of it lives in the same file rather than being restated
--- here. The extension carries no board constants of its own, and a copy kept in
--- this config would drift from the one the shell launcher reads, which produces a
--- session that looks calibrated while every address is off. Absent or without
--- GDBTOOLS_ lines is a normal answer: nothing is injected, and the extension then
--- refuses wherever it actually needs a value.
+-- The GDBTOOLS_ lines of the tree description, for the adapter's environment.
+-- Nothing is restated here: a copy would drift from what the shell launcher
+-- reads. Absent is a normal answer.
 function M.machine_facts(kernel_root)
   local out = {}
   local path = tree_conf(kernel_root)
@@ -546,14 +517,8 @@ function M.machine_facts(kernel_root)
   return out
 end
 
--- What kbuildlab recorded for the guest on this gdb port: the boot mode it was
--- actually started in and, for a firmware chain, where the bootloader lands the
--- kernel. The tree states only its default mode, so this is the only evidence of
--- the combination running right now. Written by kbuildlab lib/run-qemu.sh; absent
--- is a normal answer, for a guest nothing else started.
--- /proc/PID/stat field 22 (starttime).  Parsed from after the LAST ')' rather
--- than by column number: comm sits in parentheses and may contain spaces, which
--- shifts every field after it.  Same rule as kbuildlab's kbl_proc_starttime.
+-- /proc/PID/stat field 22 (starttime), parsed from after the last ')': comm may
+-- contain spaces. Same rule as kbuildlab's kbl_proc_starttime.
 function M.proc_starttime(pid)
   local data = slurp("/proc/" .. pid .. "/stat", 8192)
   if not data then
@@ -574,18 +539,16 @@ function M.proc_starttime(pid)
   return out
 end
 
--- `pid` is optional but every caller has one, and passing it is what makes this
--- agree with `kbuildlab attach --list`.  A state file whose recorded qemu pid and
--- start time do not match the process actually on that port describes a PREVIOUS
--- run: kbl_instances rejects it, and without the same test here the editor would
--- calibrate to it -- adding u-boot symbols to a guest that never ran u-boot, and
--- disagreeing with the terminal about one guest.
+-- What kbuildlab (lib/run-qemu.sh) recorded for the guest on this port: the
+-- boot mode it was started in and, for a firmware chain, where the kernel lands.
+-- Absent is a normal answer. With `pid`, a file whose recorded pid and start
+-- time do not match the live process describes a previous run and is rejected,
+-- as kbl_instances does.
 function M.run_state(port, pid)
   if not port then
     return nil
   end
-  -- Same rule as kbuildlab's kbl_statedir(): $KBL_STATE_DIR wins, /dev/shm is
-  -- the default.  The two must agree, so neither hardcodes the path alone.
+  -- Same rule as kbuildlab's kbl_statedir(): $KBL_STATE_DIR, else /dev/shm.
   local dir = vim.env.KBL_STATE_DIR
   if not dir or dir == "" then
     dir = "/dev/shm"

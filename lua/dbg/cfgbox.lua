@@ -1,20 +1,13 @@
 local M = {}
 
 -- The box view: one box per basic block, ranks stacked, branches drawn between
--- them.  Calls stay as text inside their block, as in IDA and Binary Ninja: a
--- call returns, so the block continues through it, and drawing every one turns
--- the picture into a hairball.
---
+-- them. Calls stay as text inside their block, as in IDA and Binary Ninja.
 -- Rank and order arrive from the analyser; only the mapping to cells is here.
 
--- Limits, set from measurement rather than taste.  The canvas is materialised
--- cell by cell, so its area is the cost: on this machine 1.5M cells is about
--- 340 ms, which is a repaint you do not notice, and the next step up was
--- multi-second.  Raise M.canvas_cells for bigger graphs on a faster machine;
--- lower it if a repaint ever feels slow.
---
--- The width cap matters more than it looks: one long operand in one block widens
--- its whole rank, and rank width multiplies into the area.
+-- The canvas is materialised cell by cell, so its area is the cost: 1.5M cells
+-- measured at about 340 ms, the next step up was multi-second. The width cap
+-- matters: one long operand widens its whole rank, and rank width multiplies
+-- into the area.
 M.canvas_cells = 1500000
 M.box_inner_max = 56
 
@@ -52,10 +45,8 @@ local EDGE_HL = {
   fall = "DbgMuted",
 }
 
--- A terminal cell holds one colour, so where two edges cross only one of them
--- can be drawn.  Which one is decided here rather than by whichever happened to
--- be painted last: the edge that carries more information wins, so the line you
--- can follow across a crossing is always the more important one.
+-- A cell holds one colour, so at a crossing the edge carrying more information
+-- wins rather than whichever was painted last.
 local EDGE_PRIORITY = {
   ["true"] = 130,
   ["false"] = 125,
@@ -110,20 +101,16 @@ local function put_h(grid, r, c)
   end
 end
 
--- One orthogonal run, corners included: without them the three strokes read as
--- three unrelated lines instead of one edge.
--- One cell per row: a vertical run needs a span for every row it crosses, or the
--- edge is coloured along its horizontal and plain along its verticals, which
--- reads as a line that stops halfway.
+-- One orthogonal run with corners, and a span for every row a vertical crosses;
+-- otherwise the edge reads as three lines, or as one that stops halfway.
 local function paint_column(hl, from, to, col, group)
   for r = math.min(from, to), math.max(from, to) do
     hl[#hl + 1] = { r, col, col + 1, group, EDGE_PRIORITY[group] or 110 }
   end
 end
 
--- The tee only goes on an actual border cell.  The terminator label lives in the
--- top border, and writing through it produces things like "[bra<tee>ch]"; the
--- arrowhead above already says where the edge lands.
+-- The tee only goes on a border cell: writing through the terminator label in
+-- the top border gives "[bra<tee>ch]".
 local BORDER = { [GLYPH.h] = true, [GLYPH.tl] = true, [GLYPH.tr] = true, [GLYPH.tee_u] = true }
 
 local function land_tee(grid, row, col)
@@ -162,10 +149,8 @@ local function route_edge(grid, hl, sx, sy, dx, dy, route, group, arrow_group)
   hl[#hl + 1] = { dy - 1, dx, dx + 1, arrow_group or group, EDGE_PRIORITY[group] or 110 }
 end
 
--- The text inside one block: its instructions, and the addresses they are at.
--- Zoom in a character grid is level of detail: there is no half a cell.  Level 2
--- is everything, level 0 is a label, and the boxes narrow as the level drops so
--- a wide graph fits.
+-- The text inside one block. Zoom in a cell grid is level of detail: 2 is
+-- everything, 0 is a label, and boxes narrow as the level drops.
 M.DETAIL_MAX = 2
 
 local function block_body(data, block, detail)
@@ -229,7 +214,6 @@ function M.render(data, _, detail)
     return nil
   end
 
-  -- Measure every box, then place the ranks.
   local boxes = {}
   local by_rank = {}
   for _, b in ipairs(blocks) do
@@ -285,8 +269,8 @@ function M.render(data, _, detail)
       x = x + boxes[id].w + GAP_X
       tallest = math.max(tallest, boxes[id].h)
     end
-    -- Routing starts below the tallest box in the rank: keyed off each box's
-    -- own bottom, a short box's row would cross the taller box beside it.
+    -- Route below the tallest box in the rank, or a short box's edge would
+    -- cross its taller neighbour.
     for _, id in ipairs(by_rank[r]) do
       boxes[id].rank_bottom = y + tallest - 1
     end
@@ -307,7 +291,6 @@ function M.render(data, _, detail)
   local grid = blank(canvas_h, canvas_w)
   local hl = {}
 
-  -- Boxes.
   for _, b in ipairs(blocks) do
     local box = boxes[b.id]
     local x, yy, w, h = box.x, box.y, box.w, box.h
@@ -344,9 +327,8 @@ function M.render(data, _, detail)
     hl[#hl + 1] = { yy + h - 1, x, x + w, group, BOX_PRIORITY }
   end
 
-  -- Three routing cases: next rank goes down the band; a rank-skipping edge
-  -- takes the right margin so it does not cross the boxes between; a back edge
-  -- takes the left, which is where every assembly graph view puts loops.
+  -- Next rank goes down the band; a rank-skipping edge takes the right margin;
+  -- a back edge takes the left, where every assembly graph view puts loops.
   local edges = {}
   for _, e in ipairs(type(data.block_edges) == "table" and data.block_edges or {}) do
     if type(e) == "table" and boxes[e.from] and boxes[e.to] then
@@ -354,8 +336,7 @@ function M.render(data, _, detail)
     end
   end
 
-  -- Spread arrivals across the target's top border; landing them all on the
-  -- centre column makes two edges into one box look like one.
+  -- Spread arrivals across the top border, or two edges into a box look like one.
   local departure
 
   local function arrival(e)
@@ -375,8 +356,7 @@ function M.render(data, _, detail)
       end
     end
     local dst = boxes[e.to]
-    -- The only way out of one box into the only way into another: keep the
-    -- column so the edge is a straight line rather than a jog for no reason.
+    -- Sole exit into sole entry: keep the column so the edge is straight.
     if #ins == 1 and #outs == 1 then
       local sx = departure(e)
       if sx > dst.x and sx < dst.x + dst.w - 1 then
@@ -403,8 +383,7 @@ function M.render(data, _, detail)
     return src.x + math.floor(src.w * slot / (#outs + 1)), #outs
   end
 
-  -- Route rows inside a band, one per edge, so two edges leaving the same rank
-  -- never share a horizontal.
+  -- One route row per edge, so edges leaving a rank never share a horizontal.
   local band_rows = {}
   for _, e in ipairs(edges) do
     local src, dst = boxes[e.from], boxes[e.to]
@@ -418,8 +397,6 @@ function M.render(data, _, detail)
   local right_lane = canvas_w - 1
   local left_lane = 1
 
-  -- Down out of the source, along to a margin lane, down past everything in
-  -- between, back in to the target.
   local function route_via_lane(e, lane, group)
     local src, dst = boxes[e.from], boxes[e.to]
     local sx = departure(e)

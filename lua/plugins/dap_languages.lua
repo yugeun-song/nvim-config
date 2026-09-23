@@ -1,8 +1,7 @@
--- Debug support for the languages that are not gdb targets: each one wired the
--- way its own ecosystem wires it. Nothing here goes through lua/dbg.
+-- Debug support for the languages that are not gdb targets. Nothing here goes
+-- through lua/dbg.
 
--- Mason puts its bin directory on PATH only once loaded, and nvim-dap can come
--- first, so prefer the path.
+-- Mason extends PATH only once loaded, and nvim-dap can come first.
 local function mason_bin(name)
   local path = vim.fs.joinpath(vim.fn.stdpath("data"), "mason", "bin", name)
   if vim.uv.fs_stat(path) then
@@ -35,8 +34,7 @@ return {
   {
     "mfussenegger/nvim-dap",
     optional = true,
-    -- js-debug is a mason package with no plugin to load. lazy.nvim resolves opts
-    -- before config, which is when nvim-dap wants the adapter.
+    -- js-debug is a mason package with no plugin to load.
     opts = function()
       local dap = require("dap")
       local command = mason_bin("js-debug-adapter")
@@ -110,8 +108,7 @@ return {
   {
     "mfussenegger/nvim-dap",
     optional = true,
-    -- ElixirLS ships the debug adapter; nvim-dap drives it as a mix task, which is
-    -- how the Elixir side documents it. No plugin to load: it is a mason package.
+    -- ElixirLS ships the adapter (a mason package); nvim-dap drives it as a mix task.
     opts = function()
       local dap = require("dap")
       if not dap.adapters.mix_task then
@@ -130,8 +127,7 @@ return {
             task = "test",
             taskArgs = { "--trace" },
             projectDir = "${workspaceFolder}",
-            -- The debugger interprets the test files, so it has to be told which
-            -- ones; a task that is not `test` needs none of this.
+            -- The debugger interprets the test files, so it must be told which.
             requireFiles = { "test/**/test_helper.exs", "test/**/*_test.exs" },
             startApps = true,
           },

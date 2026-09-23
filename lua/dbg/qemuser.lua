@@ -1,23 +1,13 @@
--- Usermode cross-architecture debugging over a QEMU user-mode gdbstub.
---
--- The workflow is to study a foreign-arch binary by running, e.g.,
---   qemu-aarch64 -g 1234 -L /usr/aarch64-linux-gnu ./a.out
--- and pointing a cross gdb at :1234. This gives the editor both ends of that: it
--- attaches to a gdbstub already launched, or launches the binary under its own
--- background QEMU and attaches to that. The target arch is read from the ELF, so
--- the right cross gdb, sysroot and QEMU follow from the binary rather than from
--- the user restating what it already declares.
+-- Foreign-arch userspace debugging over a QEMU user-mode gdbstub
+-- (`qemu-aarch64 -g 1234 -L /usr/aarch64-linux-gnu ./a.out`), either attaching to
+-- one already running or launching the binary under a background QEMU. The arch
+-- comes from the ELF, and gdb, sysroot and QEMU follow from it.
 local M = {}
 local discover = require("dbg.discover")
 
--- arch -> usermode QEMU binary and the cross-toolchain sysroot.
---
--- The sysroot is a HOST TOOLCHAIN convention, not a QEMU or hardware fact: Arch
--- and Debian place a cross target's runtime (its ld.so and shared libraries)
--- under /usr/<triple>. QEMU is told it with -L so the guest loader resolves; gdb
--- with `set sysroot` so it reads the matching symbols. It is a default to probe
--- and confirm -- a static binary needs none, and another distro or a custom
--- rootfs puts it elsewhere -- never a constant to trust blindly.
+-- The sysroot is a host-toolchain convention (Arch and Debian: /usr/<triple>),
+-- probed before use: a static binary needs none and another distro puts it
+-- elsewhere.
 local ARCH = {
   x86_64 = { qemu = "qemu-x86_64", sysroot = nil },
   aarch64 = { qemu = "qemu-aarch64", sysroot = "/usr/aarch64-linux-gnu" },
@@ -25,8 +15,7 @@ local ARCH = {
   arm = { qemu = "qemu-arm", sysroot = "/usr/arm-linux-gnueabihf" },
 }
 
--- The kernel side names arches "arm64"/"riscv"; the ELF header names them
--- "aarch64"/"riscv64". One spelling reaches the table either way.
+-- Kernel spellings (arm64, riscv) map onto the ELF ones the table uses.
 local ALIAS = { arm64 = "aarch64", amd64 = "x86_64", riscv = "riscv64" }
 
 function M.norm(arch)
@@ -44,9 +33,7 @@ function M.arch_of(program)
   return discover.elf_arch(program)
 end
 
--- The standard sysroot for a cross arch, only when it is actually present; nil
--- otherwise (a static binary, or an unusual layout), so the caller leaves it
--- unset rather than passing a path that is not there.
+-- nil when the conventional sysroot is absent, so the caller leaves it unset.
 function M.default_sysroot(arch)
   local m = M.meta(arch)
   if m and m.sysroot and vim.fn.isdirectory(m.sysroot) == 1 then
@@ -55,8 +42,7 @@ function M.default_sysroot(arch)
   return nil
 end
 
--- Background QEMU jobs, keyed by gdbstub port, so teardown stops exactly the
--- process this editor started, never a blanket kill of every qemu on the host.
+-- Keyed by gdbstub port, so teardown stops exactly the QEMUs this editor started.
 local jobs = {}
 
 local function listening(port)
@@ -64,10 +50,8 @@ local function listening(port)
   return listen[port] == true
 end
 
--- Start `qemu-<arch> -g <port> [-L <sysroot>] <program> [args...]` in the
--- background; call on_ready once its gdbstub accepts, or on_fail with a reason
--- (no QEMU for the arch, port busy, QEMU exited, or timeout). Exactly one of the
--- two callbacks fires.
+-- Runs `qemu-<arch> -g <port> [-L <sysroot>] <program> [args...]`; exactly one of
+-- on_ready / on_fail(reason) fires.
 function M.spawn(cfg, on_ready, on_fail)
   local settled = false
   local function fail(msg)
@@ -128,8 +112,8 @@ function M.spawn(cfg, on_ready, on_fail)
   end
   jobs[port] = jid
 
-  -- QEMU opens the gdbstub and waits for a client before running a single guest
-  -- instruction, so a short poll for the listening socket suffices.
+  -- QEMU waits for a client before running any guest code, so polling the socket
+  -- is enough.
   vim.wait(8000, function()
     return settled or listening(port)
   end, 50)

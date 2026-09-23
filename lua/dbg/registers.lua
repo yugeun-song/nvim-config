@@ -52,8 +52,7 @@ local ANNOTATE_PROBE = table.concat({
   "print('\\\\n'.join(out))\")",
 }, "")
 
--- Local, not module state: two renders can be in flight (the stop listener and
--- the sidebar refresh), and sharing state duplicated every general register.
+-- Local state: two renders can be in flight, and shared state duplicated rows.
 local function collect_annotations(cb)
   local annotations, order = {}, {}
   gdbq.run(ANNOTATE_PROBE, function(text)
@@ -94,9 +93,8 @@ local function collect_annotations(cb)
   end)
 end
 
--- The raw value is not the table address: arm64 carries an ASID above it, x86 a
--- PCID or cache attributes below it, riscv a mode and an ASID with the base
--- shifted.  Presence comes from the target's own register set, not an arch name.
+-- The raw value is not the table address: arm64 packs an ASID above it, x86 a
+-- PCID below it, riscv a mode and ASID with the base shifted.
 local TRANSLATION = {
   { name = "cr3", role = "page tables" },
   { name = "satp", role = "supervisor page tables" },
@@ -460,7 +458,6 @@ function M.render()
   end)
 end
 
--- Values from the last paint, so other panels need not ask the target again.
 function M.values()
   return previous
 end

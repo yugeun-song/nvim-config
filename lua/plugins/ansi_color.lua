@@ -1,6 +1,6 @@
 return {
   "m00qek/baleia.nvim",
-  -- pinned to the audited commit; bump ONLY after `baleia-audit` passes
+  -- pinned to an audited commit; re-audit before bumping
   commit = "710537ff5cd669c5a76c5f5b6a9169fd9b913d18",
   cmd = "BaleiaColorize",
   config = function()

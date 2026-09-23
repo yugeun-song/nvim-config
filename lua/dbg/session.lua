@@ -41,8 +41,7 @@ function M.stop()
   end
 end
 
--- The configuration nvim-dap actually ran, prompts already answered; replaying
--- it is what lets a second <leader>dc go straight to the breakpoints.
+-- The configuration nvim-dap ran, prompts answered, so <leader>dc can replay it.
 local last_config = nil
 
 function M.remember(config)
@@ -66,10 +65,8 @@ function M.last()
   return last_config
 end
 
--- QEMU exposes every vCPU as a thread, so nvim-dap asks which of the halted
--- threads to move.  Answering with a CPU other than the one that reported the
--- stop resumes the whole machine, which is how a kernel runs away from its own
--- breakpoint.  Always move the thread the stop came from.
+-- QEMU exposes every vCPU as a thread; continuing any but the one that reported
+-- the stop resumes the whole machine past its own breakpoint.
 function M.focus(session)
   if not session then
     return nil
@@ -123,12 +120,8 @@ function M.cont()
     return
   end
   leave_panel()
-  -- Never replay a configuration that cannot start: a mistyped native executable
-  -- would be repeated by every later press. The exec bit only means anything for a
-  -- native launch -- gdb/lldb exec an ELF; a managed adapter hands its program to a
-  -- runtime (a python/js script carries no exec bit), and an attach never launches
-  -- the program at all. So a script or attach target is checked for readability
-  -- only, or not at all, instead of being wrongly rejected as gone.
+  -- A configuration that cannot start is not replayed. Only a native launch needs
+  -- the exec bit: a managed adapter runs a script, an attach launches nothing.
   if last_config then
     local program = last_config.program
     if program and last_config.request ~= "attach" then
@@ -147,8 +140,7 @@ function M.cont()
   dap.continue()
 end
 
--- Without a line table gdb has nothing to step over, so fall back to
--- instruction granularity rather than letting the target run away.
+-- Without a line table a step has nothing to stop at, so step by instruction.
 local warned_instruction = false
 
 function M.step(kind)
@@ -160,8 +152,7 @@ function M.step(kind)
   end
   M.focus(session)
   local frame = session.current_frame
-  -- Only gdb steps by instruction: a managed adapter has no such granularity and
-  -- its own frames are never really sourceless.
+  -- Only gdb steps by instruction; a managed adapter's frames are never sourceless.
   local sourceless = require("dbg.context").is_low_level(session)
     and not (frame and frame.source and (frame.source.path or frame.source.sourceReference))
   local opts = nil
@@ -181,10 +172,8 @@ function M.step(kind)
   end
 end
 
--- nvim-dap installs no VimLeavePre handler, so quitting with a session up
--- leaves `gdb -i dap` reparented to init: a launched debuggee keeps running,
--- and against QEMU the orphan holds the gdbstub's single client slot so nothing
--- can attach again.
+-- nvim-dap has no VimLeavePre handler: an orphaned `gdb -i dap` keeps the debuggee
+-- running and holds the gdbstub's single client slot.
 function M.shutdown()
   local ok, dap = pcall(require, "dap")
   if not ok then
@@ -210,7 +199,7 @@ function M.shutdown()
     any = true
   end
   if any then
-    -- give the adapter a moment to act on the disconnect before the event loop dies
+    -- let the adapter act on the disconnect before the event loop dies
     vim.wait(700, function()
       return dap.session() == nil
     end, 50)
@@ -218,8 +207,7 @@ function M.shutdown()
       dap.close()
     end)
   end
-  -- Stop exactly the usermode QEMUs this editor launched; an external one the
-  -- user attached to is not in the table and is left running.
+  -- Only the usermode QEMUs this editor launched are in the table.
   pcall(function()
     require("dbg.qemuser").stop_all()
   end)
@@ -337,8 +325,8 @@ function M.probe()
 end
 
 function M.open()
-  -- A gdb view: it reads the target through gdb's own commands. A managed
-  -- session has dap-view's Sessions section instead.
+  -- Reads the target through gdb commands; a managed session has dap-view's
+  -- Sessions section instead.
   if require("dbg.context").block_if_managed("The target panel") then
     return
   end

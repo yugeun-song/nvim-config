@@ -388,9 +388,7 @@ local function read_at(addr)
     do_read(addr)
     return
   end
-  -- The whole window, not just the page it starts in: what is about to be read is
-  -- window_bytes() long -- up to 8 KiB -- and a device region under any part of it
-  -- is the thing that takes qemu down.
+  -- The whole window: a device region under any part of it takes qemu down.
   qemumon.qemu_check_range(session, addr, window_bytes(), function(verdict, why)
     vim.schedule(function()
       if verdict == "ram" then
@@ -465,8 +463,7 @@ function M.show_file(path, offset)
   read_file()
 end
 
--- Drawing nothing when no source is chosen reads as a broken panel, so fall back
--- to the stack and otherwise say what the panel wants.
+-- An empty panel reads as broken: fall back to the stack, or say what is missing.
 local function idle(reason)
   local buf = M.buffer()
   local line, title = head()

@@ -23,9 +23,8 @@ local function emit(level, msg, timeout)
   vim.notify(msg, level, { title = TITLE, timeout = timeout })
 end
 
--- Everything the debugger says, kept so a message that scrolled past can still
--- be read.  noice swallows notifications into its own history and gdb's own
--- output goes to the adapter log, so without this there is no one place to look.
+-- noice keeps notifications in its own history and gdb output lands in the
+-- adapter log, so this is the one place to reread what the debugger said.
 M.history = {}
 local HISTORY_MAX = 400
 
@@ -74,9 +73,8 @@ local function on_initialized(session)
     M.info("Attached to " .. where)
   else
     local prog = base(cfg.program) or "program"
-    -- Spell out "no arguments": <leader>dc replays the last configuration, so a
-    -- program that needs argv keeps starting without it and exits before any
-    -- breakpoint is reached.
+    -- "no arguments" is spelled out: a replayed launch without argv exits before
+    -- any breakpoint.
     local args = (type(cfg.args) == "table" and #cfg.args > 0) and (" " .. table.concat(cfg.args, " "))
       or "  (no arguments)"
     M.info("Running " .. prog .. args)
@@ -89,9 +87,8 @@ local function on_initialized(session)
   end
 end
 
--- An unverified breakpoint is normal before the program is loaded: gdb answers
--- "pending" and binds it once the symbols arrive.  Only the ones still unbound
--- when the target is live, or at session end, are worth a word.
+-- gdb answers "pending" until symbols arrive; only a breakpoint still unbound
+-- with the target live, or at session end, is worth a word.
 local function why_unbound(session)
   local prog = (session.config or {}).program
   local state = prog and debug_info(prog)
@@ -210,8 +207,7 @@ local function on_disconnect(session)
 end
 
 function M.setup(dap)
-  -- These messages are written for gdb/kernel sessions; a managed adapter keeps
-  -- nvim-dap's own reporting.
+  -- gdb/kernel sessions only; a managed adapter keeps nvim-dap's own reporting.
   local function gated(fn)
     return function(session, ...)
       if not require("dbg.context").is_low_level(session) then
@@ -229,8 +225,7 @@ function M.setup(dap)
   dap.listeners.after.disconnect["dbg_notify"] = gated(on_disconnect)
 end
 
--- One place to look after something scrolled past: what the debugger said, then
--- the adapter's own log, which is where a gdb-side failure lands.
+-- What the debugger said, then the adapter log, where a gdb-side failure lands.
 function M.show_log()
   local lines = { "  Debugger messages (newest last)", "" }
   if #M.history == 0 then

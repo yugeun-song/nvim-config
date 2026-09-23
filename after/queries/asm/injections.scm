@@ -1,11 +1,8 @@
 ; extends
 
-; tree-sitter-asm treats every #-line as a (line_comment) because '#' is a GAS
-; line-comment char. But .S/.s files are run through cpp first, so #-directives
-; are real C preprocessor syntax. Inject the C grammar into directive lines only.
-;
-; #at-line-start? (registered in lua/plugins/asm.lua) keeps this to line-leading
-; '#' directives, so trailing '# ...' asm comments and /* */ blocks stay comments.
+; tree-sitter-asm parses every #-line as a line_comment ('#' is a GAS comment
+; char), but .S/.s go through cpp, so leading #-directives are C.
+; #at-line-start? (lua/plugins/asm.lua) keeps trailing '# ...' comments out.
 ((line_comment) @injection.content
   (#vim-match? @injection.content "\\v^#\\s*(include_next|include|ifdef|ifndef|elifdef|elifndef|elif|else|endif|define|undef|error|warning|pragma|line|import|if)>")
   (#at-line-start? @injection.content)

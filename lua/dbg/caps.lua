@@ -52,8 +52,7 @@ function M.invalidate(session)
   end
 end
 
--- Each entry answers with a reason when the answer is no, so a feature that is
--- unavailable is refused with an explanation instead of failing somewhere deep.
+-- Each entry gives the reason when it says no.
 local FEATURES = {
   line_breakpoints = function(state)
     if state.debug_info == "none" then
@@ -116,8 +115,7 @@ function M.state(session)
   }
 end
 
--- Unknown features are allowed rather than silently blocked, so this can only
--- ever refuse something it actually knows about.
+-- An unknown feature is allowed; only a known one can be refused.
 function M.supports(feature, session)
   local check = FEATURES[feature]
   if not check then

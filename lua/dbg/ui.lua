@@ -15,15 +15,13 @@ M.groups = {
   DbgStack = { link = "DiagnosticWarn" },
   DbgCode = { link = "DiagnosticError" },
   DbgData = { link = "Special" },
-  -- The program counter line, in source and in disassembly.  CursorLine is not
-  -- enough: it marks where the cursor is, not where the program stopped.
+  -- The program counter line; CursorLine marks the cursor, not the stop.
   DbgStopLine = { link = "Visual", force = true },
   DbgStopSign = { link = "DiagnosticOk", force = true },
   DbgInlineValue = { link = "NvimDapViewVirtualText", force = false },
 }
 
--- Background only, borrowed from a theme group so it stays theme-aware; with no
--- foreground set, every syntax colour on the line survives.
+-- Background only, so syntax colours on the line survive.
 local function pc_background()
   for _, source in ipairs({ "DiffAdd", "Visual", "CursorLine" }) do
     local ok, hl = pcall(vim.api.nvim_get_hl, 0, { name = source, link = false })
@@ -44,13 +42,10 @@ function M.setup_highlights()
   vim.api.nvim_set_hl(0, "DbgPcLine", bg and { bg = bg } or { link = "Visual" })
   vim.api.nvim_set_hl(0, "DbgBranchTaken", { link = "DiagnosticOk" })
   vim.api.nvim_set_hl(0, "DbgBranchUnknown", { link = "Comment" })
-  -- A branch that will not be taken is dimmed, not left out: leaving it out
-  -- reads as "there is no branch here", which is a different fact.
+  -- Dimmed, not hidden: a missing branch reads as "no branch here".
   vim.api.nvim_set_hl(0, "DbgBranchNotTaken", { link = "NonText" })
 end
 
--- Undo style_window, so a window that used to hold a panel can go back to being
--- an ordinary editor window.
 function M.unstyle_window(win)
   if not (win and vim.api.nvim_win_is_valid(win)) then
     return

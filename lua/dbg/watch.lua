@@ -4,10 +4,8 @@ local ui = require("dbg.ui")
 
 local M = {}
 
--- Frame scope on the left, file scope on the right.  DAP only publishes the
--- scopes the adapter chooses (GDB gives Arguments, Locals, Registers), so the
--- file side is collected separately.  Every stop re-checks each name: a local's
--- lifetime ends when its block does.
+-- GDB publishes only Arguments, Locals and Registers as scopes, so the file-scope
+-- column is collected separately. Every stop re-checks each name.
 local SCAN_LIMIT = 4000
 local NAME_LIMIT = 200
 local MIN_SPLIT_WIDTH = 96
@@ -81,15 +79,9 @@ local function liveness(value)
   return "live"
 end
 
--- What an address is, asked of gdbtools rather than worked out here.  `sym` resolves
--- a PHYSICAL or a VIRTUAL address against the same shadow symbols the session is
--- already using, so it answers before the MMU is on as well as after, which is
--- the point during early boot.
---
--- It stops there on purpose: nothing in a u64 says whether it is a pointer, and
--- reading a wrong one is exactly the case that takes QEMU down.  `kpt` / `kpgd`
--- / `chain` dereference and walk page tables in the console, where you have told
--- the tool what the value is.
+-- gdbtools' `sym` resolves a physical or virtual address against the session's
+-- shadow symbols, so it works before the MMU is on. It never dereferences: a u64
+-- does not say whether it is a pointer, and a wrong read takes QEMU down.
 function M.explain()
   local addr = vim.api.nvim_get_current_line():match("(0x%x+)")
   if not addr then
@@ -148,9 +140,8 @@ local function pass(name)
   return not state.filter or name:lower():find(state.filter, 1, true)
 end
 
--- Padding by hand rather than string.format: its width field is two digits, so
--- a column wider than 99 cells raised "invalid option '%-104'".  Widths are in
--- display cells, so a value with multi-byte characters still lines up.
+-- Not string.format: its width field is two digits, so a column past 99 cells
+-- raised "invalid option '%-104'". Widths are display cells.
 local function width_of(text)
   return vim.fn.strdisplaywidth(text or "")
 end
@@ -173,9 +164,8 @@ local function clip(text, width)
   return cut .. "~"
 end
 
--- A name is either readable here or not listed at all.  The one case worth a
--- tag is a variable the compiler threw away: there the name is real and the
--- value is not.
+-- The one tagged case is a variable the compiler optimised out: the name is
+-- real, the value is not.
 local function cell(entry, namew, valuew)
   local tag = entry.life == "opt" and "  opt" or ""
   local room = math.max(4, valuew - width_of(tag))
@@ -288,8 +278,7 @@ function M.render()
   panel.render(buf, lines, hls)
 end
 
--- Anything that cannot be read leaves the list: a variable whose block has
--- ended is not in play any more, and an empty row saying so is noise.
+-- A name that cannot be read has left its block; it leaves the list.
 local function fold(kind, fresh)
   local out = {}
   for _, e in ipairs(fresh) do
@@ -381,8 +370,7 @@ function M.probe()
     note_changes(state.locals)
     vim.schedule(function()
       M.render()
-      -- The same values feed the inline annotations: no extra round trip, and
-      -- the editor cannot disagree with this panel.
+      -- The same values feed the inline annotations, so the two cannot disagree.
       local readable = {}
       for _, e in ipairs(state.locals) do
         if e.life == "live" then
@@ -405,9 +393,8 @@ function M.probe()
     if mine ~= token then
       return
     end
-    -- Split rather than gmatch: the probe's first two lines are positional
-    -- (file, count), and a pattern that skips empty matches shifts them, which
-    -- turned the count into a variable named "0".
+    -- Not gmatch: the first two lines are positional (file, count), and skipping
+    -- empty matches shifted them.
     local rows = vim.split(tostring(text or ""), "\n", { plain = true })
     local file = vim.trim(rows[1] or "")
     local total = tonumber(vim.trim(rows[2] or "")) or 0

@@ -1,16 +1,7 @@
--- Discord RPC (Rich Presence) for Neovim — original, self-contained implementation.
---
--- The IPC wire protocol (length-prefixed JSON frames; opcodes HANDSHAKE/FRAME/
--- CLOSE/PING/PONG; SET_ACTIVITY) is implemented from public protocol docs only:
--- Discord's official RPC documentation, the MIT-licensed `discord-rpc` reference
--- library's protocol notes, and the Userdoccers RPC reference. No third-party
--- plugin source code is copied; opcode values and message shapes are interface facts.
---
--- Provenance of non-code defaults: the default CLIENT_ID below and the "neovim"
--- art-asset key are not code — they are served by the public Discord application of
--- the andweeb/presence.nvim project. Replace CLIENT_ID with your own Discord
--- application id (and supply your own art asset or an external image URL) to be
--- fully independent.
+-- Discord Rich Presence over the IPC socket, written from the public protocol
+-- docs: length-prefixed JSON frames, HANDSHAKE/FRAME/CLOSE/PING/PONG, SET_ACTIVITY.
+-- The default CLIENT_ID and the "neovim" art asset belong to the public Discord
+-- application of andweeb/presence.nvim; replace both to be independent.
 
 local uv = vim.uv or vim.loop
 

@@ -1,7 +1,6 @@
 ; extends
 
-; Highlight GNU inline-assembly bodies as assembly. Kernel headers (*.h) are
-; detected as cpp here, and they are full of inline asm, so mirror the c rules.
+; Same as c/injections.scm: kernel *.h headers are detected as cpp.
 ((gnu_asm_expression
    assembly_code: (string_literal (string_content) @injection.content))
   (#set! injection.language "asm"))

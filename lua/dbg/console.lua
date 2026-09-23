@@ -1,17 +1,14 @@
 local M = {}
 
--- Execution control typed into the console has to go through nvim-dap, not
--- straight to GDB: continuing behind the client's back leaves the panels showing
--- a stop that is over and the frame ids GDB handed out stale, which surfaces
--- later as "list index out of range".
+-- Execution control typed here goes through nvim-dap: continuing behind the
+-- client's back leaves stale panels and frame ids ("list index out of range").
 local echo_next_stop = false
 local explained = {}
 
--- Said once per session.  nvim-dap points its marker at the nearest frame that
--- happens to carry a source, which is why a green arrow appears over a glibc
--- header and vanishes again when that marker comes back down.
+-- Once per session. nvim-dap marks the nearest frame with a source, which puts
+-- the arrow on a glibc header when frame 0 has none.
 local function explain_sourceless(session, frame)
-  -- Already said at attach time when the whole binary has no DWARF.
+  -- Already said at attach when the whole binary has no DWARF.
   if explained[session.id] or session.dbg_no_debug_info then
     return
   end
@@ -116,9 +113,8 @@ function M.handles(name)
   return COMMANDS[name] ~= nil
 end
 
--- nvim-dap picks the first frame carrying a source so it has somewhere to jump;
--- without -g that quietly selects the caller, which is why `list` used to show
--- glibc while `bt` said `main`.  Put the selection back on frame 0.
+-- nvim-dap selects the first frame with a source; without -g that is the caller,
+-- so `list` showed glibc while `bt` said main. Back to frame 0.
 function M.realign(session)
   local thread = session.threads and session.threads[session.stopped_thread_id]
   local top = thread and thread.frames and thread.frames[1]

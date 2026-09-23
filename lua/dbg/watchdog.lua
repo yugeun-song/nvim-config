@@ -1,12 +1,8 @@
 local M = {}
 
--- Notices when the QEMU gdbstub goes away.  Losing the target does not look like
--- an error in nvim-dap: gdb keeps its DAP connection and the panels keep showing
--- their last values.
---
--- Liveness is never checked by connecting: QEMU's gdbstub serves one client, so
--- a probe would break the session it is checking.  Signals used instead are what
--- gdb says, and whether the port is still open in the kernel's socket table.
+-- A lost gdbstub is not an error to nvim-dap: gdb keeps its DAP connection and
+-- the panels keep their last values. Liveness comes from gdb's output and the
+-- kernel's socket table, never from connecting: the stub serves one client.
 
 local LOST = {
   "Remote connection closed",
@@ -22,7 +18,7 @@ local LOST = {
 local state = { timer = nil, session = nil, target = nil, misses = 0, announced = false }
 
 local INTERVAL_MS = 4000
--- One miss can be a listener being re-bound; three is gone.
+-- One miss can be a listener re-binding.
 local MISSES_BEFORE_CALLING_IT = 3
 
 local function announce(why)
@@ -50,7 +46,6 @@ function M.saw_text(text)
   end
 end
 
--- host:port out of whatever form the config used.
 local function split_target(target)
   local host, port = tostring(target or ""):match("^%[?([^%]]*)%]?:(%d+)$")
   if not port then
@@ -59,7 +54,7 @@ local function split_target(target)
   return (host == "" and "localhost" or host), tonumber(port)
 end
 
--- Procfs only: no connection, so this is safe while a session is attached.
+-- Procfs only, so it is safe while a session is attached.
 function M.port_is_listening(port)
   port = tonumber(port)
   if not (port and port == port and port > 0 and port < 65536) then

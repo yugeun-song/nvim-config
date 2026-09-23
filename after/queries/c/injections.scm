@@ -1,8 +1,7 @@
 ; extends
 
-; Highlight GNU inline-assembly bodies as assembly (kernel C is full of them).
-; Each string piece is one asm line, injected independently so multi-line and
-; adjacent-literal (concatenated) blocks read cleanly.
+; Inline asm bodies as assembly. Each string piece is injected on its own so
+; concatenated literals still read cleanly.
 ((gnu_asm_expression
    assembly_code: (string_literal (string_content) @injection.content))
   (#set! injection.language "asm"))

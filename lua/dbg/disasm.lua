@@ -1,8 +1,7 @@
 local M = {}
 
--- Not a sign: the sign column is a window option and the panel re-applies its
--- window options when it switches sections, which makes a sign flash and
--- vanish.  An extmark lives on the buffer and stays put.
+-- An extmark, not a sign: the panel re-applies window options when it switches
+-- sections, which makes a sign flash and vanish.
 local ns = vim.api.nvim_create_namespace("dbg_pc")
 
 local function buffer()
@@ -18,9 +17,8 @@ local function normalise(addr)
   return (addr:lower():gsub("^0x0*", ""))
 end
 
--- Whether the branch under the program counter is about to be taken, answered
--- from the registers already collected for the register panel: no extra round
--- trip, and an architecture is only consulted when its state is present.
+-- Whether the branch under the pc is about to be taken, answered from the
+-- registers the register panel already collected: no extra round trip.
 local ALWAYS = {
   b = true,
   bl = true,
@@ -47,9 +45,8 @@ local function flags_of(values, name)
   return set
 end
 
--- 64-bit values do not survive a double: 0xffff8000803a1870 loses its top
--- nibble.  Addresses, zero tests and equality work on a fixed-width hex string
--- instead; only small operands become Lua numbers.
+-- 64-bit values do not survive a double (0xffff8000803a1870 loses a nibble), so
+-- addresses and comparisons work on fixed-width hex strings.
 local function norm16(value)
   local text = tostring(value or "")
   local digits = text:match("0[xX](%x+)")
@@ -270,11 +267,9 @@ local function riscv_taken(mnemonic, operands, values)
   return ops[mnemonic]
 end
 
--- An indirect branch has no address in the text, but the register that decides
--- where it goes is already in the stopped state.
+-- An indirect branch's target register is already in the stopped state.
 local function indirect_target(mnemonic, operands, values, arch)
   values = values or {}
-  -- returns the 16-digit form so the address survives intact
   local function reg(name)
     if not name then
       return nil
@@ -333,9 +328,7 @@ local function indirect_target(mnemonic, operands, values, arch)
   return nil
 end
 
--- The instruction set is decided by the registers the target exposes, not by a
--- configured name.  Each ISA gets its own evaluator: the state they consult
--- does not overlap, and mixing them would give confident wrong answers.
+-- The ISA is decided by the registers the target exposes, not a configured name.
 local function detect_arch(values)
   values = values or {}
   if values.cpsr ~= nil or values.CPSR ~= nil then
@@ -359,10 +352,8 @@ local EVALUATE = {
 -- Returns target address string, taken (true/false/nil when undecidable).
 function M.branch_at(line, values)
   local body = line:gsub("^%s*0[xX]%x+:%s*", "")
-  -- The instruction-bytes column is a hex blob before the mnemonic, but a
-  -- mnemonic can be valid hex too: stripping "%x+%s+" ate the `b` in
-  -- "b 0xffff..." and left the target as the mnemonic.  Only strip an
-  -- even-length hex run that is followed by something starting with a letter.
+  -- A mnemonic can be valid hex too ("b 0xffff..."), so the instruction-bytes
+  -- column is only stripped as an even-length hex run followed by a letter.
   local head, rest = body:match("^(%S+)%s+(.*)$")
   if head and rest and #head >= 2 and #head % 2 == 0 and head:match("^%x+$") and rest:match("^%a") then
     body = rest
@@ -390,8 +381,7 @@ function M.branch_at(line, values)
     return nil
   end
   local evaluate = arch and EVALUATE[arch]
-  -- `x and f() or nil` would turn a legitimate `false` into `nil`, and "will
-  -- not branch" is exactly the answer this feature exists to show.
+  -- Not `x and f() or nil`: a legitimate `false` ("will not branch") must survive.
   local taken = nil
   if evaluate then
     taken = evaluate(mnemonic, operands, values)
@@ -441,9 +431,8 @@ function M.mark(session)
   end
 end
 
--- Which mnemonics are branches whose target is written in the text.  Calls are
--- left out: they come back, and drawing them would fill the margin with lines
--- that leave the function.
+-- Branch mnemonics whose target is written in the text. Calls are left out:
+-- they come back, and drawing them would fill the margin.
 local BRANCH = {
   aarch64 = "^b$|^b%.%a%a$|^cbn?z$|^tbn?z$",
   x86_64 = "^jmp$|^jmpq$|^j%a+$|^loop%a*$",
@@ -478,9 +467,8 @@ local function row_target(line, arch)
   return target
 end
 
--- Lanes, widest span outermost, each edge in the leftmost column that no
--- overlapping edge already occupies.  Same packing radare2 uses, and the reason
--- crossing branches stay readable instead of landing on one another.
+-- Lanes, widest span outermost, each edge in the leftmost free column: the
+-- packing radare2 uses.
 local function pack(edges)
   local order = {}
   for i = 1, #edges do
@@ -520,10 +508,8 @@ local function pack(edges)
   return ncols
 end
 
--- Every branch in view is drawn.  Only the one under the program counter is
--- coloured, and only when the registers say it will be taken -- an uncoloured
--- line is the answer for "this will not branch", and for every branch whose
--- turn has not come.
+-- Every branch in view is drawn; only the one under the pc is coloured, and
+-- only when the registers say it will be taken.
 function M.draw_branch(buf, lines, pc_row)
   local ok, registers = pcall(require, "dbg.registers")
   local values = ok and registers.values() or {}

@@ -86,10 +86,8 @@ function M.candidates()
       end
 
       if inst.gdb_port then
-        -- The host the stub was BOUND to, from qemu's own -gdb tcp:HOST:PORT.
-        -- A wildcard bind means every interface and loopback is the way in; a
-        -- specific one must be honoured, or a guest deliberately reachable from
-        -- elsewhere shows as listening here and connects from nowhere.
+        -- The host the stub was bound to (-gdb tcp:HOST:PORT). A specific bind
+        -- must be honoured, or the guest shows as listening but connects from nowhere.
         local ghost = tostring(inst.gdb_dev or ""):match("^tcp:(.*):%d+$")
         if not ghost or ghost == "" or ghost == "0.0.0.0" or ghost == "::" or ghost == "[::]" then
           ghost = "localhost"
@@ -97,13 +95,9 @@ function M.candidates()
         c.target = ghost .. ":" .. inst.gdb_port
         c.target_src = ("-gdb %s of qemu pid %d"):format(inst.gdb_dev, inst.pid)
         c.listening = listen[inst.gdb_port] == true
-        -- Attached means qemu OWNS an established socket on that port, not that
-        -- one exists.  The stub keeps listening after it accepts, so a second
-        -- client finishes its handshake and shows as ESTABLISHED while waiting in
-        -- the accept queue; counting rows alone reports that as attached.  An
-        -- unreadable fd table (another uid) is unknown, and stays unknown --
-        -- kbuildlab's CLI applies the identical rule, so the terminal and the
-        -- editor cannot disagree about one guest.
+        -- Attached means qemu owns an established socket, not that one exists: a
+        -- second client shows as ESTABLISHED while queued. An unreadable fd table
+        -- (another uid) stays unknown, as in kbuildlab's CLI.
         local owned = D.socket_inodes(inst.pid)
         local rows = established[inst.gdb_port] or {}
         if owned == nil then
@@ -138,8 +132,8 @@ function M.candidates()
       end
 
       c.kaslr = D.kaslr(inst, c.kernel_root)
-      -- A firmware chain passes the cmdline itself, so there is no -append to read
-      -- KASLR from; the launcher recorded what it started this port with.
+      -- A firmware chain has no -append to read KASLR from; use what the
+      -- launcher recorded for this port.
       c.run_state = D.run_state(inst.gdb_port, inst.pid)
       if c.run_state and c.run_state.KBL_KASLR then
         local on = c.run_state.KBL_KASLR
@@ -150,12 +144,8 @@ function M.candidates()
       end
       c.frozen = inst.frozen
 
-      -- Last resort, and the one that matters for a firmware chain: such a guest
-      -- carries no -kernel, which is the stated reason the run state exists at
-      -- all ("the facts /proc cannot carry -- which tree this is").  kbuildlab
-      -- uses KBL_TREE to reach <src>/vmlinux; without the same step here every
-      -- u-boot/UEFI guest read "no symbol file found" in the editor while the
-      -- terminal loaded symbols for it.
+      -- Last resort, and the one a firmware chain needs: no -kernel, so the
+      -- recorded KBL_TREE is the only way to <src>/vmlinux, as in kbuildlab.
       if not c.vmlinux and c.run_state and c.run_state.KBL_TREE then
         local tree = c.run_state.KBL_TREE
         local cand = {}
@@ -291,9 +281,8 @@ local function build(c)
     kernel_root = c.kernel_root,
     kgdb_auto = c.kgdb_auto and true or false,
     arch = arch,
-    -- Carried here, not only where a target was picked from the list: the adapter
-    -- decides what to tell gdbtools about KASLR from these two, and a hand-entered
-    -- target that left them nil would be read as "cannot tell", which counts as on.
+    -- Carried for a hand-entered target too: nil here reads as "cannot tell",
+    -- which the adapter counts as KASLR on.
     run_state = c.run_state,
     kaslr_state = c.kaslr and c.kaslr.state or "unknown",
     kaslr_source = c.kaslr and c.kaslr.source or nil,
@@ -315,14 +304,10 @@ function M.manual(cb)
         return
       end
       local arch = D.elf_arch(vm)
-      -- A typed-in target still names a port, and the launcher may well have
-      -- recorded that port's boot. Read it rather than calling the guest unknown.
       local port = tonumber(tostring(t):match(":(%d+)$"))
-      -- A hand-typed target names no process, so there is no pid to check the
-      -- state file against.  Read it anyway -- it is still the only record of how
-      -- that port was booted -- but the freshness test that candidates() applies
-      -- cannot run here, so a file left by a previous guest on the same port is
-      -- believed.  Naming the guest through the picker instead avoids that.
+      -- A typed-in target names a port but no pid, so the run state is read
+      -- without the freshness test candidates() applies: a file left by a
+      -- previous guest on the same port is believed.
       local rs = port and D.run_state(port) or nil
       local kaslr = { state = "unknown", source = "entered manually" }
       if rs and rs.KBL_KASLR then
@@ -343,18 +328,14 @@ function M.manual(cb)
   end)
 end
 
--- The u-boot ELF names the firmware stages, from the reset vector to the hand-off.
--- Kernel symbols come from vmlinux and the two address ranges do not overlap, so
--- both resolve. gdb's DAP loads the program only once the attach request lands, so
--- this runs from the session rather than as a -ex argument.
+-- The u-boot ELF names the firmware stages; its range does not overlap vmlinux,
+-- so both resolve. gdb's DAP loads the program only once attach lands, so this
+-- runs from the session rather than as a -ex argument.
 function M.load_firmware_symbols(session, done)
   done = done or function() end
   local cfg = session and session.config or {}
-  -- Re-read the run state instead of trusting the snapshot taken when this
-  -- target was picked.  dap.lua already does this on connect, for the reason
-  -- that applies here too: a remembered config can describe a guest that has
-  -- since been restarted in another boot mode, and replaying it would add
-  -- u-boot's ELF symbols to a session that booted through UEFI or -kernel.
+  -- Re-read the run state, as dap.lua does on connect: a replayed config can
+  -- describe a guest since restarted in another boot mode.
   local port = tonumber(tostring(cfg.target or ""):match(":(%d+)$"))
   local qpid = cfg.qemu and cfg.qemu.pid or nil
   local state = (port and D.run_state(port, qpid)) or cfg.run_state
@@ -375,13 +356,10 @@ function M.load_firmware_symbols(session, done)
   end)
 end
 
--- Mirrors run-gdb.sh's connect sequence, stopping one step earlier: the
--- phys<->virt offset cannot be calibrated until `bootbreak` has walked past the
--- reset vector, so park on the first head.S instruction with the MMU still off.
--- `kearly kaslr auto` runs on to the MMU crossing instead, so the first step
--- lands in virtual addresses; type it in the gdb console when you want that.
--- A breakpoint set while the slide is still unknown arms its own catcher on the
--- crossing, so symbols line up anyway.
+-- Mirrors run-gdb.sh's connect sequence, stopping one step earlier: park on
+-- the first head.S instruction with the MMU off. `kearly kaslr auto` would run
+-- on to the MMU crossing; type it in the console when wanted. A breakpoint set
+-- before the slide is known arms its own catcher on the crossing.
 function M.arm_kaslr(session)
   local cfg = session and session.config or {}
   if not cfg.kgdb_auto then
@@ -429,8 +407,7 @@ function M.arm_kaslr(session)
   end)
 end
 
--- A dying gdbstub takes the session with it but tells the client nothing;
--- requests simply stop being answered.  Watch the QEMU pid instead.
+-- A dying gdbstub tells the client nothing; watch the QEMU pid instead.
 local watchdog = nil
 
 function M.stop_watchdog()
@@ -468,8 +445,7 @@ function M.watch_target(session)
       pcall(function()
         dap.disconnect({ terminateDebuggee = false })
       end)
-      -- Close the session, not the windows: whatever the guest printed before it
-      -- died is on screen, and that is the first thing anyone wants after a crash.
+      -- Close the session, not the windows: what the guest printed stays readable.
       vim.defer_fn(function()
         if require("dap").session() then
           pcall(function()
@@ -501,21 +477,16 @@ function M.start(opts)
     if not choice then
       return
     end
-    -- Both ways in, offered together: attach where the kernel already is, or arm
-    -- the early-boot machinery and stop on the first head.S instruction. Whether
-    -- GDBTOOLS_X86_KASLR is exported is NOT decided here: the guest either runs with
-    -- KASLR or it does not, whichever way in was picked, so the adapter reads that
-    -- from the recorded run and from kaslr_state, the same order the shell launcher
-    -- reads it.
+    -- Attach where the kernel is, or arm early boot and stop on the first head.S
+    -- instruction. GDBTOOLS_X86_KASLR is not decided here: KASLR is a fact about
+    -- the guest, and the adapter reads it from the recorded run and kaslr_state.
     local function launch(cfg, early)
       cfg.kgdb_auto = early and true or false
       local kaslr = cfg.kaslr_state
       if not early and kaslr == "unknown" then
         require("dbg.notify").warn("KASLR state is unknown here; if symbols do not line up, attach in early-boot mode")
       elseif not early and kaslr == "on" then
-        -- Attaching to a running KASLR kernel leaves vmlinux's symbols at their
-        -- link addresses while the kernel runs at a randomized one, so nothing
-        -- lines up until the slide is measured.
+        -- Under KASLR nothing lines up until the slide is measured.
         require("dbg.notify").warn(
           "This guest booted with KASLR on. vmlinux symbols are at their link addresses until the slide "
             .. "is measured: run `kearly on` then `kearly calibrate <symbol>` in the gdb console, or attach in early-boot mode."
@@ -563,14 +534,10 @@ function M.start(opts)
       return
     end
     local cfg = build(choice)
-    -- The pid lives on the qemu instance the candidate was built from; without it
-    -- the watchdog has nothing to watch and a dying gdbstub goes unreported.
+    -- The watchdog needs the qemu pid, which only a discovered target has.
     cfg.qemu_pid = choice.qemu and choice.qemu.pid or nil
-    -- run_state / kaslr_state / kaslr_source come from build(); only the pid, which
-    -- exists solely for a discovered target, is added here.
-    -- The early-boot symbolizer calibrates the phys<->virt offset at runtime and
-    -- so copes with KASLR itself; relocating gdb's symbols to the slide is a
-    -- separate step, asked for here rather than left as a note to type it.
+    -- The early-boot symbolizer copes with KASLR itself; relocating gdb's
+    -- symbols to the slide is a separate step, so ask for it here.
     run(cfg)
   end)
 end

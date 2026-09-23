@@ -1,14 +1,9 @@
--- Execution-context classifier. The config layer injects the profile (a config
--- declares dbg_profile, or the adapter type implies it); this module only reads
--- it. Default is "managed" so a non-gdb adapter never gets the gdb/kernel UI.
+-- Session profile, read from dbg_profile or implied by the adapter type. The
+-- default is "managed" so an unknown adapter never gets the gdb/kernel UI.
 local M = {}
 
--- Fallback when a config does not declare dbg_profile. gdb == usermode C/C++/asm,
--- gdb_kernel == Linux kernel; everything else stays managed. The kernel panels
--- are Linux-specific, so the profile names it as such.
 local PROFILE_BY_TYPE = { gdb_kernel = "linux_kernel", gdb = "native" }
 
--- Classify a raw config the same way as M.of, before a session exists.
 function M.profile_of_config(cfg)
   cfg = cfg or {}
   return cfg.dbg_profile or PROFILE_BY_TYPE[cfg.type] or "managed"
@@ -36,7 +31,6 @@ function M.is_managed(s)
   return M.of(s) == "managed"
 end
 
--- Guard a gdb-only panel from a managed session: notify once and report blocked.
 function M.block_if_managed(what, session)
   if M.is_managed(session) then
     require("dbg.notify").info((what or "This view") .. " is available for gdb (C/C++ or Linux Kernel) sessions.")
@@ -45,7 +39,7 @@ function M.block_if_managed(what, session)
   return false
 end
 
--- Same guard, but only while a session runs: with none up it is plain cleanup.
+-- With no session up the call is plain cleanup, so it is not blocked.
 function M.block_if_managed_session(what)
   local ok, dap = pcall(require, "dap")
   if not (ok and dap.session()) then
@@ -54,8 +48,8 @@ function M.block_if_managed_session(what)
   return M.block_if_managed(what)
 end
 
--- A managed session keeps nvim-dap-view's winbar as set up. A gdb one gets the
--- ring the configuration layer injects, since it owns the panels the ring names.
+-- A gdb session gets the winbar ring the configuration layer injects; a managed
+-- one keeps nvim-dap-view's own.
 local low_level = nil
 local stock = nil
 
@@ -64,8 +58,7 @@ function M.set_low_level_winbar(spec)
 end
 
 local function dapview_config()
-  -- nvim-dap-view's setup() rebinds its config to a new merged table, so the live
-  -- winbar reads require("dap-view.setup").config, not the defaults module.
+  -- setup() rebinds the config to a new merged table; the defaults module is stale.
   local ok, cfg = pcall(function()
     return require("dap-view.setup").config
   end)
@@ -111,9 +104,8 @@ local function put(cfg, want)
   return filtered
 end
 
--- The selected section outlives a session, so a gdb one can leave Registers
--- showing and nvim-dap-view restores it on its next open. Move the selection
--- itself, not just the window, when the ring no longer lists it.
+-- The selected section outlives a session, so a gdb one could leave Registers
+-- for nvim-dap-view to restore inside a managed one.
 local function reselect(cfg, filtered)
   local ok, state = pcall(require, "dap-view.state")
   if not ok or not state.current_section then
@@ -122,10 +114,8 @@ local function reselect(cfg, filtered)
   if vim.tbl_contains(filtered, state.current_section) then
     return
   end
-  -- wrapped_action moves the selection itself, and it has to see the OLD one as
-  -- last_section: only then does nvim-dap-view put its own buffer back in the
-  -- window and swap the section keymaps. Assigning first makes its new_view test
-  -- false, and a gdb panel buffer stays on screen inside a managed session.
+  -- wrapped_action must see the old section as last_section, or it skips
+  -- swapping the buffer and keymaps; assign only after it ran.
   local target = cfg.winbar.default_section
   pcall(function()
     require("dap-view.options.winbar").wrapped_action(target)

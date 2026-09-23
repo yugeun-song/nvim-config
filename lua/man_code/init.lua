@@ -1,14 +1,5 @@
--- Re-highlight the code blocks inside a man page with treesitter.
---
--- syntax/man.vim pulls the legacy syntax/c.vim into sections 2 and 3, which
--- knows keywords and little else: a call and a variable are both cBlock, so
--- fprintf and fd come out the same color while a real C buffer separates them.
--- This finds the code, parses it with the parser the editor uses on a .c file,
--- and paints the result over the top.
---
--- Nothing here is specific to a page, a language or a machine. The language is
--- whatever the caller asks for, the parser is whatever nvim has, and a page
--- with no code in it comes out untouched.
+-- Re-highlight the code blocks in a man page with the Tree-sitter parser the
+-- editor uses on a source file; syntax/man.vim's legacy c.vim knows only keywords.
 
 local M = {}
 
@@ -16,38 +7,27 @@ local uv = vim.uv or vim.loop
 
 local ns = vim.api.nvim_create_namespace("man_code")
 
--- nvim's man.lua paints roff's bold and italic as extmarks at priority 4096,
--- which is above anything a syntax file can say. Inside a code block that is
--- the wrong answer: roff's bold means "this is emphasised" while the parser
--- knows the token is a call, a parameter or a type. Measured on open(2), 82%
--- of this module's marks were being covered by manBold before this number went
--- above 4096. Outside a code block nothing here paints, so the emphasis roff
--- put in the prose is untouched.
+-- man.lua paints roff's bold and italic at priority 4096; anything lower is
+-- covered by manBold inside a code block.
 local BASE_PRIORITY = 5000
 
 local MIN_INDENT = 2
 local MIN_LINES = 2
 
--- Prose fed to a C parser is mostly ERROR nodes; code is not. The cut is
--- generous because one unparseable line in seventy is still a code block.
+-- Prose parsed as C is mostly ERROR nodes, code is not; generous enough that
+-- one unparseable line in seventy still passes.
 local MAX_ERROR_RATIO = 0.15
 
--- How many times to shrink a block and retry before giving up on it.
 local MAX_SHRINKS = 3
 
--- An example program in a man page runs to tens of lines, not thousands: the
--- EXAMPLES block of mmap(2) is seventy. A block far past that is prose, and
--- handing one to a parser is what made cmake-modules(7) -- 37,260 lines, with a
--- single 20,123-line block -- take 774 ms to open.
+-- Longer than any example program. cmake-modules(7) has a 20,123-line prose
+-- block that took 774 ms to parse.
 local MAX_BLOCK_LINES = 800
 
--- Second guard, for a page that is pathological in some way this does not
--- predict. Opening a man page is interactive, so the work is bounded rather
--- than finished: blocks already painted stay painted.
+-- Opening a page is interactive: stop parsing, keep what is painted.
 local TIME_BUDGET_MS = 100
 
--- Prose does not open a line with a preprocessor directive, a storage class or
--- a type, and does not end one in a semicolon or a brace.
+-- Line shapes prose does not produce.
 local CODE_OPENERS = {
   "^%s*#%s*%a",
   "^%s*typedef%s",
@@ -63,15 +43,11 @@ local CODE_OPENERS = {
   "^%s*[%w_]+%s+[%w_*]+%(",
 }
 
--- @spell and @nospell steer the spell checker, @conceal the conceal machinery.
--- None of them names a highlight group.
+-- Captures that steer spell or conceal rather than name a highlight group.
 local META_CAPTURE = { spell = true, nospell = true, conceal = true }
 
--- Before a parser is asked anything: code terminates most of its lines and
--- prose terminates almost none. Counting rather than looking for a fixed number
--- is what separates them -- the DESCRIPTION of bash(1) is 360 lines with two
--- lines ending in a brace, from shell syntax being described in prose, while
--- the EXAMPLES of mmap(2) ends about half its lines in a semicolon.
+-- Share of nonblank lines ending in ; { } or opening with #. The DESCRIPTION
+-- of bash(1) scores under 0.01, the EXAMPLES of mmap(2) about 0.5.
 local MIN_CODE_DENSITY = 0.1
 
 local function block_has_code(lines, first, last)
@@ -160,10 +136,8 @@ local function parse(chunk, lang)
   return trees[1]:root()
 end
 
--- Parse from `from`, shrinking the tail back to just before the first parse
--- error when the block turns out to run into prose. A SYNOPSIS that ends in a
--- sentence about feature test macros, or one that carries a subheading and the
--- paragraph under it, converges in one or two rounds.
+-- Parse [from, to], cutting the tail back to before the first parse error when
+-- the block runs into prose. Converges in one or two rounds.
 local function fit(lines, from, to, lang)
   for _ = 1, MAX_SHRINKS do
     if to - from + 1 < MIN_LINES then
@@ -200,13 +174,8 @@ local function paint(buf, root, chunk, from, lang)
     if name and not name:match("^_") and not META_CAPTURE[name] then
       local sr, sc, er, ec = node:range()
       seq = seq + 1
-      -- A character can be captured twice: fprintf is @variable and then
-      -- @function.call. The query lists the more specific capture later, so
-      -- raising the priority as the walk proceeds lets it win, which is the
-      -- rule the real highlighter follows.
-      -- A query can set its own priority to order captures against each
-      -- other -- C's @variable asks for 95 so more specific captures win --
-      -- and that ordering is kept, shifted up as a whole.
+      -- Later captures are more specific and must win. A query's own priority
+      -- (C's @variable asks for 95) is kept, shifted up as a whole.
       local q = tonumber(metadata.priority)
       local prio = BASE_PRIORITY + (q and (q - 100) or seq)
       pcall(vim.api.nvim_buf_set_extmark, buf, ns, from - 1 + sr, sc, {
@@ -221,9 +190,8 @@ local function paint(buf, root, chunk, from, lang)
   return true
 end
 
--- Every run of indented lines, as {first, last} 1-based inclusive pairs. A man
--- page indents everything under a section heading, so a code block is always
--- one of these; so is every paragraph of prose, which is what fit() is for.
+-- Runs of indented lines as 1-based inclusive {first, last}. Prose paragraphs
+-- are included; fit() rejects them.
 local function candidate_blocks(lines)
   local out, first = {}, nil
   for i = 1, #lines + 1 do
@@ -292,11 +260,8 @@ function M.highlight(buf, lang)
     if last - first + 1 >= MIN_LINES and last - first + 1 <= MAX_BLOCK_LINES then
       local from = block_has_code(lines, first, last) and code_start(lines, first, last) or nil
       local to = from and code_end(lines, from, last)
-      -- The indent test belongs to the code, not to the block around it: a
-      -- SYNOPSIS carries a one-column subheading ("Feature Test Macro
-      -- Requirements...") whose indent is smaller than any line of the
-      -- declarations above it, and measuring the whole block threw the
-      -- declarations away with it.
+      -- Measure the indent of the code only: a SYNOPSIS subheading sits at one
+      -- column and would fail the whole block.
       if from and to and min_indent(lines, from, to) >= MIN_INDENT then
         local f, _, root, chunk = fit(lines, from, to, lang)
         if f and paint(buf, root, chunk, f, lang) then

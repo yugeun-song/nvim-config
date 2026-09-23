@@ -1,26 +1,15 @@
--- Paint a man page's structure over nvim's bold marks.
---
--- syntax/man.vim classifies the page -- running header, section heading,
--- subheading, footer -- and a colorscheme can then say what each of those looks
--- like. None of it reaches the screen. nvim's man.lua paints roff's bold as
--- manBold extmarks at priority 4096, roff sets every heading in bold, and an
--- extmark at 4096 is above anything a syntax file can say. So DESCRIPTION and
--- the subheadings under it all came out as manBold, in one colour, and the
--- distinction the colorscheme drew was invisible.
---
--- The classification is cheap to redo -- it is four line shapes -- so it is
--- redone here as extmarks that sit above the bold ones.
+-- Re-mark a man page's structure above nvim's manBold extmarks (priority
+-- 4096), which otherwise cover every group syntax/man.vim defines.
 
 local M = {}
 
 local ns = vim.api.nvim_create_namespace("man_structure")
 
--- Above man.lua's 4096. Code blocks are painted by the sibling module at 5000
--- and never overlap a heading, so the two do not compete.
+-- Above man.lua's 4096; the code pass at 5000 never overlaps a heading.
 local PRIORITY = 5200
 
--- The parenthesis fix below sits above man.lua but below the code pass, so a
--- call written out inside an example keeps the parser's colours.
+-- Above man.lua, below the code pass, so a call inside an example keeps the
+-- parser's colours.
 local CALL_PRIORITY = 4500
 
 --- @param buf integer? buffer handle, defaults to the current one
@@ -44,8 +33,7 @@ function M.highlight(buf)
     elseif line:match("^%S") then
       group = "manSectionHeading"
     elseif line:match("^   %S") then
-      -- Exactly three columns of indent, which is what a subheading gets and
-      -- body text does not.
+      -- Three columns of indent is a subheading; body text has more.
       group = "manSubHeading"
     end
 
@@ -59,11 +47,8 @@ function M.highlight(buf)
         strict = false,
       })
     elseif not group then
-      -- An option list entry: the name, and any aliases before it, but not the
-      -- description that follows on the same line. Same shape syntax/man.vim
-      -- matches, and it loses to manBold the same way everything else did.
-      -- %S+ would swallow the comma that separates "-a, --all", and the
-      -- continuation below would then never match, so the class stops at one.
+      -- Option name plus comma-separated aliases, not the description after them.
+      -- [^%s,] keeps the comma in "-a, --all" for the continuation match.
       local from, e = line:find("^%s+[-+][^%s,]*")
       if e then
         from = line:find("%S")
@@ -86,12 +71,8 @@ function M.highlight(buf)
         end
       end
 
-      -- Cross-references lose to manBold for the same reason the headings did:
-      -- a page that sets open(2) in bold, as printf(1) does for printf(3),
-      -- turned the one thing on the line that K can follow into ordinary
-      -- emphasis. The pattern is the one syntax/man.vim uses, behind a plain
-      -- substring test: a reference needs a parenthesis, most lines have none,
-      -- and a page like cmake-modules(7) is 37,000 lines of asking.
+      -- syntax/man.vim's reference pattern, behind a substring test: most lines
+      -- have no parenthesis and cmake-modules(7) has 37,000 lines.
       if line:find("(", 1, true) then
         for ref_from, ref, ref_to in line:gmatch("()([^%s()]+%(%d%a*%))()") do
           if #ref <= 64 then
@@ -111,17 +92,9 @@ function M.highlight(buf)
   return painted
 end
 
---- Extend a bold run over the parentheses that follow it.
----
---- man-pages writes a function as `.BR mmap ()`: the name is bold and the
---- empty parentheses are roman, because roff cannot change font mid-word
---- without splitting the macro. Rendered, that leaves mmap coloured and ()
---- the body colour, which reads as the page having missed a character. There
---- are 27 of them in mmap(2) alone.
----
---- Only an empty pair immediately after the run counts. `mmap(2)` is a
---- cross-reference and already blue, and `mmap(void addr[.length]` in a
---- SYNOPSIS is code the parser owns.
+--- Extend a bold run over the `()` after it. man-pages writes `.BR mmap ()`,
+--- so the name is bold and the parentheses roman. `mmap(2)` (a reference) and
+--- `mmap(void addr[...]` (SYNOPSIS code) are left alone.
 --- @param buf integer? buffer handle, defaults to the current one
 --- @return integer runs extended
 function M.close_calls(buf)

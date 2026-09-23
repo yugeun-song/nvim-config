@@ -2,10 +2,9 @@ return {
   "nvim-treesitter/nvim-treesitter",
   opts = { ensure_installed = { "asm", "c", "cpp", "linkerscript", "devicetree" } },
   init = function()
-    -- Powers #at-line-start? in after/queries/asm/injections.scm: the cpp
-    -- injection only fires on '#' directives that lead a line (whitespace-only
-    -- before '#'), never on trailing '# ...' asm comments. Removing this breaks
-    -- the query (unknown predicate). Registered at startup, before any highlight.
+    -- #at-line-start? for after/queries/asm/injections.scm: the cpp injection
+    -- fires only on a '#' that leads its line, never on a trailing asm comment.
+    -- The query fails to load without it.
     vim.treesitter.query.add_predicate("at-line-start?", function(match, _, source, predicate)
       local nodes = match[predicate[2]]
       if not nodes or #nodes == 0 then

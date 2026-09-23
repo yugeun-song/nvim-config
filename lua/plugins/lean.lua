@@ -29,9 +29,8 @@ return {
         abbreviations = { enable = true, leader = "\\", extra = {} },
         progress_bars = { enable = true },
         stderr = { enable = true },
-        -- Accomplished marker in the sign column; U+2713 is chosen for width.
-        -- U+2714 is absent from CaskaydiaCove (fallback), U+2705 is full-width and
-        -- misaligns a one-cell sign column; U+2713 is in both fonts and halfwidth.
+        -- U+2713: halfwidth and in both fonts. U+2714 is missing from CaskaydiaCove,
+        -- U+2705 is full-width and misaligns the sign column.
         goal_markers = {
           unsolved = " ⚒ ",
           accomplished = "✓",
@@ -39,9 +38,8 @@ return {
       }
     end,
     config = function()
-      -- lean.nvim links leanGoalsAccomplishedSign to DiagnosticInfo (blue) with
-      -- default = true, which yields only when a definition already exists, so
-      -- re-link it explicitly here to win. spaceduck's DiagnosticOk is #5ccc96.
+      -- lean.nvim links this to DiagnosticInfo with default = true, which only
+      -- yields to a link that already exists; set one explicitly.
       local function link_accomplished()
         vim.api.nvim_set_hl(0, "leanGoalsAccomplishedSign", { link = "DiagnosticOk" })
       end

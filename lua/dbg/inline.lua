@@ -1,9 +1,7 @@
 local M = {}
 
--- dap-view annotates only treesitter "definition" captures, i.e. declaration
--- lines; every use stays bare, and a macro argument list is all uses.  Values
--- go at end of line, not beside each identifier: inline text pushes the code
--- sideways and splits `type->cnt` into `type` and a distant `->cnt`.
+-- dap-view annotates declaration lines only; uses stay bare. Values go at end of
+-- line, since inline text splits `type->cnt` into `type` and a distant `->cnt`.
 local ns = vim.api.nvim_create_namespace("dbg_inline")
 
 M.enabled = true
@@ -87,7 +85,6 @@ function M.render(session, values)
     return
   end
 
-  -- Names dap-view already shows on a line are not repeated.
   local shown_by_dapview = {}
   for key in pairs(taken) do
     local row = tonumber(key:match("^(%d+):"))
@@ -121,7 +118,7 @@ function M.render(session, values)
   for row, bucket in pairs(per_line) do
     local parts = {}
     for _, name in ipairs(bucket.order) do
-      -- a declaration line already carries the value dap-view put there
+      -- dap-view already shows the value on a declaration line
       if not (shown_by_dapview[row] and #bucket.order == 1) then
         parts[#parts + 1] = name .. " = " .. shorten(values[name])
       end

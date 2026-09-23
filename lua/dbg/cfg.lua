@@ -4,17 +4,11 @@ local ui = require("dbg.ui")
 
 local M = {}
 
--- The control-flow view.  Structure comes from `cfgjson`, which disassembles
--- whatever address space is live and so works before the MMU is on.  Whether the
--- branch under the program counter is taken is decided here, by the evaluator
--- the disassembly panel already uses.
---
--- Only the branch at the program counter has a decided state; every other one is
--- drawn muted, because the registers that would settle it do not yet hold the
--- values they will when control arrives.
+-- The control-flow view. Structure comes from `cfgjson`, which works before the
+-- MMU is on; whether the branch at the pc is taken is decided here with the
+-- disassembly panel's evaluator. Every other branch is drawn muted: its
+-- registers do not yet hold the values they will when control arrives.
 
--- The graph is the whole view: the listing it used to offer is the disassembly
--- panel's job, and that panel now draws the same branch lanes.
 local state = { data = nil, error = nil, generation = 0, mode = "graph", detail = 2, boxes = {} }
 
 local MNEM_WIDTH = 8
@@ -22,8 +16,7 @@ local MNEM_WIDTH = 8
 function M.buffer()
   local buf, created = panel.buffer("cfg")
   if created then
-    -- Listed so the tabline carries it like any other file.  A winbar label
-    -- would cost a row and duplicate what the tabline already says.
+    -- Listed so the tabline carries it; a winbar label would cost a row.
     vim.bo[buf].buflisted = true
     pcall(vim.api.nvim_buf_set_name, buf, "control-flow")
     vim.keymap.set("n", "r", function()
@@ -40,8 +33,7 @@ function M.buffer()
         M.zoom(delta)
       end, { buffer = buf, nowait = true, desc = "Control flow: more/less detail" })
     end
-    -- Block-wise motion on the capitals; h j k l stay ordinary cursor keys,
-    -- because a graph this size is still read by scrolling most of the time.
+    -- Block-wise motion on the capitals; h j k l stay ordinary cursor keys.
     for key, dir in pairs({ H = "left", L = "right", J = "down", K = "up" }) do
       vim.keymap.set("n", key, function()
         M.move(dir)
@@ -51,10 +43,7 @@ function M.buffer()
   return buf
 end
 
--- Kept so anything still calling it does not error; the control-flow view is
--- the graph, and the listing lives in the disassembly panel.
--- Detail, not scale: see cfgbox.  Redraw rather than reflow, because box widths
--- change with the level.
+-- Detail level, not scale (see cfgbox). Redraw, since box widths change with it.
 function M.zoom(delta)
   local box = require("dbg.cfgbox")
   local want = math.max(0, math.min(box.DETAIL_MAX, (state.detail or 2) + delta))
@@ -89,8 +78,7 @@ local function cursor_block()
   return best, win
 end
 
--- Move to the nearest block in a direction, measured between box centres.  A
--- graph is two-dimensional, so line-wise motion is the wrong unit for it.
+-- Move to the nearest block in a direction, measured between box centres.
 function M.move(dir)
   local from, win = cursor_block()
   local boxes = state.boxes or {}
@@ -108,8 +96,7 @@ function M.move(dir)
         or (dir == "right" and bc > ac)
         or (dir == "left" and bc < ac)
       if ok then
-        -- distance along the direction dominates, so a block far off to the side
-        -- does not win over one directly below.
+        -- Distance along the direction dominates over sideways offset.
         local along = (dir == "down" or dir == "up") and math.abs(br - ar) or math.abs(bc - ac)
         local across = (dir == "down" or dir == "up") and math.abs(bc - ac) or math.abs(br - ar)
         local d = along + across * 3
@@ -174,8 +161,7 @@ function M.open_source()
   require("dbg.layout").jump(bufnr, insn.line, 1)
 end
 
--- Whether the branch on the program counter's row will be taken.  Returns the
--- highlight group to paint its arrow with; nil when the row holds no branch.
+-- Highlight group for the arrow on the pc's row; nil when it holds no branch.
 local function pc_branch_group(data)
   if not data.pc_row then
     return nil
@@ -206,9 +192,7 @@ local function pc_branch_group(data)
   return "DbgBranchUnknown"
 end
 
--- The payload crosses a channel, so it is data from outside no matter who wrote
--- the other end.  Shapes are forced here, once, instead of every reader
--- rediscovering that a field it expected is a number or missing.
+-- The payload is external data; force its shapes here, once.
 local function finite(n)
   return type(n) == "number" and n == n and n ~= math.huge and n ~= -math.huge
 end
@@ -298,8 +282,7 @@ local function normalize(data)
       if type(raw) == "table" then
         local first = as_int(raw.first, nil)
         local last = as_int(raw.last, nil)
-        -- A block whose rows are not inside the listing describes something that
-        -- is not here; drawing it would invent instructions.
+        -- A block whose rows fall outside the listing would invent instructions.
         if first and last and first >= 0 and last >= first and last < ninsn then
           out.blocks[#out.blocks + 1] = {
             id = as_int(raw.id, #out.blocks),
@@ -388,8 +371,7 @@ local function header(data, width)
   return lines, hl
 end
 
--- Test hook: lets the fuzz harness drive render() with payloads no analyser
--- would produce.
+-- Test hook for the fuzz harness.
 function M.__set_state(t)
   for k, v in pairs(t) do
     state[k] = v
@@ -418,8 +400,7 @@ function M.render()
     local ok, box = pcall(require, "dbg.cfgbox")
     local glines, ghl = nil, nil
     if ok then
-      -- Too big to draw at the level asked for is not a dead end: try the way
-      -- down before refusing, and say which level it settled on.
+      -- Too big at this level: try lower ones before refusing, and say which.
       local okr, a, b, where, why = pcall(box.render, data, width, state.detail)
       local shown = state.detail
       while okr and not a and shown > 0 do
@@ -473,8 +454,7 @@ function M.render()
     end
   end
 
-  -- Text first so tags align just past the longest line; right-aligning to the
-  -- window pushes them too far from what they label.
+  -- Tags align just past the longest line, not at the window edge.
   local texts, tags = {}, {}
   local widest, last_line = 0, nil
   for i, insn in ipairs(data.insns) do
@@ -580,8 +560,7 @@ function M.probe()
   end, { session = session })
 end
 
--- Biggest source window wins, ties go to the top left.  Only ordinary file
--- windows are candidates.
+-- Biggest ordinary file window wins, ties go to the top left.
 local function host_window()
   local best, best_area, best_row, best_col = nil, -1, nil, nil
   for _, win in ipairs(vim.api.nvim_list_wins()) do
@@ -609,11 +588,8 @@ local function host_window()
   return best
 end
 
--- A tab, not a split: the graph is the widest thing the debugger draws, so
--- halving the window would cramp both.  The window remembers its buffer so the
--- Source tab returns to that file, not to wherever the debugger last jumped.
--- An editor window, as opposed to one of the debugger's own panels: dap-view
--- pins its windows with winfixbuf, and the side column registers its own.
+-- An editor window, as opposed to a debugger panel: dap-view pins its windows
+-- with winfixbuf, and the side column registers its own.
 local function is_editor_window(win)
   if not (win and vim.api.nvim_win_is_valid(win)) then
     return false
@@ -630,9 +606,8 @@ local function is_editor_window(win)
   return vim.w[win].dbg_owned == nil
 end
 
--- The window showing the graph.  Found by looking at what is displayed, not by a
--- marker we set: reaching the buffer through the tabline is an ordinary buffer
--- switch and sets no marker, and it has to behave exactly like the command.
+-- The window showing the graph, found by what is displayed rather than a
+-- marker: reaching the buffer through the tabline sets none.
 function M.host()
   local buf = panel.buffer("cfg")
   for _, win in ipairs(vim.api.nvim_list_wins()) do
@@ -669,7 +644,8 @@ function M.open_in_editor()
 end
 
 -- Switch the host window between its file and the graph; the first call makes
--- the host.
+-- the host. Whole window, not a split: the graph is the widest thing drawn.
+-- The window remembers its file so the Source tab returns to it.
 function M.toggle_in_editor()
   if require("dbg.context").block_if_managed("The control-flow graph") then
     return
@@ -692,7 +668,7 @@ function M.open()
   return M.open_in_editor()
 end
 
--- Kept for the bottom bar, which does its own placement.
+-- Bottom-bar entry point; nothing calls it at present.
 function M.open_in_panel()
   local buf = M.buffer()
   M.probe()

@@ -2,9 +2,8 @@ local M = {}
 
 M.ns = vim.api.nvim_create_namespace("dbg_panel")
 
--- Every panel buffer and debugger window is registered here and nowhere else;
--- modules ask this registry instead of holding their own handle, so a window the
--- user closed or a buffer Neovim wiped is never mistaken for a live one.
+-- The one registry of panel buffers and windows; modules hold no handles of
+-- their own, so a closed window or wiped buffer is never taken for a live one.
 local buffers = {}
 local windows = {}
 
@@ -99,8 +98,8 @@ function M.show(buf, height, name)
   return win
 end
 
--- Only one window may hold a panel.  When the same panel turns up twice, the
--- window hardest to reopen wins: managed panel, then sidebar, then loose split.
+-- A panel duplicated across windows keeps the one hardest to reopen: managed
+-- panel, then sidebar, then loose split.
 local function claim_rank(win)
   local owner = vim.w[win].dbg_owned
   if owner == nil then

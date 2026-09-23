@@ -7,8 +7,8 @@ M.preset = "auto"
 
 -- Font size changes what `columns` and `lines` report, so every threshold below
 -- is in cells and re-measured on every resize.
--- Register rows carry a `<symbol + offset>` annotation; kernel symbols are long
--- and a narrow column cuts them off right where they start being useful.
+-- Register rows carry a `<symbol + offset>` annotation; a narrow column cuts
+-- kernel symbols off.
 M.sidebar_min = 44
 M.sidebar_max = 110
 M.sidebar_share = 0.38
@@ -283,9 +283,8 @@ function M.sidebar_open_unguarded()
   end
 end
 
--- Without a line table there is no source line to point at, so disassembly is
--- the closest thing to "the code window follows the program counter". The
--- console is left alone when visible: you are typing in it and gdb echoes there.
+-- With no line table, disassembly is the nearest thing to following the pc.
+-- The console is left alone when visible: gdb echoes there and you type in it.
 function M.show_disassembly()
   local ok, state = pcall(require, "dap-view.state")
   if not ok then
@@ -433,8 +432,7 @@ local function debug_windows()
   return out
 end
 
--- Remember the layout from before the debugger took over so ending a session
--- can put it back.
+-- Snapshot of the layout from before the session, for :DbgClose to restore.
 function M.snapshot()
   if restore then
     return
@@ -491,10 +489,9 @@ local function drop_borrowed(listed)
   end
 end
 
--- Where the debugger is allowed to show source.  nvim-dap otherwise falls back
--- to "the window before this one", which is a debugger panel when you step from
--- the console, and dap-view pins its panel with 'winfixbuf', so the jump throws
--- E1513 from inside nvim-dap's coroutine and takes the step with it.
+-- Where the debugger may show source. nvim-dap otherwise falls back to the
+-- previous window, a winfixbuf panel when stepping from the console, and the
+-- jump raises E1513 inside nvim-dap's coroutine and drops the step.
 function M.source_window()
   local function usable(win)
     if not (win and vim.api.nvim_win_is_valid(win)) then
@@ -521,9 +518,8 @@ function M.source_window()
       return win
     end
   end
-  -- Starting from the start screen leaves no window holding a file, so the
-  -- source would land in a new split with the start screen still sitting there.
-  -- It is the editor area, just without a file in it yet, so take it over.
+  -- From the start screen no window holds a file; take that window over rather
+  -- than splitting beside it.
   local START = {
     snacks_dashboard = true,
     alpha = true,
@@ -559,12 +555,10 @@ end
 function M.jump(bufnr, line, column)
   local win = M.source_window()
   if not win then
-    -- With the graph up, stepping updates it and leaves the windows alone.
-    -- Taking its window back, or splitting a new one, would mean switching back
-    -- by hand after every step.
+    -- With the graph up, stepping only updates it; taking its window back would
+    -- mean switching back by hand after every step.
     if cfg_tab_showing() then
-      -- Remember where the source would have gone, so switching back to the
-      -- file tab lands on the current line instead of wherever it was left.
+      -- Remember where the source would have gone so the file tab lands on it.
       M.pending_jump = { buf = bufnr, line = line, column = column }
       return
     end
@@ -592,31 +586,26 @@ function M.enter()
   M.apply()
 end
 
--- Give back the file a window was showing before the control-flow graph took it
--- over, and say whether it was such a window. cfg.open_in_editor parks the
--- displaced buffer in w:dbg_cfg_prev and puts the graph into an ORDINARY editor
--- window, so that window carries a dbg- filetype without being a panel; closing
--- it would take the source view with it.
+-- Give a window back the file it showed before the graph took it (w:dbg_cfg_prev),
+-- and say whether it was such a window. The graph sits in an ordinary editor
+-- window, so it has a dbg- filetype without being a panel; closing it loses the
+-- source view.
 local function release_cfg_host(win)
   local prev = vim.w[win].dbg_cfg_prev
   vim.w[win].dbg_cfg_prev = nil
   if not (prev and vim.api.nvim_buf_is_valid(prev)) then
     return false
   end
-  -- Only a real file goes back. The marker records whatever the window held when
-  -- the graph took it, which can itself be a panel if the graph was opened over
-  -- one; restoring that would pin a debugger buffer into a window and make the
-  -- close paths keep a window they meant to close.
+  -- Only a real file goes back: the marker holds a panel when the graph was
+  -- opened over one, and restoring that pins a debugger buffer in the window.
   if is_debug_buf(prev) then
     return false
   end
   return (pcall(vim.api.nvim_win_set_buf, win, prev))
 end
 
--- Put the windows back without touching the session.  A mistyped key can close
--- a panel or leave a stray split behind, and the fix should cost nothing: gdb,
--- the breakpoints and every panel's contents are untouched, only the windows are
--- rebuilt.
+-- Rebuild the windows without touching the session: gdb, breakpoints and panel
+-- contents stay.
 function M.rebuild()
   local ok, dap = pcall(require, "dap")
   local session = ok and dap.session() or nil
@@ -656,9 +645,8 @@ function M.rebuild()
     end
   end
 
-  -- Windows holding a debugger buffer cannot all be closed -- one always
-  -- survives -- so give the last window a file back.  Without this the layout
-  -- gets built around a leftover panel and there is nowhere to show source.
+  -- One window always survives, so give the last one a file back; otherwise the
+  -- layout builds around a leftover panel with nowhere to show source.
   local left = vim.api.nvim_list_wins()
   if #left == 1 and is_debug_buf(vim.api.nvim_win_get_buf(left[1])) then
     local win = left[1]
@@ -698,18 +686,16 @@ function M.rebuild()
   require("dbg.notify").info("Windows reset. The session, breakpoints and gdb state are untouched.")
 end
 
--- Close the gdb panels without touching dap-view: a managed session must not
--- inherit windows an earlier gdb session or DbgLayout left up. The pre-session
--- snapshot is deliberately kept, so :DbgClose can still put the layout back.
+-- Close the gdb panels but not dap-view: a managed session must not inherit
+-- windows a gdb session or DbgLayout left up. The snapshot stays for :DbgClose.
 function M.drop_panels()
   M.sidebar_close()
   for _, win in ipairs(vim.api.nvim_list_wins()) do
     if vim.api.nvim_win_is_valid(win) then
       local ft = vim.bo[vim.api.nvim_win_get_buf(win)].filetype
       if type(ft) == "string" and ft:match("^dbg%-") then
-        -- The count guard belongs to the close path alone. Giving a window its file
-        -- back never removes one, and gating it on the count left the graph on screen
-        -- whenever it was the last window standing.
+        -- No count guard here: restoring a file never removes a window, and gating
+        -- it left the graph on screen when it was the last window.
         if not release_cfg_host(win) and #vim.api.nvim_list_wins() > 1 then
           pcall(vim.api.nvim_win_close, win, true)
         end
@@ -754,10 +740,8 @@ function M.leave()
   drop_borrowed(saved.listed)
 end
 
--- The debugger's panels are pinned with winfixbuf so a stray :buffer cannot
--- replace one.  bufferline does not know that, so its keys raise E1513 when the
--- cursor happens to be in a panel.  Move to a window that can take a buffer
--- first; the panels keep their protection and the keys keep working.
+-- Panels are winfixbuf, so bufferline's keys raise E1513 from inside one. Move
+-- to a window that can take a buffer first.
 function M.unfix_for_buffer_switch()
   local ok, fixed = pcall(function()
     return vim.wo.winfixbuf

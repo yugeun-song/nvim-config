@@ -4,10 +4,8 @@ vim.opt_local.signcolumn = vim.go.signcolumn
 vim.opt_local.cursorline = false
 vim.opt_local.scrolloff = 4
 
--- The code inside a man page gets the same parser the editor uses on a source
--- file of that language. Which language the page is written about comes from
--- its section: 2 and 9 are kernel and syscall interfaces, 3 is the C library
--- unless the page names another language in its extension.
+-- Parser language by section. A suffix such as 3p or 3type is still C; any
+-- other suffix names its own language.
 local SECTION_LANG = {
   ["0"] = "c",
   ["2"] = "c",
