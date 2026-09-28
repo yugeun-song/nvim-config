@@ -123,3 +123,12 @@ vim.api.nvim_create_autocmd("LspAttach", {
   end,
   desc = "Clear LSP tagfunc on C/C++/H buffers so <C-]> falls back to tags file",
 })
+
+vim.api.nvim_create_autocmd("FileType", {
+  group = augroup("wrap_spell"),
+  pattern = { "text", "plaintex", "typst", "gitcommit", "markdown" },
+  callback = function()
+    vim.opt_local.wrap = true
+  end,
+  desc = "Replace LazyVim's wrap_spell: wrap prose buffers but leave spell off",
+})
