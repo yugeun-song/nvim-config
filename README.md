@@ -167,9 +167,9 @@ nvim-config/
     │   └── ui.lua            # panel highlights, section banners, window styling
     ├── config/
     │   ├── lazy.lua          # lazy.nvim + LazyVim bootstrap
-    │   ├── options.lua       # editor options (tags, guicursor, no swap/modeline) + .S/.s/.lds/.lds.S filetypes
+    │   ├── options.lua       # editor options (tags, guicursor, no swap/modeline, spelllang) + .S/.s/.lds/.lds.S filetypes
     │   ├── keymaps.lua       # ChKeys setup + <leader>uK toggle
-    │   └── autocmds.lua      # C/C++ indent detection, cscope auto-load, tagfunc reset
+    │   └── autocmds.lua      # C/C++ indent detection, cscope auto-load, tagfunc reset, spell-free prose, LSP-free Claude prompts
     ├── man_code/             # man page highlighting on top of nvim's own :Man
     │   ├── init.lua          # parse the code blocks with the section's Tree-sitter grammar
     │   └── structure.lua     # headings, option names and cross-references above the bold marks
@@ -228,6 +228,12 @@ nvim-config/
 - `modeline = false`, `swapfile = false`.
 - `whichwrap` extended so `h`, `l` and the arrow keys wrap across lines.
 - `vim.filetype.add` — `.S`/`.s`/`.sx` pinned to `asm`, `.lds` and `*.lds.S` to `ld` (see the highlighting section).
+
+### Prose buffers (`lua/config/autocmds.lua`, `lua/config/options.lua`)
+
+- **Spell stays off** — LazyVim enables `spell` for `text`, `plaintex`, `typst`, `gitcommit` and `markdown`; redefining its `lazyvim_wrap_spell` group keeps only `wrap`. The English list flagged every Hangul word, and nothing local checks Korean: Vim has no Korean spell file, `:mkspell` drops the `ICONV`/`OCONV` rules the Korean hunspell dictionary relies on, and LanguageTool (ltex), Harper and cspell lack Korean. `<leader>us` still toggles spell.
+- **`spelllang = { "en", "cjk" }`** — hand-enabled spell checks English and skips Hangul syllables, Han and kana. Standalone jamo such as `ㅋㅋ` are still flagged.
+- **Claude Code prompts** — LSP clients that attach to `claude-prompt-*.md`, the file Claude Code opens on `Ctrl+G`, are detached, keeping markdown lint out of prompts.
 
 ### Linux kernel C workflow (`lua/config/autocmds.lua`, `lua/plugins/clangd.lua`, `lua/plugins/cscope.lua`)
 
