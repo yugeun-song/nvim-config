@@ -1,3 +1,4 @@
+-- Parts adapted from https://github.com/LazyVim/LazyVim (Apache-2.0). See THIRD-PARTY-NOTICES.
 -- Debug support for the languages that are not gdb targets. Nothing here goes
 -- through lua/dbg.
 
