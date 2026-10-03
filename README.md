@@ -16,7 +16,7 @@ Linux is the primary target. The IME reset has Windows and macOS branches, but t
 - **Debugger built on GDB's own DAP.** `nvim-dap` drives `gdb -i dap` (GDB 14+), so userspace C/C++, a foreign-architecture binary under a QEMU user-mode gdbstub, and a Linux kernel behind a QEMU gdbstub all work without a third-party adapter. Python, Rust, JavaScript/TypeScript and Elixir debug through their own ecosystems. GDB sessions get panels for registers, locals+globals, a hex view, memory mappings and target queries on top of `nvim-dap-view`.
 - **`lsp_filter`.** Disable clangd (or any server) per file or directory through persisted rules.
 - **Korean IME integration.** A Dubeolsik → QWERTY `langmap`, an IME reset to English on leaving Insert mode, and live fcitx5 / Caps Lock state in the statusline.
-- **ChKeys.** A built-in keystroke caster for screencasts.
+- **ChKeys.** A built-in keystroke caster for screencasts, off until `<leader>uK`.
 - **`spaceduck` colorscheme + Neovide profile.** Transparent in the terminal, opaque under Neovide.
 
 ---
@@ -391,7 +391,7 @@ LazyVim only runs `:checktime` on focus and terminal events, so files rewritten 
 
 ### ChKeys — on-screen keystroke display (`lua/chkeys.lua`)
 
-Captures keys via `vim.on_key` and renders them in rounded floats at the bottom-right, dismissed after 1.6 s. Enables the kitty keyboard protocol on kitty, WezTerm, foot, ghostty and rio for modifier detection, shows a `한` indicator when `vim.g.im_state == "한"`, writes nothing to disk. `<leader>uK` or `:ChKeysToggle`. Under Neovide it uses one window per key.
+Captures keys via `vim.on_key` and renders them in rounded floats at the bottom-right, dismissed after 1.6 s. Enables the kitty keyboard protocol on kitty, WezTerm, foot, ghostty and rio for modifier detection, shows a `한` indicator when `vim.g.im_state == "한"`, writes nothing to disk. Off at startup; `<leader>uK` or `:ChKeysToggle` turns it on and off. Under Neovide it uses one window per key.
 
 ### Neovide GUI (`lua/plugins/neovide.lua`, `lua/plugins/neovide-ime.lua`)
 

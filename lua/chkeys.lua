@@ -3,7 +3,7 @@ local M = {}
 local uv = vim.uv or vim.loop
 
 local config = {
-  enabled = true,
+  enabled = false,
   timeout = 1600,
   maxkeys = 5,
   separator = "   ",
