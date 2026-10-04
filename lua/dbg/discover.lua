@@ -400,17 +400,40 @@ function M.kaslr(inst, kernel_root)
   return { state = "unknown", source = "no evidence available" }
 end
 
+local reported_unusable = {}
+
+local function python_starts(bin)
+  local ok, proc = pcall(vim.system, { bin, "-nx", "-batch", "-ex", "python gdb.VERSION" }, { text = true })
+  local res = ok and proc:wait() or { code = -1, signal = 0, stderr = (tostring(proc):gsub("^[^\n]-:%d+: ", "")) }
+  if res.code == 0 and (res.signal or 0) == 0 then
+    return true
+  end
+  if not reported_unusable[bin] then
+    reported_unusable[bin] = true
+    local err = res.stderr or ""
+    local why = err:match("Python Exception[^\n]*") or err:match("[^\n]*not supported[^\n]*") or err:match("%S[^\n]*")
+    local status = not ok and "could not start"
+      or (res.signal or 0) ~= 0 and ("signal " .. res.signal)
+      or ("exit status " .. res.code)
+    require("dbg.notify").warn(
+      ("%s: 'python gdb.VERSION' failed (%s)%s"):format(bin, status, why and ("\n" .. why) or "")
+    )
+  end
+  return false
+end
+
 function M.gdb_for(arch)
   local key = ARCH_ALIASES[arch] or arch
-  for _, cand in ipairs(GDB_CANDIDATES[key] or { "gdb" }) do
-    if vim.fn.executable(cand) == 1 then
+  local cands = GDB_CANDIDATES[key] or { "gdb" }
+  for _, cand in ipairs(cands) do
+    if vim.fn.executable(cand) == 1 and python_starts(cand) then
       return cand
     end
   end
   -- No cross-gdb: the host one only counts if built for every target.
-  if vim.fn.executable("gdb") == 1 then
+  if not vim.list_contains(cands, "gdb") and vim.fn.executable("gdb") == 1 then
     local conf = vim.fn.system({ "gdb", "--configuration" })
-    if vim.v.shell_error == 0 and conf:find("--enable-targets=all", 1, true) then
+    if vim.v.shell_error == 0 and conf:find("--enable-targets=all", 1, true) and python_starts("gdb") then
       return "gdb"
     end
   end

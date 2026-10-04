@@ -37,7 +37,7 @@ Linux is the primary target. The IME reset has Windows and macOS branches, but t
 | **Debugging (optional)** | `gdb` **14+** | The debug adapter is GDB itself (`gdb -i dap`). |
 | | `codelldb`, `js-debug-adapter`, `debugpy`, `elixir-ls` | Installed through Mason. Rust, JavaScript/TypeScript, Python and Elixir debug on these. |
 | | `qemu-system-*` | Kernel / bare-metal workflow; the gdbstub is what Neovim attaches to. |
-| | `<triple>-gdb` (optional) | `aarch64-linux-gnu-gdb`, `riscv64-linux-gnu-gdb`, … preferred per target architecture; a multiarch `gdb` otherwise. |
+| | `<triple>-gdb` (optional) | `aarch64-linux-gnu-gdb`, `riscv64-linux-gnu-gdb`, … preferred per target architecture; a multiarch `gdb` otherwise. A candidate whose Python layer does not start (`<gdb> -nx -batch -ex 'python gdb.VERSION'` fails) is skipped with a notification. |
 | | `qemu-<arch>` usermode (optional) | `qemu-aarch64`, `qemu-riscv64`, … (package `qemu-user`) for the cross-arch usermode configs. |
 | | `/usr/<triple>` cross runtime (optional) | Sysroot for a dynamically linked cross binary; auto-detected, unneeded for a static one. |
 | **Korean IME (optional)** | `fcitx5` + `fcitx5-remote` | IME reset and the Hangul/English indicator. |
@@ -285,7 +285,7 @@ Adapters are resolved from Mason's package directory rather than `PATH`. A langu
 
 **Running a program.** Launch configurations ask for the executable and then its command line, split with shell quoting rules. Both prompts remember the last answer, and `<leader>dc` with no session replays the last run without asking; `<leader>dn` picks a different configuration or program.
 
-**Adapters.** `gdb` (launch, launch-and-stop-at-main, attach by PID, two cross-architecture usermode entries) and `gdb_kernel` for remote targets. The kernel adapter picks `<triple>-gdb` when one exists, adds `add-auto-load-safe-path <kernel root>` so `vmlinux-gdb.py` loads, sources gdbtools when found (`$GDBTOOLS_PATH`, walking up from the kernel root, or the checkout gdbtools' `setup.sh` recorded), and passes the full environment through (libuv replaces the environment, so `HOME` and `~/.gdbinit` would otherwise be lost).
+**Adapters.** `gdb` (launch, launch-and-stop-at-main, attach by PID, two cross-architecture usermode entries) and `gdb_kernel` for remote targets. The kernel adapter picks `<triple>-gdb` when one exists and its Python layer starts, adds `add-auto-load-safe-path <kernel root>` so `vmlinux-gdb.py` loads, sources gdbtools when found (`$GDBTOOLS_PATH`, walking up from the kernel root, or the checkout gdbtools' `setup.sh` recorded), and passes the full environment through (libuv replaces the environment, so `HOME` and `~/.gdbinit` would otherwise be lost).
 
 **Foreign-architecture userspace.** *Run on QEMU user* asks for the guest binary, arguments and a gdbstub port, starts `qemu-<arch> -g <port> -L <sysroot> <binary>` and attaches, stopped at `_start`. *Attach to a QEMU user gdbstub* connects to one you started yourself. The architecture is the ELF's `e_machine`; the cross gdb, the sysroot (`/usr/<triple>`, left unset for a static binary) and the `qemu-<arch>` all follow from it. x86_64, aarch64 and riscv64 are wired. A QEMU this editor launched is stopped by its port alone when the session ends or Neovim exits; a stub you started is left running.
 
