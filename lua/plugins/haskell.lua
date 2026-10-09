@@ -1,6 +1,6 @@
 local ghcup_bin = vim.fs.joinpath(vim.env.HOME, ".ghcup", "bin")
 if vim.uv.fs_stat(ghcup_bin) and not vim.tbl_contains(vim.split(vim.env.PATH, ":", { plain = true }), ghcup_bin) then
-  vim.env.PATH = ghcup_bin .. ":" .. vim.env.PATH
+  vim.env.PATH = vim.env.PATH .. ":" .. ghcup_bin
 end
 
 return {
