@@ -7,6 +7,7 @@ return {
       "clang-format",
       "clangd",
       "codelldb",
+      "css-lsp",
       "debugpy",
       "detekt",
       "docker-language-server",
