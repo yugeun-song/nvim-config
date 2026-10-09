@@ -21,6 +21,8 @@ return {
         -- Bound the answers that can blow up on kernel-sized symbol sets.
         "--limit-results=200",
         "--limit-references=2000",
+        -- Neovim logs server stderr at ERROR; clangd's info lines grew lsp.log past 100 MB.
+        "--log=error",
         "-j=" .. half_cpus,
       },
     }
