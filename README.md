@@ -40,8 +40,9 @@ Linux is the primary target. The IME reset has Windows and macOS branches, but t
 | | `<triple>-gdb` (optional) | `aarch64-linux-gnu-gdb`, `riscv64-linux-gnu-gdb`, … preferred per target architecture; a multiarch `gdb` otherwise. A candidate whose Python layer does not start (`<gdb> -nx -batch -ex 'python gdb.VERSION'` fails) is skipped with a notification. |
 | | `qemu-<arch>` usermode (optional) | `qemu-aarch64`, `qemu-riscv64`, … (package `qemu-user`) for the cross-arch usermode configs. |
 | | `/usr/<triple>` cross runtime (optional) | Sysroot for a dynamically linked cross binary; auto-detected, unneeded for a static one. |
-| **Common Lisp (optional)** | `sbcl`, `ocicl` | SBCL runs alive-lsp, which `ocicl` installs; `ocicl lint` lints Lisp files. See *Common Lisp and Haskell* below. |
+| **Common Lisp (optional)** | `sbcl`, `ocicl` | SBCL runs alive-lsp, which `ocicl` installs, and the REPL; `ocicl lint` lints Lisp files. See *Common Lisp and Haskell* below. |
 | **Haskell (optional)** | `ghc`, `cabal`, `haskell-language-server`, `hlint` from [GHCup](https://www.haskell.org/ghcup/) | haskell-tools.nvim starts HLS from `~/.ghcup/bin`, which is put on Neovim's `PATH`. Arch's own Haskell packages are not used. |
+| **Python (optional)** | `ruff` | Linting and formatting beside `ty`, the type checker Mason installs. |
 | **Korean IME (optional)** | `fcitx5` + `fcitx5-remote` | IME reset and the Hangul/English indicator. |
 | **Caps Lock indicator (optional)** | Linux sysfs LED node | `/sys/class/leds/input*::capslock/brightness`. |
 | **GUI (optional)** | [Neovide](https://neovide.dev/) | GUI front-end with a dedicated profile here. |
@@ -135,7 +136,7 @@ nvim-config/
 ├── stylua.toml               # StyLua style for the config's own Lua (2-space, 120 col)
 ├── after/
 │   ├── ftplugin/
-│   │   ├── lisp.lua           # lisp buffers: ' and ` are not auto-paired, no format on save
+│   │   ├── lisp.lua           # lisp buffers: no ' or ` auto-pair, no format on save, REPL keys
 │   │   └── man.lua            # man buffers: window options, then the man_code passes
 │   └── queries/               # Tree-sitter query extensions (see lua/plugins/asm.lua)
 │       ├── asm/injections.scm # inject C into .S/.s cpp directive lines
@@ -147,6 +148,7 @@ nvim-config/
 │   └── alive-lsp-stdio.lisp  # alive-lsp over stdio: no TCP port, *read-eval* off, spec-shaped replies
 └── lua/
     ├── chkeys.lua            # on-screen keystroke display (ChKeys)
+    ├── lisp_repl.lua         # Common Lisp REPL: sbcl in a terminal split, code passed through temp files
     ├── dbg/                  # debugger panels and target discovery
     │   ├── discover.lua      # reads /proc to find running QEMU gdbstubs, ELF arch, KASLR evidence
     │   ├── breakpoints.lua   # function and address breakpoints, which nvim-dap has no API for
@@ -185,21 +187,24 @@ nvim-config/
     └── plugins/
         ├── dap.lua           # nvim-dap + dap-view + disassembly, GDB adapters, keymaps, commands
         ├── dap_languages.lua # debug support for the languages that are not GDB targets
-        ├── clangd.lua        # clangd cmd + dynamic -j, inlay hints off
+        ├── clangd.lua        # clangd cmd + dynamic -j, error-only log, inlay hints off
         ├── cscope.lua        # cscope_maps.nvim + Telescope, <leader>i* navigation
         ├── asm.lua           # asm/linkerscript parsers + at-line-start? cpp-injection predicate
         ├── ansi_color.lua    # baleia.nvim: ANSI colours in the gdb console, :BaleiaColorize elsewhere
         ├── diagnostics.lua   # CursorHold auto floating diagnostics
         ├── discord_rpc.lua   # Discord Rich Presence over the IPC socket, no plugin
-        ├── elixir.lua        # elixir/heex/eex Tree-sitter parsers
+        ├── elixir.lua        # elixir/heex/eex parsers; expert serves on a session cookie, elixir-ls only debugs
         ├── formatting.lua    # oxfmt as the conform formatter for web filetypes, taplo for toml
         ├── fs_refresh.lua    # external change auto-reload + :FsRefresh
         ├── haskell.lua       # haskell-tools.nvim (HLS), haskell parser, hlint, ~/.ghcup/bin on PATH
         ├── hlslens.lua       # nvim-hlslens: match index beside the search hit
         ├── lean.lua          # lean.nvim for Lean 4, infoview at the bottom
+        ├── linting.lua       # ktlint, detekt (opt-in) and yamllint through nvim-lint
         ├── lisp.lua          # commonlisp parser, alive-lsp through scripts/, ocicl lint
         ├── lsp_filter.lua    # wires up lsp_filter + <leader>cF* keys
         ├── mason.lua         # Mason packages this config expects (ensure_installed)
+        ├── python.lua        # ruff beside ty: lint, ruff_format, hover left to ty
+        ├── treesitter.lua    # parsers for languages without their own file here
         ├── im_control.lua    # Korean langmap + IME auto-reset
         ├── imstate.lua       # Caps Lock + fcitx5 lualine indicators
         ├── lualine.lua       # full path + encoding/format flag
@@ -235,6 +240,7 @@ nvim-config/
 - `modeline = false`, `swapfile = false`.
 - `whichwrap` extended so `h`, `l` and the arrow keys wrap across lines.
 - `vim.filetype.add` — `.S`/`.s`/`.sx` pinned to `asm`, `.lds` and `*.lds.S` to `ld` (see the highlighting section).
+- Node, Perl and Ruby providers are off: no plugin here is a remote plugin, so their hosts would only add checkhealth warnings.
 
 ### Prose buffers (`lua/config/autocmds.lua`, `lua/config/options.lua`)
 
@@ -245,7 +251,7 @@ nvim-config/
 ### Linux kernel C workflow (`lua/config/autocmds.lua`, `lua/plugins/clangd.lua`, `lua/plugins/cscope.lua`)
 
 - **Indentation** — a `.clang-format` found upward sets the width (`IndentWidth`, `UseTab`, `TabWidth`, or the `BasedOnStyle` default); a project `.editorconfig` wins over it. With neither, the buffer decides: more of its first 2000 lines starting with a tab than with two or more spaces means 8-column tabs (`noexpandtab`), otherwise 4 spaces with `tabstop = 8`. That fallback covers kernel trees older than v4.17, which ship no `.clang-format`. Only buffer options change; existing whitespace is never rewritten, and none of this depends on clangd. `list = true` and `vim.b.autoformat = false` apply in every case.
-- **clangd** runs as `clangd --background-index --clang-tidy --completion-style=detailed --header-insertion=never --pch-storage=disk --background-index-priority=background --limit-results=200 --limit-references=2000 -j=<N>`, with `<N>` half the logical CPUs (at least 1). Inlay hints are off.
+- **clangd** runs as `clangd --background-index --clang-tidy --completion-style=detailed --header-insertion=never --pch-storage=disk --background-index-priority=background --limit-results=200 --limit-references=2000 --log=error -j=<N>`, with `<N>` half the logical CPUs (at least 1). Neovim writes server stderr to `lsp.log` at ERROR level, and clangd's info lines had grown it past 100 MB, hence `--log=error`. Inlay hints are off.
 - **cscope** — `cscope_maps.nvim` with the Telescope picker under `<leader>i`; its own default mappings are disabled. On reading a `*.c`/`*.h`/`*.S` file, the nearest `cscope.out` found upward is added once per session.
 - **`<C-]>` → tags** — on `LspAttach` to `c`/`cpp`/`h` buffers the LSP `tagfunc` is cleared, so `<C-]>` uses the `tags` file. Generate one with `make tags`.
 
@@ -257,7 +263,7 @@ Kernel low-level sources mix languages in one file. The right grammar is injecte
 - **`#at-line-start?` predicate** (registered in `asm.lua`) restricts that to `#` leading a line, so a trailing `# else branch` comment stays a comment. The query fails without the predicate, so the two files travel together.
 - **assembly in C/C++** — `after/queries/c/injections.scm` and `cpp/injections.scm` inject the `asm` grammar into `asm("…")` / `__asm__(…)` bodies, each string piece independently so multi-line and adjacent-literal blocks read cleanly. `cpp` is included because kernel `*.h` headers are detected as `cpp`.
 - **filetype pinning** — `.S`/`.s`/`.sx` are forced to `asm` (Neovim otherwise flips files with `.macro`/`.title` to `vmasm`, which has no parser); `.lds` and `*.lds.S` map to `ld`.
-- **parsers** — `asm`, `c`, `cpp`, `linkerscript`, `devicetree` (and `elixir`, `heex`, `eex` from `elixir.lua`) are in `ensure_installed`.
+- **parsers** — `asm`, `c`, `cpp`, `linkerscript`, `devicetree` are in `ensure_installed`; other languages add theirs in `elixir.lua`, `haskell.lua`, `lisp.lua` and `treesitter.lua`.
 - **linker scripts** — `*.lds`, `*.ld` and `*.lds.S` use the `linkerscript` grammar. It has no `#` handling, so cpp directive lines lose highlighting; accepted, because the `asm` fallback mis-tokenises `SECTIONS`/`ALIGN`/output sections instead (about 12% vs 18% error nodes on a real `vmlinux.lds.S`).
 - **device trees** — `*.dts`/`*.dtsi` use `devicetree`, which handles cpp directives natively.
 
@@ -283,10 +289,10 @@ The debug adapter is GDB itself: GDB 14+ ships a DAP interpreter (`gdb -i dap`),
 | Linux Kernel | `gdb -i dap` (`gdb_kernel`) | The same, plus the kernel-only machinery |
 | Python | [`nvim-dap-python`](https://github.com/mfussenegger/nvim-dap-python) on `debugpy` | Its own configurations, venv detection, debugging the test under the cursor |
 | Rust | [`rustaceanvim`](https://github.com/mrcjkb/rustaceanvim) on `codelldb` | `:RustLsp debuggables`, which finds the cargo targets itself, and LLDB's Rust formatters |
-| JavaScript / TypeScript | `js-debug-adapter` | `pwa-node`/`pwa-chrome`/`pwa-msedge`, source maps, `tsx`/`ts-node` for a `.ts` file |
+| JavaScript / TypeScript | `js-debug-adapter` | `pwa-node`/`pwa-chrome`/`pwa-msedge`, source maps; a `.ts` file runs on Node's own type stripping, or on `tsx`/`ts-node` when installed (needed for enums and namespaces) |
 | Elixir | [ElixirLS](https://github.com/elixir-lsp/elixir-ls)'s debug adapter, as `mix_task` | `mix test` and `mix run` under the debugger |
 
-Adapters are resolved from Mason's package directory rather than `PATH`. A language with no adapter gets nvim-dap's own *No configuration found* and nothing else. `.vscode/launch.json` is read on demand for every language, comments included. Julia is not offered: `julia-lsp`'s debugger expects a VS Code handshake over named pipes. rustaceanvim runs its own `rust-analyzer`, so `nvim-lspconfig`'s `rust_analyzer` is disabled to keep a second client off the buffer.
+Adapters are resolved from Mason's package directory rather than `PATH`. A language with no adapter gets nvim-dap's own *No configuration found* and nothing else. `.vscode/launch.json` is read on demand for every language, comments included. Julia is not offered: `julia-lsp`'s debugger expects a VS Code handshake over named pipes. Java is not offered either: java-debug, the bundle jdtls would load, opens its DAP server on every network interface without authentication and keeps it open while jdtls runs. rustaceanvim runs its own `rust-analyzer`, so `nvim-lspconfig`'s `rust_analyzer` is disabled to keep a second client off the buffer. The `elixir-ls` Mason package is only a launcher: the first debug run for each Elixir and OTP version clones the ElixirLS release tag and its commit-pinned dependencies through `Mix.install` into `~/.cache/mix/installs` and compiles them, about 20 s.
 
 **Session context.** `lua/dbg/context.lua` classifies every session as `linux_kernel`, `native` (GDB on a userspace program) or `managed` (everything else), from the adapter type or a `dbg_profile` on the configuration. A GDB session gets the full panel set and winbar (*Registers(G)*, *Memory(M)*, *Mappings(V)*, *Control flow(F)*, *Target(I)*, *gdb console(R)*). A managed session gets `nvim-dap-view` exactly as it ships; none of the GDB machinery attaches, and GDB-only views and commands (Registers, Memory, Mappings, disassembly, the control-flow graph, `:DbgState`, `:DbgLayout`, `:DbgSafeMem`, `:DbgInline`, `<leader>dF`) are refused with a note.
 
@@ -396,8 +402,18 @@ Turns LSP servers off for chosen files or directories, for silencing generated o
   mkdir -p ~/.local/share/nvim/alive-lsp && cd ~/.local/share/nvim/alive-lsp && : > ocicl.csv
   OCICL_LOCAL_ONLY=1 ocicl install git+https://github.com/nobody-famous/alive-lsp@85f118b85d1543bb7413166b6793b87975b4d439
   ```
-- **Haskell** — [haskell-tools.nvim](https://github.com/mrcjkb/haskell-tools.nvim) (`^11`) starts haskell-language-server for Haskell and cabal files; `nvim-lspconfig`'s `hls` is disabled so only one client attaches. The `haskell` parser, `hlint` through nvim-lint, and format on save through HLS's fourmolu. `~/.ghcup/bin` is prepended to Neovim's `PATH`.
+- **REPL** (`lua/lisp_repl.lua`, keys below) — `sbcl` with `~/.sbclrc` in a bottom terminal split, started in the project root (`ocicl.csv`, `.git` or an `.asd`). Code never crosses the pty, which cuts a line at 4095 bytes and acts on `^C`, `^U` and DEL inside it: each form goes to a file in Neovim's private temp dir, and `(nvim-repl:ev …)` reads it form by form as the REPL would, then deletes it. No socket is opened, and ocicl's `*download*` is turned off in this image so a missing system is not fetched unverified. Swank (Conjure) was passed over: its server takes unauthenticated TCP connections, which QEMU guests on user-mode networking reach through `10.0.2.2`.
+- **Haskell** — [haskell-tools.nvim](https://github.com/mrcjkb/haskell-tools.nvim) (`^11`) starts haskell-language-server for Haskell and cabal files; `nvim-lspconfig`'s `hls` is disabled so only one client attaches. The `haskell` parser, `hlint` through nvim-lint, and format on save through HLS's fourmolu. `~/.ghcup/bin` is appended to Neovim's `PATH` when missing, the order the shell uses, so a pacman-owned name still wins.
 - **Haskell toolchain** — GHCup with the `vanilla` channel (upstream bindists) and the `3rdparty` channel, set in `~/.ghcup/config.yaml` with `meta-mode: Strict`: `ghcup install ghc 9.14.1 --set`, then `cabal 3.18.1.0`, `hls 2.15.0.0` and `hlint 3.10` the same way. HLS built for GHC 9.14 has no hlint plugin, hence the separate `hlint`.
+
+### Other languages (`lua/plugins/python.lua`, `linting.lua`, `treesitter.lua`, `elixir.lua`)
+
+- **Python** — `ty` (Mason) checks types and answers hover; `ruff` lints over LSP and formats through conform's `ruff_format`. Ruff's hover is off so one popup answers, and ruff is enabled only when it is on `PATH`.
+- **Elixir** — `expert`, the official server, is the only client. `elixir-ls` stays installed for its debug adapter and is kept off the buffer. Expert's manager and engine nodes talk over Erlang distribution, released with the public cookie `expert` and listening on every interface, so anyone who reaches a port could run code as you. `elixir.lua` gives each Neovim session a random cookie and keeps the manager on loopback. The engine's port still listens on every interface, because Expert strips `ERL_FLAGS` before starting it, but the public cookie no longer opens it.
+- **Kotlin** — `ktlint` lints on read and save, not on every Insert leave: each run starts a JVM, about 0.7 s. `detekt` runs only where the project ships `config/detekt/detekt.yml` or `detekt.yml`; its stock rules misfire on ordinary code.
+- **YAML** — `yamllint` takes the project's `.yamllint*` found from the buffer's directory, then `$YAMLLINT_CONFIG_FILE` or `~/.config/yamllint/config`. Without one it uses `relaxed` with line length off and `truthy` on.
+- **CSS** — `css-lsp` from Mason, the same package as `html-lsp` and `json-lsp`.
+- **Parsers** — `treesitter.lua` adds `awk`, `css`, `dockerfile`, `erlang`, `git_config`, `git_rebase`, `gitattributes`, `gitcommit`, `java`, `julia`, `kconfig`, `kotlin`, `make` and `rust`. Without them these filetypes fall back to regex syntax, with no Tree-sitter folds or text objects.
 
 ### External change detection & refresh (`lua/plugins/fs_refresh.lua`)
 
@@ -494,6 +510,16 @@ Inside the hex view: `t` source, `L` layout, `w` bytes per row, `g` bytes per gr
 | `<localleader>h` | Hoogle search for the signature under the cursor; queries hoogle.haskell.org until a local `hoogle` is installed |
 | `<localleader>r` / `<localleader>R` | Toggle a GHCi REPL for the package / for the current file |
 
+### Common Lisp (Normal mode, lisp buffers except `.el`, `<localleader>` is `\`)
+
+| Key | Action |
+|-----|--------|
+| `<localleader>r` | Toggle the sbcl REPL window, starting sbcl the first time |
+| `<localleader>e` | Evaluate the top-level form under the cursor; in Visual mode, the selection |
+| `<localleader>b` | Evaluate the whole buffer |
+| `<localleader>i` | Interrupt sbcl (Ctrl-C); type `abort` in the REPL to return to the top level |
+| `<localleader>q` | Quit sbcl |
+
 ### Neovide only
 
 | Key | Action |
@@ -562,6 +588,8 @@ Inside the hex view: `t` source, `L` layout, `w` bytes per row, `g` bytes per gr
 - **Opening a Haskell project runs its code.** HLS builds the project to answer queries, so Template Haskell splices and a custom `Setup.hs` execute, as `build.rs` and proc macros do under rust-analyzer. Treat untrusted repositories accordingly.
 - **alive-lsp knows its own image, not your project.** Completion, hover and definition cover what is loaded into its SBCL (the standard, SBCL internals). The project's own names come from document symbols, Tree-sitter and buffer completion.
 - **Lisp is not formatted on save.** alive-lsp indents a macro it has not loaded like a function call; `gq` and `<leader>cf` format on request, `=` uses Vim's `lisp` indent.
+- **An Elixir breakpoint on a line holding only a literal is never hit.** ElixirLS reports it verified, but the Erlang interpreter has nothing to stop on there; put it on a call or a match.
+- **The Lisp REPL is a separate SBCL from alive-lsp.** What you evaluate does not reach completion or hover. `*print-length*` stays unbounded, because a global limit would also cut what your code prints to files; a huge result keeps the REPL busy until it is printed, and `<localleader>i` interrupts it.
 - **`<leader>dP` waits a moment in Python and Rust buffers.** It is a prefix of `<leader>dPt` / `<leader>dPc` / `<leader>dPr`, so Neovim holds it for `timeoutlen` (300 ms). `<leader>dPt`/`<leader>dPc` are LazyVim's Python keys; `<leader>dPr` sits under the same prefix for symmetry.
 
 ---
