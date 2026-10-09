@@ -40,6 +40,8 @@ Linux is the primary target. The IME reset has Windows and macOS branches, but t
 | | `<triple>-gdb` (optional) | `aarch64-linux-gnu-gdb`, `riscv64-linux-gnu-gdb`, … preferred per target architecture; a multiarch `gdb` otherwise. A candidate whose Python layer does not start (`<gdb> -nx -batch -ex 'python gdb.VERSION'` fails) is skipped with a notification. |
 | | `qemu-<arch>` usermode (optional) | `qemu-aarch64`, `qemu-riscv64`, … (package `qemu-user`) for the cross-arch usermode configs. |
 | | `/usr/<triple>` cross runtime (optional) | Sysroot for a dynamically linked cross binary; auto-detected, unneeded for a static one. |
+| **Common Lisp (optional)** | `sbcl`, `ocicl` | SBCL runs alive-lsp, which `ocicl` installs; `ocicl lint` lints Lisp files. See *Common Lisp and Haskell* below. |
+| **Haskell (optional)** | `ghc`, `cabal`, `haskell-language-server`, `hlint` from [GHCup](https://www.haskell.org/ghcup/) | haskell-tools.nvim starts HLS from `~/.ghcup/bin`, which is put on Neovim's `PATH`. Arch's own Haskell packages are not used. |
 | **Korean IME (optional)** | `fcitx5` + `fcitx5-remote` | IME reset and the Hangul/English indicator. |
 | **Caps Lock indicator (optional)** | Linux sysfs LED node | `/sys/class/leds/input*::capslock/brightness`. |
 | **GUI (optional)** | [Neovide](https://neovide.dev/) | GUI front-end with a dedicated profile here. |
@@ -133,6 +135,7 @@ nvim-config/
 ├── stylua.toml               # StyLua style for the config's own Lua (2-space, 120 col)
 ├── after/
 │   ├── ftplugin/
+│   │   ├── lisp.lua           # lisp buffers: ' and ` are not auto-paired, no format on save
 │   │   └── man.lua            # man buffers: window options, then the man_code passes
 │   └── queries/               # Tree-sitter query extensions (see lua/plugins/asm.lua)
 │       ├── asm/injections.scm # inject C into .S/.s cpp directive lines
@@ -140,6 +143,8 @@ nvim-config/
 │       └── cpp/injections.scm # same, for kernel headers detected as cpp
 ├── colors/
 │   └── spaceduck.lua         # hand-written "spaceduck" colorscheme (+ lualine theme)
+├── scripts/
+│   └── alive-lsp-stdio.lisp  # alive-lsp over stdio: no TCP port, *read-eval* off, spec-shaped replies
 └── lua/
     ├── chkeys.lua            # on-screen keystroke display (ChKeys)
     ├── dbg/                  # debugger panels and target discovery
@@ -189,8 +194,10 @@ nvim-config/
         ├── elixir.lua        # elixir/heex/eex Tree-sitter parsers
         ├── formatting.lua    # oxfmt as the conform formatter for web filetypes, taplo for toml
         ├── fs_refresh.lua    # external change auto-reload + :FsRefresh
+        ├── haskell.lua       # haskell-tools.nvim (HLS), haskell parser, hlint, ~/.ghcup/bin on PATH
         ├── hlslens.lua       # nvim-hlslens: match index beside the search hit
         ├── lean.lua          # lean.nvim for Lean 4, infoview at the bottom
+        ├── lisp.lua          # commonlisp parser, alive-lsp through scripts/, ocicl lint
         ├── lsp_filter.lua    # wires up lsp_filter + <leader>cF* keys
         ├── mason.lua         # Mason packages this config expects (ensure_installed)
         ├── im_control.lua    # Korean langmap + IME auto-reset
@@ -380,6 +387,18 @@ Turns LSP servers off for chosen files or directories, for silencing generated o
 - **ANSI colours** (`ansi_color.lua`) — `baleia.nvim` colorizes the gdb console; `:BaleiaColorize` does the same for any buffer holding escape codes.
 - **Lean** (`lean.lua`) — `lean.nvim` for Lean 4 with the infoview at the bottom, unicode abbreviations on `\`, and a green accomplished-goal sign kept across colorscheme changes.
 
+### Common Lisp and Haskell (`lua/plugins/lisp.lua`, `lua/plugins/haskell.lua`)
+
+- **Common Lisp** — the `commonlisp` Tree-sitter parser highlights the `lisp` filetype. [alive-lsp](https://github.com/nobody-famous/alive-lsp) runs inside SBCL: completion, signature help, hover (SBCL's `describe`), definition (into `/usr/share/sbcl-source` for CL symbols), references, document symbols, formatting on request (`gq`, `<leader>cf`), and semantic tokens that dim `#+`/`#-` forms false on SBCL. `ocicl lint` adds INFO diagnostics on read and write. `'` and `` ` `` are not auto-paired. `.el` files share the `lisp` filetype and get neither the server nor the linter.
+- **Why `scripts/alive-lsp-stdio.lisp`** — upstream alive-lsp listens on an unauthenticated TCP port, and it reads buffer text with `*read-eval*` on, so a `#+#.(…)` in an opened file runs code during the first semantic-token request. The launcher speaks LSP over private stdio descriptors, turns `*read-eval*` off once the libraries are loaded, and reshapes hover, empty definitions, whole-document formatting and shutdown into what the spec expects. It calls alive's internal `create-deps`, so re-check it before moving the pin.
+- **Installing alive-lsp** — outside the repo, pinned to the v0.4.5 commit; the server is enabled only when `sbcl` and this directory exist:
+  ```sh
+  mkdir -p ~/.local/share/nvim/alive-lsp && cd ~/.local/share/nvim/alive-lsp && : > ocicl.csv
+  OCICL_LOCAL_ONLY=1 ocicl install git+https://github.com/nobody-famous/alive-lsp@85f118b85d1543bb7413166b6793b87975b4d439
+  ```
+- **Haskell** — [haskell-tools.nvim](https://github.com/mrcjkb/haskell-tools.nvim) (`^11`) starts haskell-language-server for Haskell and cabal files; `nvim-lspconfig`'s `hls` is disabled so only one client attaches. The `haskell` parser, `hlint` through nvim-lint, and format on save through HLS's fourmolu. `~/.ghcup/bin` is prepended to Neovim's `PATH`.
+- **Haskell toolchain** — GHCup with the `vanilla` channel (upstream bindists) and the `3rdparty` channel, set in `~/.ghcup/config.yaml` with `meta-mode: Strict`: `ghcup install ghc 9.14.1 --set`, then `cabal 3.18.1.0`, `hls 2.15.0.0` and `hlint 3.10` the same way. HLS built for GHC 9.14 has no hlint plugin, hence the separate `hlint`.
+
 ### External change detection & refresh (`lua/plugins/fs_refresh.lua`)
 
 LazyVim only runs `:checktime` on focus and terminal events, so files rewritten while the editor keeps focus (an agent, `git` in another terminal, a build) are missed. This module makes detection unconditional:
@@ -467,6 +486,14 @@ Inside the hex view: `t` source, `L` layout, `w` bytes per row, `g` bytes per gr
 | `n` / `N` / `*` / `#` / `g*` / `g#` | n | Search as usual, with the hlslens match index shown |
 | `<CR>` | n (in mini.files) | Open file and close explorer / enter directory |
 
+### Haskell (Normal mode, haskell buffers, `<localleader>` is `\`)
+
+| Key | Action |
+|-----|--------|
+| `<localleader>e` | Evaluate every `>>>` example in comments (`:Haskell hls evalAll`) |
+| `<localleader>h` | Hoogle search for the signature under the cursor; queries hoogle.haskell.org until a local `hoogle` is installed |
+| `<localleader>r` / `<localleader>R` | Toggle a GHCi REPL for the package / for the current file |
+
 ### Neovide only
 
 | Key | Action |
@@ -532,6 +559,9 @@ Inside the hex view: `t` source, `L` layout, `w` bytes per row, `g` bytes per gr
   | x86_64, UEFI + KASLR | 34 s | the image is found in RAM in short steps, then decompressed |
 
   The session looks stopped at the reset vector for that whole time. That is the arming, not a hang.
+- **Opening a Haskell project runs its code.** HLS builds the project to answer queries, so Template Haskell splices and a custom `Setup.hs` execute, as `build.rs` and proc macros do under rust-analyzer. Treat untrusted repositories accordingly.
+- **alive-lsp knows its own image, not your project.** Completion, hover and definition cover what is loaded into its SBCL (the standard, SBCL internals). The project's own names come from document symbols, Tree-sitter and buffer completion.
+- **Lisp is not formatted on save.** alive-lsp indents a macro it has not loaded like a function call; `gq` and `<leader>cf` format on request, `=` uses Vim's `lisp` indent.
 - **`<leader>dP` waits a moment in Python and Rust buffers.** It is a prefix of `<leader>dPt` / `<leader>dPc` / `<leader>dPr`, so Neovim holds it for `timeoutlen` (300 ms). `<leader>dPt`/`<leader>dPc` are LazyVim's Python keys; `<leader>dPr` sits under the same prefix for symmetry.
 
 ---
@@ -540,4 +570,4 @@ Inside the hex view: `t` source, `L` layout, `w` bytes per row, `g` bytes per gr
 
 - **[spaceduck](https://github.com/pineapplegiant/spaceduck)** by *pineapplegiant* — MIT License, "Copyright (c) 2020 pineapplegiant". `colors/spaceduck.lua` is an independent Neovim/Lua re-implementation reusing the palette and name; the upstream author explicitly welcomes ports.
 - Built on **[LazyVim](https://github.com/LazyVim/LazyVim)** and **[lazy.nvim](https://github.com/folke/lazy.nvim)** by *folke*.
-- Notable third-party plugins: [cscope_maps.nvim](https://github.com/dhananjaylatkar/cscope_maps.nvim), [nvim-dap](https://github.com/mfussenegger/nvim-dap), [nvim-dap-view](https://github.com/igorlfs/nvim-dap-view), [nvim-hlslens](https://github.com/kevinhwang91/nvim-hlslens), [baleia.nvim](https://github.com/m00qek/baleia.nvim), [lean.nvim](https://github.com/Julian/lean.nvim), [markview.nvim](https://github.com/OXY2DEV/markview.nvim), [mini.nvim](https://github.com/nvim-mini/mini.nvim), [snacks.nvim](https://github.com/folke/snacks.nvim), [noice.nvim](https://github.com/folke/noice.nvim), [lualine.nvim](https://github.com/nvim-lualine/lualine.nvim), and [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim).
+- Notable third-party plugins: [cscope_maps.nvim](https://github.com/dhananjaylatkar/cscope_maps.nvim), [nvim-dap](https://github.com/mfussenegger/nvim-dap), [nvim-dap-view](https://github.com/igorlfs/nvim-dap-view), [nvim-hlslens](https://github.com/kevinhwang91/nvim-hlslens), [baleia.nvim](https://github.com/m00qek/baleia.nvim), [lean.nvim](https://github.com/Julian/lean.nvim), [haskell-tools.nvim](https://github.com/mrcjkb/haskell-tools.nvim), [alive-lsp](https://github.com/nobody-famous/alive-lsp), [markview.nvim](https://github.com/OXY2DEV/markview.nvim), [mini.nvim](https://github.com/nvim-mini/mini.nvim), [snacks.nvim](https://github.com/folke/snacks.nvim), [noice.nvim](https://github.com/folke/noice.nvim), [lualine.nvim](https://github.com/nvim-lualine/lualine.nvim), and [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim).
