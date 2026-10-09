@@ -71,10 +71,15 @@ return {
 
       for _, ft in ipairs(filetypes) do
         if not dap.configurations[ft] then
-          -- A .ts file needs a TypeScript-capable runner; .js runs on node itself.
+          -- node strips TypeScript types itself; enums and namespaces need tsx or ts-node.
           local runtimeExecutable = nil
           if ft:find("typescript") then
-            runtimeExecutable = vim.fn.executable("tsx") == 1 and "tsx" or "ts-node"
+            for _, runner in ipairs({ "tsx", "ts-node" }) do
+              if vim.fn.executable(runner) == 1 then
+                runtimeExecutable = runner
+                break
+              end
+            end
           end
           dap.configurations[ft] = {
             {
