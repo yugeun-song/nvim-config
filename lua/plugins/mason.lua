@@ -14,8 +14,6 @@ return {
       "elp",
       "expert",
       "html-lsp",
-      "java-debug-adapter",
-      "java-test",
       "jdtls",
       "js-debug-adapter",
       "json-lsp",
