@@ -35,7 +35,9 @@ function M.stop()
   end
   local cfg = session.config or {}
   if cfg.request == "attach" then
-    dap.disconnect({ terminateDebuggee = false })
+    require("dbg.allstop").halt(session, function()
+      session:disconnect({ terminateDebuggee = false })
+    end)
   else
     dap.terminate()
   end
@@ -184,6 +186,13 @@ function M.shutdown()
   for _, session in pairs(sessions) do
     any = true
     local attached = (session.config or {}).request == "attach"
+    local halted = false
+    require("dbg.allstop").halt(session, function()
+      halted = true
+    end)
+    vim.wait(2500, function()
+      return halted
+    end, 20)
     pcall(function()
       if attached then
         session:disconnect({ terminateDebuggee = false })
@@ -200,8 +209,8 @@ function M.shutdown()
   end
   if any then
     -- let the adapter act on the disconnect before the event loop dies
-    vim.wait(700, function()
-      return dap.session() == nil
+    vim.wait(3500, function()
+      return next(dap.sessions and dap.sessions() or {}) == nil and dap.session() == nil
     end, 50)
     pcall(function()
       dap.close()
@@ -210,6 +219,9 @@ function M.shutdown()
   -- Only the usermode QEMUs this editor launched are in the table.
   pcall(function()
     require("dbg.qemuser").stop_all()
+  end)
+  pcall(function()
+    require("dbg.adapter").kill_leftovers()
   end)
 end
 
@@ -220,7 +232,7 @@ function M.pick()
   end
   last_config = nil
   leave_panel()
-  dap.continue()
+  dap.continue({ new = true })
 end
 
 function M.render()

@@ -220,7 +220,11 @@ return {
       {
         "<leader>dB",
         function()
-          require("dap").set_breakpoint(vim.fn.input("Breakpoint condition: "))
+          vim.ui.input({ prompt = "Breakpoint condition: " }, function(cond)
+            if cond then
+              require("dap").set_breakpoint(cond)
+            end
+          end)
         end,
         desc = "Debug: conditional breakpoint",
       },
@@ -248,7 +252,28 @@ return {
       {
         "<leader>dC",
         function()
-          require("dap").run_to_cursor()
+          local dap = require("dap")
+          local session = dap.session()
+          if not (session and require("dbg.context").is_low_level(session)) then
+            dap.run_to_cursor()
+            return
+          end
+          if not session.stopped_thread_id then
+            require("dbg.notify").info("Run to cursor needs the target stopped")
+            return
+          end
+          local where
+          if vim.bo.buftype == "" then
+            where = { source = vim.api.nvim_buf_get_name(0), line = vim.api.nvim_win_get_cursor(0)[1] }
+          elseif vim.bo.filetype == "dap-disassembly" then
+            local addr = vim.api.nvim_get_current_line():match("^%s*(0x%x+)")
+            where = addr and { address = addr }
+          end
+          if not where then
+            require("dbg.notify").warn("Run to cursor needs a source line or a disassembly address")
+            return
+          end
+          require("dbg.breakpoints").run_to(session, where)
         end,
         desc = "Debug: run to cursor",
       },
@@ -311,7 +336,15 @@ return {
       {
         "<leader>dT",
         function()
-          require("dap").terminate()
+          local dap = require("dap")
+          local session = dap.session()
+          if not session then
+            dap.terminate()
+            return
+          end
+          require("dbg.allstop").halt(session, function()
+            dap.terminate()
+          end)
         end,
         desc = "Debug: terminate (kills the guest)",
       },
@@ -514,8 +547,16 @@ return {
         local bin = config.gdb_bin or discover.gdb_for(config.arch or "x86_64")
         local args = { "-q", "-i", "dap", "-iex", "set pagination off" }
         if config.kernel_root then
-          table.insert(args, "-iex")
-          table.insert(args, "add-auto-load-safe-path " .. config.kernel_root)
+          -- scripts/gdb (lx-symbols, lx-lsmod) finds vmlinux and the .ko files
+          -- from gdb's working directory; the log stays where Neovim runs.
+          vim.list_extend(args, {
+            "-iex",
+            "add-auto-load-safe-path " .. config.kernel_root,
+            "-iex",
+            "cd " .. config.kernel_root,
+            "-iex",
+            "set logging file " .. vim.fn.getcwd() .. "/gdb.txt",
+          })
         end
         local tool = discover.gdbtools_loader(config.kernel_root)
         if tool then
@@ -545,10 +586,9 @@ return {
         -- replayed config can describe a guest since restarted in another boot
         -- mode. A firmware chain has a recorded landing address; a direct boot
         -- leaves ENTRY_PA unset so gdbtools recovers the entry itself.
-        local state = discover.run_state(
-          tonumber(tostring(config.target or ""):match(":(%d+)$")),
-          config.qemu and config.qemu.pid or nil
-        ) or config.run_state
+        local port = require("dbg.kernel").local_port(config.target)
+        local qpid = discover.qemu_pid_for_port(port)
+        local state = (qpid and discover.run_state(port, qpid)) or (not qpid and config.run_state) or nil
         local mode = state and state.KBL_BOOT
         if (mode == "uboot" or mode == "uefi") and state.KBL_LOADADDR and state.KBL_LOADADDR ~= "" then
           if not env.GDBTOOLS_ENTRY_PA or env.GDBTOOLS_ENTRY_PA == "" then
@@ -623,7 +663,8 @@ return {
           type = "executable",
           command = bin,
           args = args,
-          options = { env = env_list },
+          -- The attach answers once gdb has read vmlinux, 9-11 s here; 4 s warns every time.
+          options = { env = env_list, initialize_timeout_sec = 60 },
         })
       end
 
@@ -902,10 +943,7 @@ return {
           end
           require("dbg.layout").enter()
           local kernel = require("dbg.kernel")
-          kernel.load_firmware_symbols(session, function()
-            kernel.arm_kaslr(session)
-          end)
-          kernel.watch_target(session)
+          kernel.after_attach(session)
         end)
       end
 
@@ -977,6 +1015,8 @@ return {
       require("dbg.notify").setup(dap)
       require("dbg.console").setup(dap)
       require("dbg.breakpoints").setup(dap)
+      require("dbg.allstop").setup(dap)
+      require("dbg.adapter").setup(dap)
       require("dbg.disasm").setup()
 
       vim.api.nvim_create_user_command("DbgBreak", function(o)
