@@ -110,16 +110,23 @@ local function report_pending(session)
   if not bucket or vim.tbl_isempty(bucket) then
     return
   end
-  local by_source = {}
+  local groups = {}
   for _, rec in pairs(bucket) do
     local name = base(rec.path) or "source"
-    by_source[name] = by_source[name] or {}
-    table.insert(by_source[name], rec.line or 0)
+    local said = rec.reason == "failed" and rec.message and (rec.message:gsub("%s+", " ")) or nil
+    local key = name .. "\0" .. (said or "")
+    groups[key] = groups[key] or { name = name, said = said, lines = {} }
+    table.insert(groups[key].lines, rec.line or 0)
   end
-  local why = why_unbound(session)
-  for name, lines in pairs(by_source) do
-    table.sort(lines)
-    M.warn(("%s: line %s never bound — %s"):format(name, table.concat(lines, ","), why))
+  local guess = why_unbound(session)
+  for _, g in pairs(groups) do
+    table.sort(g.lines)
+    local lines = table.concat(g.lines, ",")
+    if g.said then
+      M.warn(("%s: line %s refused by gdb — %s"):format(g.name, lines, g.said))
+    else
+      M.warn(("%s: line %s never bound — %s"):format(g.name, lines, guess))
+    end
   end
 end
 
@@ -138,7 +145,12 @@ local function on_set_breakpoints(session, err, response, payload)
   end
   for i, bp in ipairs(response.breakpoints) do
     if bp.verified == false then
-      bucket[bp.id or ("slot" .. i)] = { path = path, line = bp.line or (asked[i] or {}).line or 0 }
+      bucket[bp.id or ("slot" .. i)] = {
+        path = path,
+        line = bp.line or (asked[i] or {}).line or 0,
+        reason = bp.reason,
+        message = bp.message,
+      }
     end
   end
   if running[session.id] then

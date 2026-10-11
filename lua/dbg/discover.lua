@@ -130,7 +130,7 @@ function M.elf_debug_info(path)
   if not names then
     return nil
   end
-  if names:find(".debug_info", 1, true) or names:find("debug_info.dwo", 1, true) then
+  if names:find("debug_info", 1, true) then
     return "embedded"
   end
   if names:find(".gnu_debuglink", 1, true) or names:find(".debug_sup", 1, true) then
@@ -289,6 +289,20 @@ function M.qemu_instances()
   return out
 end
 
+-- The QEMU serving a gdbstub port now; a remembered pid goes stale when the
+-- guest is restarted on the same port.
+function M.qemu_pid_for_port(port)
+  if not port then
+    return nil
+  end
+  for _, inst in ipairs(M.qemu_instances()) do
+    if inst.gdb_port == tonumber(port) then
+      return inst.pid
+    end
+  end
+  return nil
+end
+
 function M.qemu_ptys(pid)
   local out = {}
   local dir = vim.uv.fs_scandir("/proc/" .. pid .. "/fd")
@@ -401,11 +415,33 @@ function M.kaslr(inst, kernel_root)
 end
 
 local reported_unusable = {}
+local probed = {}
+
+-- A probe's answer holds until the binary itself changes.
+local function identity(what, bin)
+  local path = vim.fn.exepath(bin)
+  local st = path ~= "" and vim.uv.fs_stat(path) or nil
+  return st and ("%s:%s:%d:%d"):format(what, path, st.mtime.sec, st.size) or (what .. ":" .. bin)
+end
+
+local function multi_target(bin)
+  local key = identity("targets", bin)
+  if probed[key] == nil then
+    local conf = vim.fn.system({ bin, "--configuration" })
+    probed[key] = vim.v.shell_error == 0 and conf:find("--enable-targets=all", 1, true) ~= nil
+  end
+  return probed[key]
+end
 
 local function python_starts(bin)
+  local key = identity("python", bin)
+  if probed[key] ~= nil then
+    return probed[key]
+  end
   local ok, proc = pcall(vim.system, { bin, "-nx", "-batch", "-ex", "python gdb.VERSION" }, { text = true })
   local res = ok and proc:wait() or { code = -1, signal = 0, stderr = (tostring(proc):gsub("^[^\n]-:%d+: ", "")) }
-  if res.code == 0 and (res.signal or 0) == 0 then
+  probed[key] = res.code == 0 and (res.signal or 0) == 0
+  if probed[key] then
     return true
   end
   if not reported_unusable[bin] then
@@ -432,8 +468,7 @@ function M.gdb_for(arch)
   end
   -- No cross-gdb: the host one only counts if built for every target.
   if not vim.list_contains(cands, "gdb") and vim.fn.executable("gdb") == 1 then
-    local conf = vim.fn.system({ "gdb", "--configuration" })
-    if vim.v.shell_error == 0 and conf:find("--enable-targets=all", 1, true) and python_starts("gdb") then
+    if multi_target("gdb") and python_starts("gdb") then
       return "gdb"
     end
   end
@@ -500,6 +535,16 @@ local function tree_conf(kernel_root)
   return nil
 end
 
+-- kbuildlab's kbl_tree_get grammar: a value opening with a double quote is that
+-- quote's contents (a '#' inside it is data); otherwise a '#' starts a comment
+-- and trailing space is trimmed.
+local function tree_unquote(v)
+  if v:sub(1, 1) == '"' then
+    return v:sub(2):match('^[^"]*') or ""
+  end
+  return (v:gsub("%s*#.*$", ""):gsub("%s+$", ""))
+end
+
 -- One key out of the tree description, with its directory so a relative path
 -- resolves. Parsed, never sourced.
 function M.tree_value(kernel_root, key)
@@ -511,11 +556,7 @@ function M.tree_value(kernel_root, key)
   for _, line in ipairs(vim.fn.readfile(path)) do
     local v = line:match("^%s*" .. key:gsub("%W", "%%%0") .. "%s*=%s*(.-)%s*$")
     if v then
-      -- Same grammar as kbuildlab's kbl_tree_get: strip trailing comment and
-      -- space, then one layer of double quotes.
-      v = v:gsub("%s*#.*$", ""):gsub("%s+$", "")
-      v = v:gsub('^"(.*)"$', "%1")
-      return v, dir
+      return tree_unquote(v), dir
     end
   end
   return nil, dir
@@ -533,8 +574,7 @@ function M.machine_facts(kernel_root)
   for _, line in ipairs(vim.fn.readfile(path)) do
     local k, v = line:match("^%s*(GDBTOOLS_[A-Z0-9_]+)%s*=%s*(.-)%s*$")
     if k then
-      v = v:gsub("%s*#.*$", ""):gsub("%s+$", "")
-      out[k] = v:gsub('^"(.*)"$', "%1")
+      out[k] = tree_unquote(v)
     end
   end
   return out

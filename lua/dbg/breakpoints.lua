@@ -57,7 +57,7 @@ function M.sync(session)
       end
     end)
   end
-  if caps.supportsInstructionBreakpoints ~= false and #addresses > 0 then
+  if caps.supportsInstructionBreakpoints ~= false then
     local list = {}
     for _, addr in ipairs(addresses) do
       list[#list + 1] = { instructionReference = addr }
@@ -185,6 +185,77 @@ function M.pick()
   end)
 end
 
+local function same_file(a, b)
+  return a == b or (vim.uv.fs_realpath(a) or a) == (vim.uv.fs_realpath(b) or b)
+end
+
+-- A breakpoint gdb makes itself (a tbreak for "stop at main", one typed in the
+-- console) arrives as "new"; on a line the user already holds a breakpoint,
+-- nvim-dap would replace that one and drop it on the tbreak's removal.
+local function guard_events(session)
+  local class_event = session.event_breakpoint
+  session.event_breakpoint = function(self, body)
+    local bp = body and body.breakpoint
+    -- gdb numbers its internal breakpoints below zero; none of them is the user's.
+    if bp and type(bp.id) == "number" and bp.id < 0 then
+      return
+    end
+    local path = bp and bp.source and bp.source.path
+    if body and body.reason == "new" and path and bp.line then
+      for buf, list in pairs(require("dap.breakpoints").get()) do
+        if same_file(vim.api.nvim_buf_get_name(buf), path) then
+          for _, held in ipairs(list) do
+            if held.line == bp.line then
+              return
+            end
+          end
+        end
+      end
+    end
+    return class_event(self, body)
+  end
+end
+
+local function hex(s)
+  return (s:gsub(".", function(c)
+    return ("%02x"):format(c:byte())
+  end))
+end
+
+-- Run to a source line or an address through gdb's own one-shot internal
+-- breakpoint, the user's left active. nvim-dap's run_to_cursor clears them all,
+-- and from a line without code it never stops again.
+function M.run_to(session, where)
+  local gdbq = require("dbg.gdbq")
+  local on = { session = session }
+  local loc = where.address and ("'*%s'"):format(where.address)
+    or ("source=bytes.fromhex('%s').decode(), line=%d"):format(hex(where.source), where.line)
+  local make = ("python b = gdb.Breakpoint(%s, internal=True, temporary=True); p = b.pending; "):format(loc)
+    .. "gdb._dbg_runto = None if p else b; p and b.delete(); print('pending' if p else 'armed')"
+  gdbq.run(make, function(out, err)
+    if err or vim.trim(out or "") ~= "armed" then
+      notify().warn("Run to cursor: " .. (err or "no code there in the loaded program"))
+      return
+    end
+    local dap = require("dap")
+    local key = "dbg_runto_" .. tostring(session.id)
+    dap.listeners.after.event_stopped[key] = function(s)
+      if s == session then
+        dap.listeners.after.event_stopped[key] = nil
+        gdbq.run(
+          "python r = getattr(gdb, '_dbg_runto', None); r is not None and r.is_valid() and r.delete()",
+          function() end,
+          on
+        )
+      end
+    end
+    vim.schedule(function()
+      dap.set_session(session)
+      require("dbg.session").cont()
+    end)
+  end, on)
+end
+
 function M.setup(dap)
   -- Before nvim-dap's own breakpoints and configurationDone, so the target is not
   -- running yet.
@@ -193,7 +264,22 @@ function M.setup(dap)
       return
     end
     status = {}
+    guard_events(session)
     M.sync(session)
+  end
+  -- gdb answers a breakpoint it cannot place yet with no line, and nvim-dap then
+  -- stamps that one answer on every breakpoint of the file. The answer follows the
+  -- request's order, so the line comes from there.
+  dap.listeners.before.setBreakpoints["dbg_breakpoints"] = function(session, err, response, request)
+    if err or not require("dbg.context").is_low_level(session) then
+      return
+    end
+    local asked = (request or {}).breakpoints or {}
+    for i, bp in ipairs((response or {}).breakpoints or {}) do
+      if bp.line == nil and asked[i] then
+        bp.line = asked[i].line
+      end
+    end
   end
 end
 

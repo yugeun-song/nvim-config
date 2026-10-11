@@ -336,9 +336,9 @@ function M.load_firmware_symbols(session, done)
   local cfg = session and session.config or {}
   -- Re-read the run state, as dap.lua does on connect: a replayed config can
   -- describe a guest since restarted in another boot mode.
-  local port = tonumber(tostring(cfg.target or ""):match(":(%d+)$"))
-  local qpid = cfg.qemu and cfg.qemu.pid or nil
-  local state = (port and D.run_state(port, qpid)) or cfg.run_state
+  local port = M.local_port(cfg.target)
+  local qpid = D.qemu_pid_for_port(port)
+  local state = (qpid and D.run_state(port, qpid)) or (not qpid and cfg.run_state) or nil
   if not (state and state.KBL_BOOT == "uboot" and cfg.kernel_root) then
     return done()
   end
@@ -352,8 +352,9 @@ function M.load_firmware_symbols(session, done)
     return done()
   end
   require("dbg.gdbq").run("add-symbol-file " .. elf .. " -o 0", function()
+    session.dbg_firmware_symbols = elf
     done()
-  end)
+  end, { session = session })
 end
 
 -- Mirrors run-gdb.sh's connect sequence, stopping one step earlier: park on
@@ -374,33 +375,62 @@ function M.arm_kaslr(session)
       notify.warn("This target has no `kearly`; early-boot symbols are not available")
       return
     end
-    local steps = { "kearly on", "kearly bootbreak", "kearly status" }
+    local on = { session = session }
+    local function status()
+      gdbq.run("kearly status", function(out)
+        local text = vim.trim(tostring(out or ""))
+        local offset = text:match("offset%(PA%-VA%)=(%S+)")
+        local enabled = text:match("enabled=(%S+)")
+        notify.info(("kearly: enabled=%s offset=%s"):format(tostring(enabled), tostring(offset)))
+      end, on)
+    end
 
+    -- `arm` only plants the entry breakpoint: a bare bootbreak resumes inside the
+    -- evaluate, and gdb answers nothing else until the guest stops. It plants none
+    -- when the MMU is already on, which the temporary-breakpoint count tells.
+    local count = "python print(sum(1 for b in gdb.breakpoints() if b.temporary))"
+    local steps = { "kearly on", count, "kearly bootbreak arm", count }
+    local outs = {}
     local index = 0
     local function next_step()
       index = index + 1
       local cmd = steps[index]
       if not cmd then
-        vim.schedule(function()
+        if (tonumber(outs[4]) or 0) <= (tonumber(outs[2]) or 0) then
+          status()
           pcall(function()
             require("dbg.registers").render()
             require("dbg.session").probe()
-            require("dbg.layout").resize()
           end)
-        end)
+          return
+        end
+        local dap = require("dap")
+        local key = "dbg_kearly_" .. tostring(session.id)
+        dap.listeners.after.event_stopped[key] = function(s)
+          if s == session then
+            dap.listeners.after.event_stopped[key] = nil
+            -- u-boot is linked at 0, so in the kernel its symbols only rename small
+            -- integers; run-gdb.sh drops them at the same point.
+            if session.dbg_firmware_symbols then
+              session.dbg_firmware_symbols = nil
+              gdbq.run("remove-symbol-file -a 0", status, on)
+            else
+              status()
+            end
+          end
+        end
+        dap.set_session(session)
+        require("dbg.session").cont()
         return
       end
       gdbq.run(cmd, function(out)
         local text = vim.trim(tostring(out or ""))
-        if cmd == "kearly status" then
-          local offset = text:match("offset%(PA%-VA%)=(%S+)")
-          local enabled = text:match("enabled=(%S+)")
-          notify.info(("kearly: enabled=%s offset=%s"):format(tostring(enabled), tostring(offset)))
-        elseif text:find("[Ee]rror") or text:find("Undefined") then
+        outs[index] = text
+        if text:find("[Ee]rror") or text:find("Undefined") then
           notify.warn(cmd .. ": " .. (text:match("[^\n]+") or text))
         end
-        vim.defer_fn(next_step, 200)
-      end)
+        vim.schedule(next_step)
+      end, on)
     end
     notify.info("Arming the early-boot symbolizer")
     next_step()
@@ -420,12 +450,52 @@ function M.stop_watchdog()
   end
 end
 
+-- The port of a gdbstub on this machine; a remote host's port names no local QEMU.
+function M.local_port(target)
+  local host, port = tostring(target or ""):match("^(.-):(%d+)$")
+  if not port then
+    return nil
+  end
+  host = host:gsub("^%[(.*)%]$", "%1")
+  local here = host == "" or host == "localhost" or host == "::1" or host:match("^127%.") ~= nil
+  return here and tonumber(port) or nil
+end
+
+-- gdb's DAP connects only after configurationDone, so what needs the target
+-- waits for the first stop, the attach's.
+function M.after_attach(session)
+  local dap = require("dap")
+  local key = "dbg_kernel_" .. tostring(session.id)
+  local function forget()
+    dap.listeners.after.event_stopped[key] = nil
+    dap.listeners.after.event_terminated[key] = nil
+    dap.listeners.after.disconnect[key] = nil
+  end
+  dap.listeners.after.event_stopped[key] = function(s)
+    if s == session then
+      forget()
+      M.load_firmware_symbols(session, function()
+        M.arm_kaslr(session)
+      end)
+    end
+  end
+  dap.listeners.after.event_terminated[key] = function(s)
+    if s == session then
+      forget()
+    end
+  end
+  dap.listeners.after.disconnect[key] = dap.listeners.after.event_terminated[key]
+  M.watch_target(session)
+end
+
 function M.watch_target(session)
   M.stop_watchdog()
-  local pid = session and (session.config or {}).qemu_pid
+  local cfg = session and session.config or {}
+  local pid = D.qemu_pid_for_port(M.local_port(cfg.target))
   if not pid then
     return
   end
+  cfg.qemu_pid = pid
   local timer = assert(vim.uv.new_timer())
   watchdog = timer
   timer:start(

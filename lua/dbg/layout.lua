@@ -461,6 +461,13 @@ function M.snapshot()
   }
 end
 
+local function holds_breakpoints(buf)
+  local ok, bps = pcall(function()
+    return require("dap.breakpoints").get(buf)
+  end)
+  return ok and bps[buf] ~= nil and #bps[buf] > 0
+end
+
 -- The debugger lists whatever source it jumped into, which is how a glibc
 -- header ends up in the tabline; drop what it brought in and nobody touched.
 local function drop_borrowed(listed)
@@ -474,6 +481,7 @@ local function drop_borrowed(listed)
         and not vim.bo[buf].modified
         and vim.bo[buf].buftype == ""
         and #vim.fn.win_findbuf(buf) == 0
+        and not holds_breakpoints(buf)
       if borrowed then
         candidates[#candidates + 1] = buf
       else

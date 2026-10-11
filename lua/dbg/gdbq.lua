@@ -45,7 +45,7 @@ function M.run(cmd, cb, opts)
   end)
 end
 
-function M.run_all(cmds, cb)
+function M.run_all(cmds, cb, opts)
   local out, pending = {}, #cmds
   if pending == 0 then
     cb(out)
@@ -60,7 +60,7 @@ function M.run_all(cmds, cb)
           cb(out)
         end)
       end
-    end)
+    end, opts)
   end
 end
 

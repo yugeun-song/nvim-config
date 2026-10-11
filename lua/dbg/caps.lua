@@ -56,7 +56,7 @@ end
 local FEATURES = {
   line_breakpoints = function(state)
     if state.debug_info == "none" then
-      return false, (state.program or "the program") .. " has no debug info; break on a symbol instead"
+      return true, (state.program or "the program") .. " has no debug info; only a library's sources can bind"
     end
     if state.debug_info == "external" then
       return true, "debug info is in a separate file"
@@ -196,7 +196,7 @@ function M.detect(session, cb)
     caps.kind = classify(caps)
     cache[k] = caps
     cb(caps)
-  end)
+  end, { session = session })
 end
 
 function M.describe(caps)
