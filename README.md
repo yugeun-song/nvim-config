@@ -32,8 +32,10 @@ Linux is the primary target. The IME reset has Windows and macOS branches, but t
 | | `universal-ctags` | The `tags` file behind `<C-]>`. |
 | **Debugging (optional)** | `gdb` **14+** | The debug adapter is GDB itself. |
 | | `codelldb`, `js-debug-adapter`, `debugpy`, `elixir-ls` | The other adapters (Mason). |
-| | `qemu-system-*` | Kernel and bare-metal targets. |
-| | `<triple>-gdb` (optional) | Preferred per target, else `gdb-multiarch` or an all-targets `gdb`; one whose Python fails to start is skipped, with a notice. |
+| | `qemu-system-*` | Bare-metal and QEMU-user targets. |
+| | [kbuildlab](https://github.com/yugeun-song/kbuildlab) | Kernel targets: guests, gdb and session come from `kbuildlab attach --json`; without it kernel debugging is off. |
+| | [gdbtools](https://github.com/yugeun-song/gdbtools) (optional) | Early-boot kernel symbols, `cfgjson` and `addr2sym`, sourced into each gdb when installed. |
+| | `<triple>-gdb` (optional) | Preferred per target, else `gdb-multiarch` or an all-targets `gdb`; one whose Python fails to start is skipped, with a notice. `vim.g.dbg_gdb` names one (a string, or a table by arch); a kernel session runs kbuildlab's (`GDB=` in tree.conf, or `$KBL_GDB`). gdb 14 or newer (`gdb -i dap`). |
 | | `qemu-<arch>` usermode (optional) | Foreign-architecture userspace (`qemu-user`). |
 | | `/usr/<triple>` cross runtime (optional) | Sysroot for dynamic cross binaries, when present. |
 | **Common Lisp (optional)** | `sbcl`, `ocicl` | alive-lsp, REPL, lint. |
@@ -97,7 +99,7 @@ nvim-config/
     ├── chkeys.lua            # keystroke display
     ├── lisp_repl.lua         # sbcl REPL
     ├── dbg/                  # GDB debugger support:
-    │   ├── discover.lua      #   QEMU/ELF/KASLR discovery, gdb choice
+    │   ├── discover.lua      #   ELF reading, gdb choice, kbuildlab and gdbtools lookup
     │   ├── breakpoints.lua   #   function/address breakpoints, run-to
     │   ├── allstop.lua       #   changes on a running remote target
     │   ├── adapter.lua       #   gdb process lifecycle
@@ -181,9 +183,9 @@ C, C++ and assembly are debugged by GDB itself (`gdb -i dap`), so `~/.gdbinit`, 
 
 `.vscode/launch.json` is read for every language; Julia and Java have no debugger. The rest applies to `gdb` and `gdb_kernel` sessions; others get plain `nvim-dap-view`.
 
-- **Programs.** Launch, launch to `main`, attach by PID, *Run on QEMU user* (starts `qemu-<arch> -g <port>` with `-L /usr/<triple>`, stopped at `_start`; x86_64, aarch64, riscv64, arm) and *Attach to a QEMU user gdbstub*. Executable and shell-quoted arguments are remembered; `<leader>dc` with no session replays the last run, `<leader>dn` asks again. A cross target gets the first `<triple>-gdb` or `gdb-multiarch` whose Python starts, else an all-targets `gdb`. gdbtools is sourced from `$GDBTOOLS_PATH`, above the program or kernel tree, the checkout its `setup.sh` recorded, beside this config, or `~/.local/share/gdbtools/`.
-- **Kernel targets.** `<leader>dq` lists `qemu-system-*` gdbstubs from `/proc`: symbol file from `-kernel` or near the command line's paths, architecture from its ELF header, port state from `/proc/net/tcp` (never dialled; a busy stub is refused). `<leader>dQ` shows the evidence. It then asks: attach where the kernel is (warning when KASLR is on or unknown), or early boot (`:DbgKernelEarly` skips the question). Early boot exports `GDBTOOLS_AUTO=1`, runs `kearly on` then `kearly bootbreak arm` after the attach stop, continues to the first `head.S` instruction and reports `kearly status`; `kearly kaslr auto` is left to you.
-- **Kernel adapter.** gdb runs in the kernel tree with the full environment, and `GDBTOOLS_*` lines of the tree's `tree.conf` fill unset variables. The launcher's record for the port (`$KBL_STATE_DIR/kbl-run-<port>.env`, default `/dev/shm`), trusted only for the QEMU serving the port now, gives the boot mode and a firmware chain's landing address, which gets a hardware breakpoint (u-boot's ELF is loaded too). KASLR comes from that record, `-append`, then `CONFIG_RANDOMIZE_BASE` (unknown counts as on), and on x86_64 sets `GDBTOOLS_X86_KASLR=1`. nvim-dap waits 60 s before calling gdb unresponsive. A vanished QEMU disconnects the session but leaves the panels; a lost connection gdb reports is announced too.
+- **Programs.** Launch, launch to `main`, attach by PID, *Run on QEMU user* (starts `qemu-<arch> -g <port>` with `-L /usr/<triple>`, stopped at `_start`; x86_64, aarch64, riscv64, arm) and *Attach to a QEMU user gdbstub*. Executable and shell-quoted arguments are remembered; `<leader>dc` with no session replays the last run, `<leader>dn` asks again. A cross target gets `vim.g.dbg_gdb`, else the first `<triple>-gdb` or `gdb-multiarch` whose Python starts, else an all-targets `gdb`; with none the session does not start and says why. A QEMU user process that fails to start is reported and no gdb is attached. gdbtools is sourced from `$GDBTOOLS_PATH` or the checkout its `setup.sh` recorded, and a stated location that is wrong is an error, not a search.
+- **Kernel targets.** `<leader>dq` lists the guests `kbuildlab attach --list --json` reports, with their tree, boot mode, KASLR and whether a debugger holds the stub (a busy stub is refused); a guest kbuildlab did not start (no tree recorded) is attached by naming its registered tree and port. `<leader>dQ` shows the list. It then asks: attach where the kernel is (warning when KASLR is on or unknown), or early boot (`:DbgKernelEarly` skips the question). Early boot exports `GDBTOOLS_AUTO=1`, runs `kearly on` then `kearly bootbreak arm` after the attach stop, continues to the first `head.S` instruction and reports `kearly status`; `kearly kaslr auto` is left to you.
+- **Kernel adapter.** Each start asks `kbuildlab attach TREE --port N --json` for the session, so a replayed configuration follows a guest restarted in another boot mode: the gdb, its `-iex` lines (the tree's own `scripts/gdb` trusted, gdb in the kernel source), gdbtools, the `GDBTOOLS_*` environment, the vmlinux, the target, a u-boot ELF to load and QEMU's pid. Nothing of the tree is re-derived here. nvim-dap waits 60 s before calling gdb unresponsive. A vanished QEMU disconnects the session but leaves the panels; a lost connection gdb reports is announced too.
 - **All-stop remotes.** A remote target takes no command while it runs: a breakpoint change is held, the target interrupted unseen by nvim-dap, the change sent, the target resumed. If it does not stop within 2 s, the change waits for its next stop (said once).
 - **Stopping.** `<leader>dt` detaches an attached target (interrupting it first if it runs) and terminates a launched one; `<leader>dT` kills, ending a QEMU guest. After a disconnect the session closes once gdb has exited (up to 3 s); quitting Neovim treats every session the same way, then kills any leftover `gdb -i dap`. Requests made while gdb starts the target wait for its launch or attach answer.
 - **Breakpoints.** Line breakpoints are allowed without DWARF (a library may carry it); refused ones are reported with gdb's message, unbound ones with the likely reason. `<leader>dF` breaks on a function or `0x` address with no line table. Pending breakpoints keep one sign each, and a breakpoint gdb makes itself (the stop-at-main `tbreak`) never replaces yours on the same line.
@@ -304,7 +306,7 @@ Only under Neovide: `CaskaydiaCove_Nerd_Font_Mono:h12:w-1`, 120 Hz (5 Hz idle), 
 | `<leader>dPt` / `<leader>dPc` | Debug the Python test method / class under the cursor (python buffers) |
 | `<leader>dPr` | Pick a cargo target to debug, `:RustLsp debuggables` (rust buffers) |
 
-Hex view: `t` source, `L` layout, `w` bytes per row, `g` bytes per group, `+`/`-` rows, `]]`/`[[` page, `<CR>` follow pointer, `p`/`x`/`s` pin/unpin/switch, `e` byte order, `A` ASCII column, `N` symbol annotation, `W` width fitting, `a` auto refresh, `o` read past the guard, `r` refresh. Registers: `f` filter, `<CR>` value in the hex view. Locals+Globals: `f` filter, `<CR>` pin to Watches, `K` ask gdbtools' `sym` what the address on the line is (it does not read it). Control flow: `p` back to the pc, `<CR>` source line, `+`/`-` (or `=`/`_`) detail, `H`/`J`/`K`/`L` move by block. Mappings: `<CR>` region in the hex view. `r` refreshes these panels and Target; `]p`/`[p` switch the side column; `q` closes the target report and the log.
+Hex view: `t` source, `L` layout, `w` bytes per row, `g` bytes per group, `+`/`-` rows, `]]`/`[[` page, `<CR>` follow pointer, `p`/`x`/`s` pin/unpin/switch, `e` byte order, `A` ASCII column, `N` symbol annotation, `W` width fitting, `a` auto refresh, `o` read past the guard, `r` refresh. Registers: `f` filter, `<CR>` value in the hex view. Locals+Globals: `f` filter, `<CR>` pin to Watches, `K` ask gdbtools' `addr2sym` what the address on the line is (it does not read it). Control flow: `p` back to the pc, `<CR>` source line, `+`/`-` (or `=`/`_`) detail, `H`/`J`/`K`/`L` move by block. Mappings: `<CR>` region in the hex view. `r` refreshes these panels and Target; `]p`/`[p` switch the side column; `q` closes the target report and the log.
 
 ### LSP filter (Normal mode, prefix `<leader>cF`)
 
@@ -359,8 +361,8 @@ Hex view: `t` source, `L` layout, `w` bytes per row, `g` bytes per group, `+`/`-
 
 | Command | Source | Notes |
 |---------|--------|-------|
-| `:DbgKernel` / `:DbgKernelEarly` | `plugins/dap.lua` | Attach to a QEMU gdbstub for a Linux kernel; the first asks how, the second attaches in early boot with `GDBTOOLS_AUTO=1` |
-| `:DbgTargets` | `plugins/dap.lua` | Report the debug targets found on this host |
+| `:DbgKernel` / `:DbgKernelEarly` | `plugins/dap.lua` | Attach to a kbuildlab guest's gdbstub; the first asks how, the second attaches in early boot with `GDBTOOLS_AUTO=1` |
+| `:DbgTargets` | `plugins/dap.lua` | Report the guests kbuildlab sees on this host |
 | `:DbgMemory [expr\|file]` | `plugins/dap.lua` | Open the hex view |
 | `:DbgRegisters` / `:DbgMappings` | `plugins/dap.lua` | Open the register / mapping panels |
 | `:DbgControlFlow` | `plugins/dap.lua` | Show the control-flow graph in the source window; again to go back |
