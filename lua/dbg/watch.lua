@@ -79,9 +79,10 @@ local function liveness(value)
   return "live"
 end
 
--- gdbtools' `sym` resolves a physical or virtual address against the session's
--- shadow symbols, so it works before the MMU is on. It never dereferences: a u64
--- does not say whether it is a pointer, and a wrong read takes QEMU down.
+-- gdbtools' `addr2sym` resolves a physical or virtual address against the
+-- session's shadow symbols, so it works before the MMU is on. It never
+-- dereferences: a u64 does not say whether it is a pointer, and a wrong read
+-- takes QEMU down.
 function M.explain()
   local addr = vim.api.nvim_get_current_line():match("(0x%x+)")
   if not addr then
@@ -94,14 +95,14 @@ function M.explain()
     return
   end
   require("dbg.caps").detect(session, function(c)
-    if not (c and c.commands and c.commands.sym) then
-      require("dbg.notify").warn("This target has no `sym`; an address cannot be resolved here.")
+    if not (c and c.commands and c.commands.addr2sym) then
+      require("dbg.notify").warn("This target has no `addr2sym` (gdbtools); an address cannot be resolved here.")
       return
     end
-    gdbq.run("sym " .. addr, function(out)
+    gdbq.run("addr2sym " .. addr, function(out)
       local text = vim.trim(tostring(out or ""))
       if text == "" then
-        require("dbg.notify").warn(addr .. ": no answer from sym")
+        require("dbg.notify").warn(addr .. ": no answer from addr2sym")
         return
       end
       require("dbg.notify").info(text:gsub("%s+$", ""))
