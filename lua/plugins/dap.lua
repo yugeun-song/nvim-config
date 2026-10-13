@@ -419,14 +419,14 @@ return {
         function()
           require("dbg.kernel").start()
         end,
-        desc = "Debug: attach QEMU kernel",
+        desc = "Debug: attach a kbuildlab guest kernel",
       },
       {
         "<leader>dQ",
         function()
           require("dbg.kernel").show_report()
         end,
-        desc = "Debug: QEMU targets report",
+        desc = "Debug: kbuildlab guests report",
       },
     },
     config = function()
@@ -505,6 +505,7 @@ return {
       -- Same toolkit as the kernel adapter: the control-flow backend is generic,
       -- and the kernel-only commands stay inert without a vmlinux.
       dap.adapters.gdb = function(callback, config)
+        local notify = require("dbg.notify")
         -- Cross-arch usermode (dbg_qemuser or an external target): the arch comes
         -- from the ELF, and cross gdb, sysroot and QEMU follow from it. Host-arch
         -- configs set neither, so this is a no-op for them.
@@ -517,7 +518,24 @@ return {
             config.sysroot = require("dbg.qemuser").default_sysroot(config.arch)
           end
         end
-        local bin = config.gdb_bin or (config.arch and discover.gdb_for(config.arch)) or "gdb"
+        -- The host's own gdb debugs host programs; another arch needs one built for it.
+        local bin, why = config.gdb_bin, nil
+        if not bin then
+          if config.arch then
+            bin, why = discover.gdb_for(config.arch)
+          else
+            bin = "gdb"
+          end
+        end
+        if not bin then
+          notify.error(why)
+          return
+        end
+        local dap_ok, dap_why = discover.gdb_supports_dap(bin)
+        if not dap_ok then
+          notify.error(dap_why)
+          return
+        end
         local args = { "-q", "-i", "dap", "-iex", "set pagination off" }
         -- Without the sysroot gdb resolves nothing past the main binary; QEMU
         -- gets the same root by -L.
@@ -525,147 +543,89 @@ return {
           table.insert(args, "-iex")
           table.insert(args, "set sysroot " .. config.sysroot)
         end
-        local tool = discover.gdbtools_loader(config and config.program and vim.fs.dirname(config.program))
+        local tool, terr = discover.gdbtools_loader()
+        if terr then
+          notify.error(terr)
+          return
+        end
         if tool then
           table.insert(args, "-ex")
           table.insert(args, "source " .. tool)
         end
         local spec = { type = "executable", command = bin, args = args }
         if config.dbg_qemuser and config.qemu_port then
+          -- A gdb attached to a QEMU that never started would wait on a port
+          -- nothing serves; say why and start nothing.
           require("dbg.qemuser").spawn(config, function()
             callback(spec)
           end, function(msg)
-            require("dbg.notify").error(msg)
-            callback(spec)
+            notify.error(msg)
           end)
         else
           callback(spec)
         end
       end
 
+      -- The kernel session is kbuildlab's to describe: the gdb, the -iex lines
+      -- (which also trust the tree's own scripts/gdb), what gdbtools is told, the
+      -- vmlinux and the facts of this boot all come from `kbuildlab attach --json`,
+      -- asked afresh on every start so a replayed configuration follows a guest
+      -- that was restarted.  Without kbuildlab there is no kernel session.
       dap.adapters.gdb_kernel = function(callback, config)
-        local bin = config.gdb_bin or discover.gdb_for(config.arch or "x86_64")
-        local args = { "-q", "-i", "dap", "-iex", "set pagination off" }
-        if config.kernel_root then
-          -- scripts/gdb (lx-symbols, lx-lsmod) finds vmlinux and the .ko files
-          -- from gdb's working directory; the log stays where Neovim runs.
-          vim.list_extend(args, {
-            "-iex",
-            "add-auto-load-safe-path " .. config.kernel_root,
-            "-iex",
-            "cd " .. config.kernel_root,
-            "-iex",
-            "set logging file " .. vim.fn.getcwd() .. "/gdb.txt",
+        local notify = require("dbg.notify")
+        local kbl = config.kbl or {}
+        if not (type(kbl.tree) == "string" and kbl.tree ~= "" and tonumber(kbl.port)) then
+          notify.error("This kernel configuration names no kbuildlab tree and port; start it with :DbgKernel")
+          return
+        end
+        local args = { "attach", kbl.tree, "--port", tostring(kbl.port), "--json" }
+        -- "Attach now" leaves gdbtools inert until `kearly on`, as before.
+        local env = { GDBTOOLS_AUTO = config.kgdb_auto and "1" or "0" }
+        discover.kbuildlab_json(args, env, function(spec, why)
+          if not spec then
+            notify.error(why)
+            return
+          end
+          local dap_ok, dap_why = discover.gdb_supports_dap(spec.gdb or "gdb")
+          if not dap_ok then
+            notify.error(dap_why)
+            return
+          end
+          config.program = spec.vmlinux
+          config.target = spec.target
+          config.kernel_root = spec.src
+          -- The ELF's name for it (aarch64, not the kernel's arm64), as for programs.
+          config.arch = discover.elf_arch(spec.vmlinux or "") or spec.arch
+          config.boot = spec.boot
+          config.fwsym = spec.fwsym
+          config.qemu_pid = spec.pid
+          config.gdb_bin = spec.gdb
+          config.kaslr_state = spec.kaslr == true and "on" or (spec.kaslr == false and "off" or "unknown")
+          local gargs = { "-q", "-i", "dap" }
+          for _, x in ipairs(spec.iex or {}) do
+            vim.list_extend(gargs, { "-iex", x })
+          end
+          if spec.gdbtools then
+            vim.list_extend(gargs, { "-ex", "source " .. spec.gdbtools })
+          end
+          local genv = vim.fn.environ()
+          for k, v in pairs(spec.env or {}) do
+            genv[k] = v
+          end
+          local env_list = {}
+          for k, v in pairs(genv) do
+            if k:find("^[^=]*$") then
+              env_list[#env_list + 1] = k .. "=" .. tostring(v)
+            end
+          end
+          callback({
+            type = "executable",
+            command = spec.gdb,
+            args = gargs,
+            -- The attach answers once gdb has read vmlinux, 9-11 s here; 4 s warns every time.
+            options = { env = env_list, initialize_timeout_sec = 60 },
           })
-        end
-        local tool = discover.gdbtools_loader(config.kernel_root)
-        if tool then
-          table.insert(args, "-ex")
-          table.insert(args, "source " .. tool)
-        end
-        local env = vim.fn.environ()
-        -- A hand-exported address outranks every derivation below, so remember it
-        -- came from outside before anything writes the same key.
-        local operator_entry = env.GDBTOOLS_ENTRY_PA
-        if config.kgdb_auto then
-          env.GDBTOOLS_AUTO = "1"
-        end
-        -- Machine facts come from the tree, not from here; the environment wins.
-        local facts = discover.machine_facts(config.kernel_root)
-        -- GDBTOOLS_ENTRY_PA is held back: the tree states its default boot mode's
-        -- address, and this port may be running another. The recorded run decides.
-        local entry_from_tree = facts.GDBTOOLS_ENTRY_PA
-        facts.GDBTOOLS_ENTRY_PA = nil
-        for k, v in pairs(facts) do
-          if not env[k] or env[k] == "" then
-            env[k] = v
-          end
-        end
-
-        -- Re-read the run state on every connect, as the shell launcher does: a
-        -- replayed config can describe a guest since restarted in another boot
-        -- mode. A firmware chain has a recorded landing address; a direct boot
-        -- leaves ENTRY_PA unset so gdbtools recovers the entry itself.
-        local port = require("dbg.kernel").local_port(config.target)
-        local qpid = discover.qemu_pid_for_port(port)
-        local state = (qpid and discover.run_state(port, qpid)) or (not qpid and config.run_state) or nil
-        local mode = state and state.KBL_BOOT
-        if (mode == "uboot" or mode == "uefi") and state.KBL_LOADADDR and state.KBL_LOADADDR ~= "" then
-          if not env.GDBTOOLS_ENTRY_PA or env.GDBTOOLS_ENTRY_PA == "" then
-            env.GDBTOOLS_ENTRY_PA = state.KBL_LOADADDR
-          end
-          -- The bootloader copies the image there after reset, so a software
-          -- breakpoint planted while the guest is frozen would be overwritten.
-          if not env.GDBTOOLS_BREAK_KIND or env.GDBTOOLS_BREAK_KIND == "" then
-            env.GDBTOOLS_BREAK_KIND = "hw"
-          end
-        elseif entry_from_tree then
-          -- The tree's address holds only while its default mode is the one
-          -- running; otherwise leave the entry for the architecture to find.
-          local stated = discover.tree_value(config.kernel_root, "BOOT")
-          if not stated or stated == "" then
-            stated = "direct"
-          end
-          if (mode or stated) == stated and (not env.GDBTOOLS_ENTRY_PA or env.GDBTOOLS_ENTRY_PA == "") then
-            env.GDBTOOLS_ENTRY_PA = entry_from_tree
-          end
-        end
-        -- Boot mode: the run state, else the tree's default, else direct. Same
-        -- order as the shell launcher. Both x86 KASLR recoveries read the
-        -- compressed image, and are written against the 64-bit boot path only.
-        local eff_boot = mode
-        if not eff_boot or eff_boot == "" then
-          eff_boot = discover.tree_value(config.kernel_root, "BOOT")
-        end
-        if not eff_boot or eff_boot == "" then
-          eff_boot = "direct"
-        end
-        local firmware_boot = eff_boot == "uboot" or eff_boot == "uefi"
-        if config.kernel_root and config.arch == "x86_64" then
-          local decomp = config.kernel_root .. "/arch/x86/boot/compressed/vmlinux"
-          if vim.uv.fs_stat(decomp) then
-            if not env.GDBTOOLS_X86_DECOMP_VMLINUX then
-              env.GDBTOOLS_X86_DECOMP_VMLINUX = decomp
-            end
-            -- 0x100000 is the x86 boot protocol's protected-mode load address
-            -- (Documentation/arch/x86/boot.rst), where the base recovery breaks.
-            -- Direct boot only: a firmware chain loads the PE wherever its
-            -- allocator chose, and gdbtools searches for it.
-            if not firmware_boot and not env.GDBTOOLS_X86_DECOMP_PA then
-              env.GDBTOOLS_X86_DECOMP_PA = "0x100000"
-            end
-          end
-        end
-        -- Must be in the environment, not a command: the base is recovered while
-        -- the session starts. KASLR is a fact about the guest, read in the
-        -- launcher's order: recorded run, then discovery, "cannot tell" counts as on.
-        local kaslr_on
-        if state and state.KBL_KASLR and state.KBL_KASLR ~= "" then
-          kaslr_on = state.KBL_KASLR == "1"
-        else
-          kaslr_on = (config.kaslr_state or "unknown") ~= "off"
-        end
-        if config.arch == "x86_64" and kaslr_on then
-          env.GDBTOOLS_X86_KASLR = "1"
-          -- Under KASLR a derived entry is wrong and, being set, suppresses the
-          -- base recovery. Take it back unless an operator pinned one.
-          if not operator_entry or operator_entry == "" then
-            env.GDBTOOLS_ENTRY_PA = nil
-          end
-        end
-        local env_list = {}
-        for k, v in pairs(env) do
-          if k:find("^[^=]*$") then
-            env_list[#env_list + 1] = k .. "=" .. tostring(v)
-          end
-        end
-        callback({
-          type = "executable",
-          command = bin,
-          args = args,
-          -- The attach answers once gdb has read vmlinux, 9-11 s here; 4 s warns every time.
-          options = { env = env_list, initialize_timeout_sec = 60 },
-        })
+        end)
       end
 
       local c_configs = {
@@ -1123,11 +1083,11 @@ return {
 
       vim.api.nvim_create_user_command("DbgTargets", function()
         require("dbg.kernel").show_report()
-      end, { desc = "Report the QEMU kernel debug targets found on this machine" })
+      end, { desc = "Report the guests kbuildlab sees on this machine" })
 
       vim.api.nvim_create_user_command("DbgKernel", function()
         require("dbg.kernel").start()
-      end, { desc = "Pick a QEMU gdbstub and attach the kernel debugger" })
+      end, { desc = "Pick a kbuildlab guest and attach the kernel debugger" })
 
       vim.api.nvim_create_user_command("DbgKernelEarly", function()
         require("dbg.kernel").start({ kgdb_auto = true })

@@ -20,27 +20,6 @@ local GDB_CANDIDATES = {
 -- Kernel trees say "arm64" (ARCH=), the ELF header says "aarch64".
 local ARCH_ALIASES = { arm64 = "aarch64", amd64 = "x86_64", riscv = "riscv64" }
 
-local function slurp(path, size)
-  local fd = vim.uv.fs_open(path, "r", 438)
-  if not fd then
-    return nil
-  end
-  local data = vim.uv.fs_read(fd, size or 262144, 0)
-  vim.uv.fs_close(fd)
-  return data
-end
-
-local function argv_of(pid)
-  local raw = slurp("/proc/" .. pid .. "/cmdline")
-  if not raw or raw == "" then
-    return nil
-  end
-  local out = {}
-  for field in raw:gmatch("([^%z]+)") do
-    out[#out + 1] = field
-  end
-  return #out > 0 and out or nil
-end
 
 function M.elf_arch(path)
   local fd = vim.uv.fs_open(path, "r", 438)
@@ -165,32 +144,8 @@ local function slurp_proc(path)
   return table.concat(parts)
 end
 
--- Socket inodes a process holds, from its own fd table.
-function M.socket_inodes(pid)
-  local out = {}
-  local dir = vim.uv.fs_scandir("/proc/" .. pid .. "/fd")
-  if not dir then
-    return nil -- unreadable (another uid): unknown, which is not the same as none
-  end
-  while true do
-    local name = vim.uv.fs_scandir_next(dir)
-    if not name then
-      break
-    end
-    local link = vim.uv.fs_readlink("/proc/" .. pid .. "/fd/" .. name)
-    local ino = link and link:match("^socket:%[(%d+)%]$")
-    if ino then
-      out[ino] = true
-    end
-  end
-  return out
-end
-
--- listen[port] = true, estab[port] = { inode, ... }
--- The inodes matter: qemu's gdbstub keeps listening after it accepts, so a
--- second client shows as ESTABLISHED while queued behind the first. kernel.lua
--- intersects these inodes with qemu's own fds to decide who is attached.
--- Both families are read: a client from ::1 appears only in /proc/net/tcp6.
+-- listen[port] = true, estab[port] = { inode, ... }.  Both families are read:
+-- a client from ::1 appears only in /proc/net/tcp6.
 function M.tcp_states()
   local listen, estab = {}, {}
   for _, f in ipairs({ "/proc/net/tcp", "/proc/net/tcp6" }) do
@@ -218,200 +173,6 @@ function M.tcp_states()
     end
   end
   return listen, estab
-end
-
-function M.parse_qemu(pid, exe, qemu_arch, argv)
-  local inst = { pid = pid, exe = exe, qemu_arch = qemu_arch, argv = argv, frozen = false }
-  local i = 2
-  while i <= #argv do
-    local a = argv[i]
-    if a == "-gdb" then
-      inst.gdb_dev = argv[i + 1]
-      i = i + 1
-    elseif a == "-s" then
-      inst.gdb_dev = inst.gdb_dev or "tcp::1234"
-    elseif a == "-S" then
-      inst.frozen = true
-    elseif a == "-kernel" then
-      inst.kernel_image = argv[i + 1]
-      i = i + 1
-    elseif a == "-append" then
-      inst.append = argv[i + 1]
-      i = i + 1
-    elseif a == "-M" or a == "-machine" then
-      inst.machine = argv[i + 1]
-      i = i + 1
-    elseif a == "-cpu" then
-      inst.cpu = argv[i + 1]
-      i = i + 1
-    elseif a == "-smp" then
-      inst.smp = argv[i + 1]
-      i = i + 1
-    end
-    i = i + 1
-  end
-  if inst.gdb_dev then
-    local port = inst.gdb_dev:match("^tcp:.*:(%d+)$")
-    if port then
-      inst.gdb_port = tonumber(port)
-    else
-      inst.gdb_other = inst.gdb_dev
-    end
-  end
-  return inst
-end
-
-function M.qemu_instances()
-  local out = {}
-  local dir = vim.uv.fs_scandir("/proc")
-  if not dir then
-    return out
-  end
-  while true do
-    local name = vim.uv.fs_scandir_next(dir)
-    if not name then
-      break
-    end
-    if name:match("^%d+$") then
-      local argv = argv_of(name)
-      if argv then
-        local exe = vim.fs.basename(argv[1] or "")
-        local qemu_arch = exe:match("^qemu%-system%-(.+)$")
-        if qemu_arch then
-          out[#out + 1] = M.parse_qemu(tonumber(name), exe, qemu_arch, argv)
-        end
-      end
-    end
-  end
-  table.sort(out, function(a, b)
-    return (a.gdb_port or 0) < (b.gdb_port or 0)
-  end)
-  return out
-end
-
--- The QEMU serving a gdbstub port now; a remembered pid goes stale when the
--- guest is restarted on the same port.
-function M.qemu_pid_for_port(port)
-  if not port then
-    return nil
-  end
-  for _, inst in ipairs(M.qemu_instances()) do
-    if inst.gdb_port == tonumber(port) then
-      return inst.pid
-    end
-  end
-  return nil
-end
-
-function M.qemu_ptys(pid)
-  local out = {}
-  local dir = vim.uv.fs_scandir("/proc/" .. pid .. "/fd")
-  if not dir then
-    return out
-  end
-  local seen = {}
-  while true do
-    local name = vim.uv.fs_scandir_next(dir)
-    if not name then
-      break
-    end
-    local link = vim.uv.fs_readlink("/proc/" .. pid .. "/fd/" .. name)
-    if link and link:match("^/dev/pts/%d+$") and not seen[link] then
-      seen[link] = true
-      out[#out + 1] = link
-    end
-  end
-  table.sort(out)
-  return out
-end
-
-function M.kernel_root_from_image(image)
-  if not image or image == "" then
-    return nil, nil
-  end
-  local root = image:match("^(.*)/arch/[^/]+/boot/.+$")
-  if root then
-    return root, "derived from qemu -kernel by stripping arch/*/boot"
-  end
-  if vim.fs.basename(image) == "vmlinux" then
-    return vim.fs.dirname(image), "qemu -kernel is the vmlinux itself"
-  end
-  return nil, nil
-end
-
--- Every filesystem path on a qemu command line, including those inside
--- comma-separated option values (-drive if=none,file=...).
-function M.qemu_paths(inst)
-  local out, seen = {}, {}
-  for i = 2, #((inst or {}).argv or {}) do
-    for path in tostring(inst.argv[i]):gmatch("/[^,%s=]+") do
-      path = vim.fs.normalize(path)
-      if #path > 1 and not seen[path] then
-        seen[path] = true
-        out[#out + 1] = path
-      end
-    end
-  end
-  return out
-end
-
--- A firmware-booted guest carries no -kernel, so walk up from a disk or
--- firmware path looking for a kernel build beside it; nearest match wins.
-function M.vmlinux_near(path)
-  local dir = vim.fs.dirname(path)
-  for distance = 0, 7 do
-    if not dir or dir == "" or dir == "/" then
-      return nil
-    end
-    if vim.uv.fs_stat(dir .. "/vmlinux") then
-      return dir .. "/vmlinux", distance
-    end
-    local scan = vim.uv.fs_scandir(dir)
-    while scan do
-      local name, kind = vim.uv.fs_scandir_next(scan)
-      if not name then
-        break
-      end
-      if kind == "directory" and vim.uv.fs_stat(dir .. "/" .. name .. "/vmlinux") then
-        return dir .. "/" .. name .. "/vmlinux", distance
-      end
-    end
-    dir = vim.fs.dirname(dir)
-  end
-  return nil
-end
-
-function M.vmlinux_upward(start)
-  if not start or start == "" then
-    return nil
-  end
-  local hit = vim.fs.find("vmlinux", { path = start, upward = true, type = "file", limit = 1 })
-  return hit[1]
-end
-
-function M.kaslr(inst, kernel_root)
-  local append = inst and inst.append
-  if append then
-    if append:match("%f[%w]nokaslr%f[%W]") then
-      return { state = "off", source = "nokaslr on the qemu -append cmdline" }
-    end
-    if append:match("%f[%w]kaslr%f[%W]") then
-      return { state = "on", source = "kaslr on the qemu -append cmdline" }
-    end
-  end
-  local cfg = kernel_root and slurp(kernel_root .. "/.config", 4194304)
-  if cfg then
-    if cfg:match("[\n^]CONFIG_RANDOMIZE_BASE=y") then
-      if append then
-        return { state = "on", source = "build has CONFIG_RANDOMIZE_BASE=y and -append carries no nokaslr" }
-      end
-      return { state = "unknown", source = "build has CONFIG_RANDOMIZE_BASE=y but the boot cmdline is unreadable" }
-    end
-    if cfg:match("# CONFIG_RANDOMIZE_BASE is not set") then
-      return { state = "off", source = "CONFIG_RANDOMIZE_BASE is not set in the build .config" }
-    end
-  end
-  return { state = "unknown", source = "no evidence available" }
 end
 
 local reported_unusable = {}
@@ -458,8 +219,28 @@ local function python_starts(bin)
   return false
 end
 
+-- The gdb for an architecture: vim.g.dbg_gdb when the user states one (a name
+-- or path, or a table keyed by arch), else the first candidate whose Python
+-- starts, else the host gdb if it was built for every target.  nil and the
+-- reason when none fits.
 function M.gdb_for(arch)
   local key = ARCH_ALIASES[arch] or arch
+  local stated = vim.g.dbg_gdb
+  if type(stated) == "table" then
+    local pick = nil
+    for k, v in pairs(stated) do
+      if (ARCH_ALIASES[k] or k) == key then
+        pick = v
+      end
+    end
+    stated = pick
+  end
+  if type(stated) == "string" and stated ~= "" then
+    if vim.fn.executable(stated) == 1 and python_starts(stated) then
+      return stated
+    end
+    return nil, ("vim.g.dbg_gdb names %s, which is not an executable gdb with Python"):format(stated)
+  end
   local cands = GDB_CANDIDATES[key] or { "gdb" }
   for _, cand in ipairs(cands) do
     if vim.fn.executable(cand) == 1 and python_starts(cand) then
@@ -472,199 +253,124 @@ function M.gdb_for(arch)
       return "gdb"
     end
   end
-  return "gdb"
+  return nil,
+    ("no gdb for %s: tried %s and a multi-target host gdb; install one (gdb-multiarch on Debian and Void) or set vim.g.dbg_gdb"):format(
+      tostring(arch),
+      table.concat(cands, ", ")
+    )
 end
 
+-- gdb -i dap exists from gdb 14.  true, or false and the reason.
 function M.gdb_supports_dap(bin)
-  vim.fn.system({ bin, "--configuration" })
-  if vim.v.shell_error ~= 0 then
-    return false
+  if vim.fn.executable(bin) ~= 1 then
+    return false, bin .. " is not installed or not executable"
   end
-  local ver = vim.fn.system({ bin, "--version" })
-  local major = tonumber((ver:match("GNU gdb%D*(%d+)")))
-  return (major or 0) >= 14
+  local key = identity("dap", bin)
+  if probed[key] == nil then
+    local ver = vim.fn.system({ bin, "--version" })
+    local major = vim.v.shell_error == 0 and tonumber((ver:match("GNU gdb%D*(%d+)"))) or nil
+    probed[key] = (major or 0) >= 14
+  end
+  if not probed[key] then
+    return false, bin .. " has no DAP interpreter (gdb -i dap needs gdb 14 or newer)"
+  end
+  return true
 end
 
--- Where the gdbtools loader lives. No path is baked in; absent is a normal
--- answer and the caller decides what it means.
-local function first_readable(paths)
-  for _, p in ipairs(paths) do
-    if p and vim.uv.fs_stat(p) then
-      return p
-    end
-  end
-  return nil
-end
-
-local function pointer_file()
+local function config_home()
   local conf = vim.env.XDG_CONFIG_HOME
-  if not conf or conf == "" then
-    conf = (vim.uv.os_homedir() or "") .. "/.config"
-  end
-  local f = conf .. "/gdbtools/root"
+  return (conf and conf ~= "") and conf or ((vim.uv.os_homedir() or "") .. "/.config")
+end
+
+-- A tool's checkout as its own installer recorded it in <config>/<tool>/root,
+-- or nil.  Read, never searched for.
+local function root_pointer(tool)
+  local f = config_home() .. "/" .. tool .. "/root"
   if not vim.uv.fs_stat(f) then
     return nil
   end
   local root = (vim.fn.readfile(f)[1] or ""):gsub("%s+$", "")
-  return root ~= "" and (root .. "/gdbtools.py") or nil
+  return root ~= "" and root or nil, f
 end
 
--- The two repositories are usually checked out side by side: look next to
--- this config's real directory.
-local function sibling_checkout()
-  local self = vim.uv.fs_realpath(vim.fn.stdpath("config"))
-  if not self then
+-- gdbtools' loader: $GDBTOOLS_PATH, else the root gdbtools' setup.sh records.
+-- nil when neither is stated; nil and the reason when one is stated and wrong.
+function M.gdbtools_loader()
+  local env = vim.env.GDBTOOLS_PATH
+  if env and env ~= "" then
+    local st = vim.uv.fs_stat(env)
+    if st and st.type == "file" then
+      return env
+    end
+    return nil, "GDBTOOLS_PATH=" .. env .. " is not a file"
+  end
+  local root, file = root_pointer("gdbtools")
+  if not root then
     return nil
   end
-  return vim.fs.dirname(self) .. "/gdbtools/gdbtools.py"
+  local loader = root .. "/gdbtools.py"
+  local st = vim.uv.fs_stat(loader)
+  if st and st.type == "file" then
+    return loader
+  end
+  return nil, ("%s names %s, which has no gdbtools.py (re-run gdbtools' install.sh)"):format(file, root)
 end
 
--- tree.conf is what the shell launcher reads; qemu.conf is its older name.
-local function tree_conf(kernel_root)
-  if not kernel_root then
-    return nil
+-- The kbuildlab to run: vim.g.dbg_kbuildlab or $KBUILDLAB when stated, else the
+-- one on $PATH, else the checkout its installer recorded -- a session started
+-- from a graphical launcher may not have ~/.local/bin on its PATH.
+function M.kbuildlab()
+  local stated = vim.g.dbg_kbuildlab or vim.env.KBUILDLAB
+  if stated and stated ~= "" then
+    if vim.fn.executable(stated) == 1 then
+      return stated
+    end
+    return nil, stated .. " (vim.g.dbg_kbuildlab or $KBUILDLAB) is not executable"
   end
-  for _, dir in ipairs({ kernel_root, vim.fs.dirname(kernel_root) }) do
-    for _, name in ipairs({ "tree.conf", "qemu.conf" }) do
-      local path = dir .. "/" .. name
-      if vim.uv.fs_stat(path) then
-        return path
+  if vim.fn.executable("kbuildlab") == 1 then
+    return "kbuildlab"
+  end
+  local root = root_pointer("kbuildlab")
+  local bin = root and (root .. "/bin/kbuildlab")
+  if bin and vim.fn.executable(bin) == 1 then
+    return bin
+  end
+  return nil, "kbuildlab is not installed (not on PATH, no " .. config_home() .. "/kbuildlab/root); kernel debugging needs it"
+end
+
+-- Run `kbuildlab ARGS` and decode its JSON, null as nil; cb(value) or cb(nil, why).
+-- The error is kbuildlab's last message with its continuation lines.
+function M.kbuildlab_json(args, env, cb)
+  local bin, why = M.kbuildlab()
+  if not bin then
+    return cb(nil, why)
+  end
+  local cmd = vim.list_extend({ bin }, args)
+  local timeout = 30000
+  local ok, proc = pcall(vim.system, cmd, { text = true, env = env, timeout = timeout }, function(res)
+    vim.schedule(function()
+      if res.code ~= 0 then
+        if res.code == 124 then
+          return cb(nil, ("kbuildlab %s did not answer within %d s"):format(args[1], timeout / 1000))
+        end
+        local err = vim.trim(res.stderr or "")
+        local last = nil
+        for pos in ("\n" .. err):gmatch("\n()kbuildlab: ") do
+          last = pos
+        end
+        err = last and err:sub(last - 1) or err
+        return cb(nil, ("kbuildlab %s failed: %s"):format(args[1], (err:gsub("^kbuildlab: ", ""))))
       end
-    end
+      local dok, value = pcall(vim.json.decode, res.stdout or "", { luanil = { object = true, array = true } })
+      if not dok then
+        return cb(nil, "kbuildlab printed something that is not JSON")
+      end
+      cb(value)
+    end)
+  end)
+  if not ok then
+    cb(nil, tostring(proc))
   end
-  return nil
-end
-
--- kbuildlab's kbl_tree_get grammar: a value opening with a double quote is that
--- quote's contents (a '#' inside it is data); otherwise a '#' starts a comment
--- and trailing space is trimmed.
-local function tree_unquote(v)
-  if v:sub(1, 1) == '"' then
-    return v:sub(2):match('^[^"]*') or ""
-  end
-  return (v:gsub("%s*#.*$", ""):gsub("%s+$", ""))
-end
-
--- One key out of the tree description, with its directory so a relative path
--- resolves. Parsed, never sourced.
-function M.tree_value(kernel_root, key)
-  local path = tree_conf(kernel_root)
-  if not path then
-    return nil
-  end
-  local dir = vim.fs.dirname(path)
-  for _, line in ipairs(vim.fn.readfile(path)) do
-    local v = line:match("^%s*" .. key:gsub("%W", "%%%0") .. "%s*=%s*(.-)%s*$")
-    if v then
-      return tree_unquote(v), dir
-    end
-  end
-  return nil, dir
-end
-
--- The GDBTOOLS_ lines of the tree description, for the adapter's environment.
--- Nothing is restated here: a copy would drift from what the shell launcher
--- reads. Absent is a normal answer.
-function M.machine_facts(kernel_root)
-  local out = {}
-  local path = tree_conf(kernel_root)
-  if not path then
-    return out
-  end
-  for _, line in ipairs(vim.fn.readfile(path)) do
-    local k, v = line:match("^%s*(GDBTOOLS_[A-Z0-9_]+)%s*=%s*(.-)%s*$")
-    if k then
-      out[k] = tree_unquote(v)
-    end
-  end
-  return out
-end
-
--- /proc/PID/stat field 22 (starttime), parsed from after the last ')': comm may
--- contain spaces. Same rule as kbuildlab's kbl_proc_starttime.
-function M.proc_starttime(pid)
-  local data = slurp("/proc/" .. pid .. "/stat", 8192)
-  if not data then
-    return nil
-  end
-  local rest = data:match("%)%s*(.*)$")
-  if not rest then
-    return nil
-  end
-  local n, out = 0, nil
-  for w in rest:gmatch("%S+") do
-    n = n + 1
-    if n == 20 then -- 22nd overall = 20th after state, which follows comm
-      out = w
-      break
-    end
-  end
-  return out
-end
-
--- What kbuildlab (lib/run-qemu.sh) recorded for the guest on this port: the
--- boot mode it was started in and, for a firmware chain, where the kernel lands.
--- Absent is a normal answer. With `pid`, a file whose recorded pid and start
--- time do not match the live process describes a previous run and is rejected,
--- as kbl_instances does.
-function M.run_state(port, pid)
-  if not port then
-    return nil
-  end
-  -- Same rule as kbuildlab's kbl_statedir(): $KBL_STATE_DIR, else /dev/shm.
-  local dir = vim.env.KBL_STATE_DIR
-  if not dir or dir == "" then
-    dir = "/dev/shm"
-  end
-  local path = ("%s/kbl-run-%d.env"):format(dir, tonumber(port) or -1)
-  if not vim.uv.fs_stat(path) then
-    return nil
-  end
-  local out = { path = path }
-  for _, line in ipairs(vim.fn.readfile(path)) do
-    local k, v = line:match("^%s*(KBL_[A-Z0-9_]+)%s*=%s*(.-)%s*$")
-    if k then
-      out[k] = v
-    end
-  end
-  if pid and out.KBL_QEMU_PID and out.KBL_QEMU_PID ~= tostring(pid) then
-    return nil, "state file names qemu pid " .. out.KBL_QEMU_PID .. ", not " .. tostring(pid)
-  end
-  if pid and out.KBL_QEMU_START then
-    local now = M.proc_starttime(pid)
-    if now and now ~= out.KBL_QEMU_START then
-      return nil,
-        "state file names a process started at "
-          .. out.KBL_QEMU_START
-          .. "; pid "
-          .. tostring(pid)
-          .. " started at "
-          .. now
-    end
-  end
-  return out
-end
-
-function M.gdbtools_loader(near)
-  local data = vim.env.XDG_DATA_HOME
-  if not data or data == "" then
-    data = (vim.uv.os_homedir() or "") .. "/.local/share"
-  end
-  local found = first_readable({ vim.env.GDBTOOLS_PATH })
-  if found then
-    return found
-  end
-  if near then
-    found = vim.fs.find("gdbtools.py", { path = near, upward = true, type = "file", limit = 1 })[1]
-    if found then
-      return found
-    end
-  end
-  return first_readable({
-    pointer_file(), -- written by gdbtools setup.sh
-    sibling_checkout(), -- checked out next to this config
-    data .. "/gdbtools/gdbtools.py",
-  })
 end
 
 return M
