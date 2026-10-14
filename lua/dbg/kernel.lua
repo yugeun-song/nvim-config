@@ -39,7 +39,7 @@ end
 
 function M.describe(c)
   return ("%s  %s  pid %d  %s  %s  KASLR %s%s"):format(
-    pad(c.name or "?", 16),
+    pad(c.label or "?", 16),
     pad(c.target or "?", 18),
     c.pid or 0,
     c.frozen and "frozen (-S)" or "running",
@@ -62,7 +62,7 @@ function M.report(cb)
       lines[#lines + 1] = "No guest is running.  Start one: kbuildlab run TREE"
     end
     for i, c in ipairs(cands or {}) do
-      lines[#lines + 1] = ("[%d] %s  %s  pid %d"):format(i, c.name or "?", c.qbin or "qemu", c.pid or 0)
+      lines[#lines + 1] = ("[%d] %s  %s  pid %d"):format(i, c.label or "?", c.qbin or "qemu", c.pid or 0)
       local rows = {
         { "target", c.target },
         { "tree", short(c.tree) },
@@ -108,11 +108,11 @@ end
 -- configuration follows a guest that was restarted in another boot mode.
 local function build(c)
   return {
-    name = ("kernel %s @ %s"):format(c.name or "?", c.target or tostring(c.port)),
+    name = ("kernel %s @ %s"):format(c.label or "?", c.target or tostring(c.port)),
     type = "gdb_kernel",
     request = "attach",
     target = c.target,
-    kbl = { tree = c.name or c.tree, port = c.port },
+    kbl = { tree = (c.id ~= nil and c.id ~= "") and c.id or c.tree, port = c.port },
     kaslr_state = c.kaslr == true and "on" or (c.kaslr == false and "off" or "unknown"),
   }
 end
@@ -125,12 +125,17 @@ function M.manual(cb, port)
       return notify.error(why)
     end
     if #trees == 0 then
-      return notify.error("No tree is registered: kbuildlab add DIR, or kbuildlab init NAME --arch ARCH")
+      return notify.error("No tree is registered: kbuildlab add DIR, or kbuildlab init DIR --arch ARCH")
     end
     vim.ui.select(trees, {
       prompt = "Which tree does the guest run?",
       format_item = function(t)
-        return ("%s  %s  %s"):format(pad(t.name, 16), pad(t.arch or "?", 8), t.release or t.version or "")
+        return ("%s  %s  %s  %s"):format(
+          pad(t.label or "?", 16),
+          pad(t.arch or "?", 8),
+          pad(t.release or t.version or "", 16),
+          short(t.src)
+        )
       end,
     }, function(t)
       if not t then
@@ -141,7 +146,7 @@ function M.manual(cb, port)
         if not p then
           return
         end
-        cb(build({ name = t.name, tree = t.name, port = p, target = "localhost:" .. p }))
+        cb(build({ label = t.label, id = t.id, tree = t.id, port = p, target = "localhost:" .. p }))
       end)
     end)
   end)
