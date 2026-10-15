@@ -1,1 +1,12 @@
 fork = true
+
+# kitty at scale 1: its 11 pt glyph boxes, 8 px cells (cell_width 90%), SemiBold for bold.
+# Above 11.15 pt the glyphs widen and bold stands out less than in kitty.
+[font]
+normal = ["CaskaydiaCove Nerd Font Mono"]
+bold = { family = "CaskaydiaCove Nerd Font Mono", style = "SemiBold" }
+bold_italic = { family = "CaskaydiaCove Nerd Font Mono", style = "SemiBold Italic" }
+size = 11.15
+width = -0.5332031
+hinting = "slight"
+edging = "antialias"

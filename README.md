@@ -281,7 +281,9 @@ Typed keys show in floats at the bottom right for 1.6 s, with `한` while the IM
 
 ### Neovide GUI (`lua/plugins/neovide.lua`, `lua/plugins/neovide-ime.lua`)
 
-Only under Neovide: `CaskaydiaCove_Nerd_Font_Mono:h12:w-1`, 120 Hz (5 Hz idle), short cursor animation, 28 px padding, full opacity, quit confirmation, `neov-ime.nvim` and the keys below.
+Only under Neovide: text gamma 1.5 and contrast 1.0, 120 Hz (5 Hz idle), short cursor animation, 28 px padding, full opacity, quit confirmation, `neov-ime.nvim` and the keys below.
+
+The font lives in `neovide/config.toml` and is tuned against kitty at scale 1: CaskaydiaCove Nerd Font Mono, slight hinting, SemiBold for bold and bold italic (kitty's `bold_font auto` picks SemiBold), and a `width` that gives kitty's 8 px cells (`modify_font cell_width 90%`). `guifont` stays unset; it would override that table and cannot name SemiBold. At kitty's 11 pt, Neovide's glyph coverage equals kitty's, yet the text looks about 8% lighter and its edges softer. kitty blends in linear light against the real background, while Skia blends in sRGB with a correction keyed only to the text colour. Gamma 1.5 / contrast 1.0 keeps the spaceduck colours within about 5% of one weight; the defaults drew `#ecf0c1` text about 30% heavier than red. 11.15 pt adds a little weight and still draws kitty's pixel boxes. Larger sizes reach kitty's total weight (11.85 pt) but widen the glyphs and make bold stand out less than in kitty. Variable-font weights do not help either: Neovide snaps `W450` to the nearest named instance. Closing the rest needs Neovide to blend in linear light. Dark text on a bright background (mode label, search hits) comes out heavier than in kitty. Neovide adds `width` unscaled, so the cells are exact at scale 1 only (12.4 px instead of 12 at scale 1.5).
 
 `neov-ime.nvim` draws the IME preedit in the buffer. fcitx5 answers every cursor move with an empty preedit, and neov-ime re-sets the cursor on each one, which made `$` forget the end of line on the next `j`/`k`; only an empty preedit that ends a composition reaches it now.
 
