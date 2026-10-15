@@ -74,6 +74,12 @@ NVIM_APPNAME=test-nvim nvim
 
 The first start installs lazy.nvim, the plugins, the parsers and the Mason packages from `lua/plugins/mason.lua` (into `~/.local/share/nvim/mason/`). Check with `:Lazy` and `:LazyHealth`, then restart once. Update plugins with `:Lazy update` (commits are recorded in `lazy-lock.json`) and the config with `git pull`.
 
+Neovide reads its own settings from `~/.config/neovide`; link the ones here:
+
+```zsh
+ln -s ~/.config/nvim/neovide ~/.config/neovide
+```
+
 ---
 
 ## Repository structure
@@ -94,6 +100,7 @@ nvim-config/
 │       ├── c/injections.scm  #   assembly in asm("…")
 │       └── cpp/injections.scm #   same, for cpp headers
 ├── colors/spaceduck.lua      # the colorscheme
+├── neovide/config.toml       # Neovide's own settings (fork), linked to ~/.config/neovide
 ├── scripts/alive-lsp-stdio.lisp # alive-lsp launcher
 └── lua/
     ├── chkeys.lua            # keystroke display
@@ -261,6 +268,8 @@ Typed keys show in floats at the bottom right for 1.6 s, with `한` while the IM
 Only under Neovide: `CaskaydiaCove_Nerd_Font_Mono:h12:w-1`, 120 Hz (5 Hz idle), short cursor animation, 28 px padding, full opacity, quit confirmation, `neov-ime.nvim` and the keys below.
 
 `neov-ime.nvim` draws the IME preedit in the buffer. fcitx5 answers every cursor move with an empty preedit, and neov-ime re-sets the cursor on each one, which made `$` forget the end of line on the next `j`/`k`; only an empty preedit that ends a composition reaches it now.
+
+`neovide/config.toml` sets `fork = true`: `neovide .` typed in a terminal returns at once and the editor runs in its own session, so closing the terminal leaves it open (`&` is not needed; zsh would only lower its priority). Launched from a menu, with no terminal, Neovide never forks. `neovide --no-fork` waits as before.
 
 ---
 
