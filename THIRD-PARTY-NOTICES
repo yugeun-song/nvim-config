@@ -8,11 +8,11 @@ colors/spaceduck.lua
     (https://github.com/pineapplegiant/spaceduck), reusing its color palette and
     name. MIT License, reproduced at the end of this file.
 
-init.lua, stylua.toml
+stylua.toml
     Copied unchanged from LazyVim/starter (https://github.com/LazyVim/starter).
     Apache License 2.0, see LICENSES/Apache-2.0.txt.
 
-lua/config/lazy.lua
+init.lua, lua/config/lazy.lua
     Modified from LazyVim/starter (https://github.com/LazyVim/starter).
     Apache License 2.0, see LICENSES/Apache-2.0.txt.
 

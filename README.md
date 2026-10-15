@@ -14,6 +14,7 @@ Linux is the primary target. The IME reset has Windows and macOS branches, but t
 - **Debugger on GDB's own DAP** for userspace, QEMU user mode and Linux kernels behind a QEMU gdbstub; Python, Rust, JS/TS and Elixir use their own adapters.
 - **`lsp_filter`** turns clangd (or any server) off per file or directory.
 - **Korean IME integration**, **ChKeys** keystroke display, **`spaceduck`** colorscheme, **Neovide** profile.
+- **Open Folder**: pick a folder in yazi from the dashboard and switch the editor to it, its session coming back.
 
 ---
 
@@ -43,6 +44,7 @@ Linux is the primary target. The IME reset has Windows and macOS branches, but t
 | **Lean (optional)** | `elan` | The project's Lean toolchain (not Mason). |
 | **Python (optional)** | `ruff` | Lint and format beside `ty` (Mason). |
 | **Korean IME (optional)** | `fcitx5` + `fcitx5-remote` | IME reset and indicator. |
+| **Open Folder (optional)** | [yazi](https://yazi-rs.github.io/) | The folder picker; without it the dashboard entry and key are not created. |
 | **Caps Lock indicator (optional)** | Linux sysfs LED node | `/sys/class/leds/input*::capslock/brightness`. |
 | **GUI (optional)** | [Neovide](https://neovide.dev/), `CaskaydiaCove Nerd Font Mono` | The GUI profile. |
 | | `wl-clipboard` or `xclip` | `+` register for the GUI paste key. |
@@ -105,6 +107,7 @@ nvim-config/
 └── lua/
     ├── chkeys.lua            # keystroke display
     ├── lisp_repl.lua         # sbcl REPL
+    ├── open_folder.lua       # Open Folder, folder arguments, recent folders
     ├── dbg/                  # GDB debugger support:
     │   ├── discover.lua      #   ELF reading, gdb choice, kbuildlab and gdbtools lookup
     │   ├── breakpoints.lua   #   function/address breakpoints, run-to
@@ -145,6 +148,7 @@ nvim-config/
         ├── im_control.lua, imstate.lua # langmap, IME reset, statusline state
         ├── lualine.lua, git_tag.lua, hlslens.lua, noice.lua # statusline, tag, search index
         ├── snacks.lua, mini-files.lua, markview.lua, diagnostics.lua # pickers, explorer, markdown, floats
+        ├── open_folder.lua   # Open Folder entry and key, Projects with recent folders
         ├── colorscheme.lua, neovide.lua, neovide-ime.lua # spaceduck, GUI
         ├── ansi_color.lua, discord_rpc.lua, fs_refresh.lua # baleia, presence, reload
         └── lsp_filter.lua, mason.lua # filter keys, Mason packages
@@ -224,6 +228,14 @@ Turns servers off for generated or vendored subtrees. A rule matches a path pref
 ### Korean input-method integration (`lua/plugins/im_control.lua`, `lua/plugins/imstate.lua`)
 
 `langmap` maps Dubeolsik jamo to their QWERTY keys for Normal mode. On `InsertLeave` and `FocusGained` the IME is set to English (`fcitx5-remote -c`, `im-select.exe` or `issw`), never to Korean; outside Neovide, foot's IME mode sequence keeps the IME on only in Insert mode. The statusline shows `󰬈 CAPS` (LED read every 200 ms) and `한`, or `EN`/`en` following Caps Lock (`fcitx5-remote -n` on mode, focus and idle events, plus every second), each only when its backend exists; `vim.g.caps_state` and `vim.g.im_state` hold the same.
+
+### Open Folder (`lua/open_folder.lua`, `lua/plugins/open_folder.lua`)
+
+`o` on the dashboard, or `<leader>fo`, opens [yazi](https://yazi-rs.github.io/) in a float at the working directory. `q` makes the folder yazi is in the working directory: the folder being left gets its session saved (as persistence.nvim does on exit), its buffers close, and the new folder's session comes back if it has one, the dashboard otherwise. `Q` cancels. `<CR>` on a file opens it, with the working directory at its git root, else its folder. A modified buffer stops the switch. Without `yazi` in `PATH`, neither the entry nor the key exists.
+
+`nvim DIR` and `neovide DIR` start the same way: in DIR, with its session or the dashboard, and no directory buffer or explorer sidebar (`:e DIR` later still opens the explorer).
+
+Folders opened either way are remembered (newest 50, in `stdpath("state")/open_folder_history`) and listed by Projects (`p`, `<leader>fp`) beside the git roots of recent files; picking one switches like Open Folder.
 
 ### UI & appearance
 
@@ -340,6 +352,8 @@ Hex view: `t` source, `L` layout, `w` bytes per row, `g` bytes per group, `+`/`-
 | `<leader>uD` | n | Toggle Discord Rich Presence |
 | `n` / `N` / `*` / `#` / `g*` / `g#` | n | Search as usual, with the hlslens match index shown |
 | `<CR>` | n (in mini.files) | Open file and close explorer / enter directory |
+| `<leader>fo` | n | Open Folder in yazi (only when `yazi` is installed) |
+| `<leader>fp` | n | Projects: opened folders and git roots of recent files; picking one switches like Open Folder |
 
 ### Haskell (Normal mode, haskell buffers, `<localleader>` is `\`)
 
