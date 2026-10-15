@@ -260,6 +260,8 @@ Typed keys show in floats at the bottom right for 1.6 s, with `한` while the IM
 
 Only under Neovide: `CaskaydiaCove_Nerd_Font_Mono:h12:w-1`, 120 Hz (5 Hz idle), short cursor animation, 28 px padding, full opacity, quit confirmation, `neov-ime.nvim` and the keys below.
 
+`neov-ime.nvim` draws the IME preedit in the buffer. fcitx5 answers every cursor move with an empty preedit, and neov-ime re-sets the cursor on each one, which made `$` forget the end of line on the next `j`/`k`; only an empty preedit that ends a composition reaches it now.
+
 ---
 
 ## Keymap reference
