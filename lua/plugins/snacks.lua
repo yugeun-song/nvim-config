@@ -3,14 +3,12 @@ return {
     "folke/snacks.nvim",
     opts = {
       dashboard = {
-        preset = {
-          header = [[
-███╗   ██╗███████╗ ██████╗ ██╗   ██╗██╗███╗   ███╗
-████╗  ██║██╔════╝██╔═══██╗██║   ██║██║████╗ ████║
-██╔██╗ ██║█████╗  ██║   ██║██║   ██║██║██╔████╔██║
-██║╚██╗██║██╔══╝  ██║   ██║╚██╗ ██╔╝██║██║╚██╔╝██║
-██║ ╚████║███████╗╚██████╔╝ ╚████╔╝ ██║██║ ╚═╝ ██║
-╚═╝  ╚═══╝╚══════╝ ╚═════╝   ╚═══╝  ╚═╝╚═╝     ╚═╝]],
+        sections = {
+          function(self)
+            return require("dashboard_header").section(self.opts.width)
+          end,
+          { section = "keys", gap = 1, padding = 1 },
+          { section = "startup" },
         },
       },
       bigfile = {

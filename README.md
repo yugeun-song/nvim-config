@@ -15,6 +15,7 @@ Linux is the primary target. The IME reset has Windows and macOS branches, but t
 - **`lsp_filter`** turns clangd (or any server) off per file or directory.
 - **Korean IME integration**, **ChKeys** keystroke display, **`spaceduck`** colorscheme, **Neovide** profile.
 - **Open Folder**: pick a folder in yazi from the dashboard and switch the editor to it, its session coming back.
+- **Dashboard header**: the running system's logo beside NVIM, in the logo's own colour.
 
 ---
 
@@ -106,6 +107,7 @@ nvim-config/
 ├── scripts/alive-lsp-stdio.lisp # alive-lsp launcher
 └── lua/
     ├── chkeys.lua            # keystroke display
+    ├── dashboard_header.lua  # dashboard header: system logo and NVIM
     ├── lisp_repl.lua         # sbcl REPL
     ├── open_folder.lua       # Open Folder, folder arguments, recent folders
     ├── dbg/                  # GDB debugger support:
@@ -229,13 +231,15 @@ Turns servers off for generated or vendored subtrees. A rule matches a path pref
 
 `langmap` maps Dubeolsik jamo to their QWERTY keys for Normal mode. On `InsertLeave` and `FocusGained` the IME is set to English (`fcitx5-remote -c`, `im-select.exe` or `issw`), never to Korean; outside Neovide, foot's IME mode sequence keeps the IME on only in Insert mode. The statusline shows `󰬈 CAPS` (LED read every 200 ms) and `한`, or `EN`/`en` following Caps Lock (`fcitx5-remote -n` on mode, focus and idle events, plus every second), each only when its backend exists; `vim.g.caps_state` and `vim.g.im_state` hold the same.
 
-### Open Folder (`lua/open_folder.lua`, `lua/plugins/open_folder.lua`)
+### Open Folder and the dashboard (`lua/open_folder.lua`, `lua/dashboard_header.lua`, `lua/plugins/open_folder.lua`)
 
 `o` on the dashboard, or `<leader>fo`, opens [yazi](https://yazi-rs.github.io/) in a float at the working directory. `q` makes the folder yazi is in the working directory: the folder being left gets its session saved (as persistence.nvim does on exit), its buffers close, and the new folder's session comes back if it has one, the dashboard otherwise. `Q` cancels. `<CR>` on a file opens it, with the working directory at its git root, else its folder. A modified buffer stops the switch. Without `yazi` in `PATH`, neither the entry nor the key exists.
 
 `nvim DIR` and `neovide DIR` start the same way: in DIR, with its session or the dashboard, and no directory buffer or explorer sidebar (`:e DIR` later still opens the explorer).
 
 Folders opened either way are remembered (newest 50, in `stdpath("state")/open_folder_history`) and listed by Projects (`p`, `<leader>fp`) beside the git roots of recent files; picking one switches like Open Folder.
+
+The header draws the running system's logo left of NVIM: on Linux and FreeBSD the first `ID`, then `ID_LIKE`, of `/etc/os-release` that has a logo; macOS and Windows by name. The logo takes its main colour (simple-icons' brand colours, Microsoft's for Windows). When that colour reads below 3:1 against the background, the nearest shade of the same hue that reaches 3:1 replaces it. The background is `Normal`'s or, when the colorscheme leaves it transparent, the terminal's own, asked once with OSC 11; a colorscheme change recomputes the colour. An error, a system without a logo, or a window too narrow for logo and NVIM leaves NVIM alone. It costs one file read when the dashboard first draws.
 
 ### UI & appearance
 
