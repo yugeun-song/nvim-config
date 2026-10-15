@@ -227,7 +227,7 @@ Turns servers off for generated or vendored subtrees. A rule matches a path pref
 
 ### UI & appearance
 
-- **`spaceduck`**: hand-written, true colour, with a C/C++ palette; no `Normal` background in the terminal, opaque under Neovide. Its `vim.g.spaceduck_lualine` theme is unused (the statusline keeps LazyVim's `auto`). `colorscheme.lua` also installs `noctis.nvim`, `lush.nvim` and `gruvbox-material` as alternates.
+- **`spaceduck`**: hand-written, true colour, with a C/C++ palette; no `Normal` background in the terminal, opaque under Neovide. Its 16 terminal colours are those of kitty's `spaceduck.conf`, so yazi, lazygit and `:terminal` draw in the palette. Its `vim.g.spaceduck_lualine` theme is unused (the statusline keeps LazyVim's `auto`). `colorscheme.lua` also installs `noctis.nvim`, `lush.nvim` and `gruvbox-material` as alternates.
 - **Statusline**: the full path, never shortened; an encoding/line-ending flag (`UTF-8/LF`, `UTF-8+BOM/CRLF`); after the branch, the `git describe --tags` tag (`v6.12.95`, or `v6.12.95+12` twelve commits past it), cached 10 s per repository.
 - **hlslens**: `[current/total]` beside the nearest match after `n`/`N`/`*`/`#`/`g*`/`g#` and `/`/`?`; noice's search count is off.
 - **mini.files**: `<CR>` opens a file and closes the explorer, or enters a directory.

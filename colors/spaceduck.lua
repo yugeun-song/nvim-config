@@ -1415,6 +1415,29 @@ hi("DashboardKey", { fg = p.red })
 hi("DashboardIcon", { fg = p.blue })
 hi("DashboardShortCut", { fg = p.indigo })
 
+-- Terminal (the 16 colors kitty's spaceduck.conf uses) -----------------------
+
+for i, color in ipairs({
+  "#000000",
+  p.red,
+  p.green,
+  p.purple,
+  p.blue,
+  p.yellow,
+  p.indigo,
+  p.grey,
+  p.grey,
+  p.red,
+  p.green,
+  p.purple,
+  p.blue,
+  p.yellow,
+  p.indigo,
+  p.white,
+}) do
+  vim.g["terminal_color_" .. (i - 1)] = color
+end
+
 -- Lualine integration (set g:spaceduck_lualine for lualine.lua to pick up) ---
 
 vim.g.spaceduck_lualine = {
