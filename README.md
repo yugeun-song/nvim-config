@@ -104,12 +104,15 @@ nvim-config/
 │       └── cpp/injections.scm #   same, for cpp headers
 ├── colors/spaceduck.lua      # the colorscheme
 ├── neovide/config.toml       # Neovide's own settings (fork), linked to ~/.config/neovide
-├── scripts/alive-lsp-stdio.lisp # alive-lsp launcher
+├── scripts/
+│   ├── alive-lsp-stdio.lisp  # alive-lsp launcher
+│   └── open-at.lua           # FILE LINE into the focused Neovim, for heaptrack and other tools
 └── lua/
     ├── chkeys.lua            # keystroke display
     ├── dashboard_header.lua  # dashboard header: system logo and NVIM
     ├── lisp_repl.lua         # sbcl REPL
     ├── open_folder.lua       # Open Folder, folder arguments, recent folders
+    ├── remote_open.lua       # records the focused instance for scripts/open-at.lua
     ├── dbg/                  # GDB debugger support:
     │   ├── discover.lua      #   ELF reading, gdb choice, kbuildlab and gdbtools lookup
     │   ├── breakpoints.lua   #   function/address breakpoints, run-to
@@ -240,6 +243,12 @@ Turns servers off for generated or vendored subtrees. A rule matches a path pref
 Folders opened either way are remembered (newest 50, in `stdpath("state")/open_folder_history`) and listed by Projects (`p`, `<leader>fp`) beside the git roots of recent files; picking one switches like Open Folder.
 
 The header draws the running system's logo left of NVIM: on Linux and FreeBSD the first `ID`, then `ID_LIKE`, of `/etc/os-release` that has a logo; macOS and Windows by name. The logo takes its main colour (simple-icons' brand colours, Microsoft's for Windows). When that colour reads below 3:1 against the background, the nearest shade of the same hue that reaches 3:1 replaces it. The background is `Normal`'s or, when the colorscheme leaves it transparent, the terminal's own, asked once with OSC 11; a colorscheme change recomputes the colour. An error, a system without a logo, or a window too narrow for logo and NVIM leaves NVIM alone. It costs one file read when the dashboard first draws.
+
+### Opening a location from other programs (`lua/remote_open.lua`, `scripts/open-at.lua`)
+
+A Neovim or Neovide with a UI writes its RPC socket (`v:servername`) to `stdpath("run")/nvim-last-focus` when the UI attaches and whenever it gains focus, and removes the record on exit if it is still its own. `nvim -l scripts/open-at.lua FILE [LINE [COLUMN]]` sends `:drop FILE` there, puts the cursor on LINE and COLUMN (clamped to the buffer) and centres it; on Hyprland it then focuses the window of the first ancestor process that owns one (the Neovide, or the terminal holding nvim). With no reachable instance it starts `neovide -- +LINE FILE`. Nothing listens on TCP: only Neovim's own unix socket in the private runtime directory is used. `nvim -l` does not load this config, so the script starts fast.
+
+heaptrack_gui, Settings → Code Navigation → Custom...: `nvim -l <home>/.config/nvim/scripts/open-at.lua %f %l %c`. heaptrack splits the command and starts it without a shell, so the path has to be absolute.
 
 ### UI & appearance
 
