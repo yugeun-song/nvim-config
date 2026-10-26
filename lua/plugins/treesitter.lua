@@ -15,6 +15,7 @@ return {
       "kconfig",
       "kotlin",
       "make",
+      "racket",
       "rust",
     },
   },

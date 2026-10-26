@@ -41,6 +41,7 @@ Linux is the primary target. The IME reset has Windows and macOS branches, but t
 | | `qemu-<arch>` usermode (optional) | Foreign-architecture userspace (`qemu-user`). |
 | | `/usr/<triple>` cross runtime (optional) | Sysroot for dynamic cross binaries, when present. |
 | **Common Lisp (optional)** | `sbcl`, `ocicl` | alive-lsp, REPL, lint. |
+| **Racket (optional)** | `racket` | REPL and `K` docs; no `raco` packages. |
 | **Haskell (optional)** | `ghc`, `cabal`, `haskell-language-server`, `hlint` from [GHCup](https://www.haskell.org/ghcup/) | `~/.ghcup/bin` joins the end of `PATH`. |
 | **Lean (optional)** | `elan` | The project's Lean toolchain (not Mason). |
 | **Python (optional)** | `ruff` | Lint and format beside `ty` (Mason). |
@@ -97,6 +98,7 @@ nvim-config/
 ├── after/
 │   ├── ftplugin/
 │   │   ├── lisp.lua          # Lisp buffer settings, REPL keys
+│   │   ├── racket.lua        # Racket buffer settings, REPL keys
 │   │   └── man.lua           # man windows, man_code passes
 │   └── queries/              # Tree-sitter injections:
 │       ├── asm/injections.scm #   C in .S/.s directives
@@ -110,7 +112,7 @@ nvim-config/
 └── lua/
     ├── chkeys.lua            # keystroke display
     ├── dashboard_header.lua  # dashboard header: system logo and NVIM
-    ├── lisp_repl.lua         # sbcl REPL
+    ├── lisp_repl.lua         # sbcl and racket REPLs
     ├── open_folder.lua       # Open Folder, folder arguments, recent folders
     ├── remote_open.lua       # records the focused instance for scripts/open-at.lua
     ├── dbg/                  # GDB debugger support:
@@ -261,7 +263,7 @@ heaptrack_gui, Settings → Code Navigation → Custom...: `nvim -l <home>/.conf
 - **Discord presence**: Rich Presence over Discord's IPC socket, on by default on Linux, showing "Editing in Neovim" and the elapsed time, no file names.
 - **markview** renders Markdown; **baleia.nvim** colours ANSI escapes in the gdb console (`:BaleiaColorize` elsewhere); **lean.nvim** keeps its infoview at the bottom.
 
-### Common Lisp and Haskell (`lua/plugins/lisp.lua`, `lua/plugins/haskell.lua`)
+### Common Lisp, Racket and Haskell (`lua/plugins/lisp.lua`, `lua/plugins/haskell.lua`, `after/ftplugin/racket.lua`)
 
 - **Common Lisp.** The `commonlisp` parser highlights `lisp` buffers. [alive-lsp](https://github.com/nobody-famous/alive-lsp) runs in SBCL (completion, hover, definition, references, symbols, formatting on `gq`/`<leader>cf`, semantic tokens); `ocicl lint` adds INFO diagnostics on read and write. `'` and `` ` `` are not auto-paired and nothing is formatted on save. `.el` files get neither server, linter nor REPL keys.
 - **`scripts/alive-lsp-stdio.lisp`** runs alive-lsp over stdio instead of a TCP port, turns `*read-eval*` off after loading, and reshapes hover, definition, formatting and shutdown replies. It calls alive's internal `create-deps`, so re-check it before moving the pin.
@@ -271,6 +273,8 @@ heaptrack_gui, Settings → Code Navigation → Custom...: `nvim -l <home>/.conf
   OCICL_LOCAL_ONLY=1 ocicl install git+https://github.com/nobody-famous/alive-lsp@85f118b85d1543bb7413166b6793b87975b4d439
   ```
 - **REPL** (`lua/lisp_repl.lua`): `sbcl` with `~/.sbclrc` in a bottom terminal split, started in the project root (`ocicl.csv`, `.git` or an `.asd`). Code reaches it through a temp file that `(nvim-repl:ev …)` reads and deletes, never through the pty; no socket is opened, and ocicl's `*download*` is off.
+- **Racket** needs only `racket`. The `racket` parser highlights `racket` buffers, Neovim's runtime indents them, and `K` opens the local docs (`raco docs`). There is no language server: racket-langserver loads html-parsing (last release 2022) and mcfly (2016) at startup.
+- **Racket REPL** (`lua/lisp_repl.lua`): `racket -i` in a bottom terminal split, in the nearest folder with `info.rkt` or `.git`. Under `TERM=dumb` xrepl reads plain lines and saves no history; forms go through temp files that the REPL deletes after `,ld`.
 - **Haskell.** [haskell-tools.nvim](https://github.com/mrcjkb/haskell-tools.nvim) (`^11`) runs haskell-language-server for Haskell and Cabal files (lspconfig's `hls` is off), with the `haskell` parser, `hlint`, and format on save through HLS's fourmolu. `~/.ghcup/bin` is appended to `PATH`, so an earlier binary of the same name wins.
 
 ### Other languages (`lua/plugins/python.lua`, `elixir.lua`, `linting.lua`, `formatting.lua`, `treesitter.lua`)
@@ -278,7 +282,7 @@ heaptrack_gui, Settings → Code Navigation → Custom...: `nvim -l <home>/.conf
 - **Python**: `ty` (Mason) for types and hover; `ruff`, when on `PATH`, lints (hover off) and formats through conform.
 - **Elixir**: `expert` is the only server; `elixir-ls` stays for debugging. Each session gives Expert a random cookie instead of the public `expert` one and keeps its manager on loopback; the engine still listens on every interface, but the public cookie no longer opens it.
 - **Kotlin**: `ktlint` on read and save; `detekt` only where the project ships `config/detekt/detekt.yml` or `detekt.yml`. **YAML**: `yamllint` with the nearest `.yamllint*`, `$YAMLLINT_CONFIG_FILE` or `~/.config/yamllint/config`, else `relaxed` without line length.
-- **Formatting**: `oxfmt` for JS/TS, JSON, CSS and HTML, `taplo` for TOML. **Parsers**: `treesitter.lua` adds `awk`, `css`, `dockerfile`, `erlang`, `git_config`, `git_rebase`, `gitattributes`, `gitcommit`, `java`, `julia`, `kconfig`, `kotlin`, `make`, `rust`.
+- **Formatting**: `oxfmt` for JS/TS, JSON, CSS and HTML, `taplo` for TOML. **Parsers**: `treesitter.lua` adds `awk`, `css`, `dockerfile`, `erlang`, `git_config`, `git_rebase`, `gitattributes`, `gitcommit`, `java`, `julia`, `kconfig`, `kotlin`, `make`, `racket`, `rust`.
 
 ### External change detection & refresh (`lua/plugins/fs_refresh.lua`)
 
@@ -387,6 +391,16 @@ Hex view: `t` source, `L` layout, `w` bytes per row, `g` bytes per group, `+`/`-
 | `<localleader>b` | Evaluate the whole buffer |
 | `<localleader>i` | Interrupt sbcl (Ctrl-C); type `abort` in the REPL to return to the top level |
 | `<localleader>q` | Quit sbcl |
+
+### Racket (Normal mode, racket buffers, `<localleader>` is `\`)
+
+| Key | Action |
+|-----|--------|
+| `<localleader>r` | Toggle the racket REPL window, starting racket the first time |
+| `<localleader>e` | Evaluate the top-level form under the cursor in the REPL's namespace; in Visual mode, the selection |
+| `<localleader>b` | Save the file, run it as a module and enter its namespace (`,enter`) |
+| `<localleader>i` | Interrupt racket (Ctrl-C) |
+| `<localleader>q` | Quit racket |
 
 ### Neovide only
 
