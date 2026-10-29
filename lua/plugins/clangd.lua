@@ -25,6 +25,7 @@ return {
         "--log=error",
         "-j=" .. half_cpus,
       },
+      cmd_env = { TMPDIR = "/var/tmp" },
     }
     opts.inlay_hints = opts.inlay_hints or {}
     opts.inlay_hints.enabled = false
