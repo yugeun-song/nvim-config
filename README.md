@@ -115,6 +115,7 @@ nvim-config/
     ├── lisp_repl.lua         # sbcl and racket REPLs
     ├── open_folder.lua       # Open Folder, folder arguments, recent folders
     ├── remote_open.lua       # records the focused instance for scripts/open-at.lua
+    ├── terminal_background.lua # the terminal's background follows Normal (OSC 11)
     ├── dbg/                  # GDB debugger support:
     │   ├── discover.lua      #   ELF reading, gdb choice, kbuildlab and gdbtools lookup
     │   ├── breakpoints.lua   #   function/address breakpoints, run-to
@@ -257,6 +258,7 @@ heaptrack_gui, Settings → Code Navigation → Custom...: `nvim -l <home>/.conf
 ### UI & appearance
 
 - **`spaceduck`**: hand-written, true colour, with a C/C++ palette; no `Normal` background in the terminal, opaque under Neovide. Its 16 terminal colours are those of kitty's `spaceduck.conf`, so yazi, lazygit and `:terminal` draw in the palette. Its `vim.g.spaceduck_lualine` theme is unused (the statusline keeps LazyVim's `auto`). `colorscheme.lua` also installs `gruvbox-material` and `kanagawa.nvim`, the latter with its README's transparent floats and no gutter background. A colorscheme confirmed in `<leader>uC` stays the default across restarts (`stdpath("state")/colorscheme`); confirming `spaceduck` clears it.
+- **Terminal background**: in the TUI the terminal's own background follows `Normal` (OSC 11), so kitty's padding matches the editor; it is restored on exit and suspend, and left alone inside tmux, screen and `:terminal` (`lua/terminal_background.lua`).
 - **Statusline**: the full path, never shortened; an encoding/line-ending flag (`UTF-8/LF`, `UTF-8+BOM/CRLF`); after the branch, the `git describe --tags` tag (`v6.12.95`, or `v6.12.95+12` twelve commits past it), cached 10 s per repository.
 - **hlslens**: `[current/total]` beside the nearest match after `n`/`N`/`*`/`#`/`g*`/`g#` and `/`/`?`; noice's search count is off.
 - **mini.files**: `<CR>` opens a file and closes the explorer, or enters a directory.
