@@ -147,9 +147,10 @@ nvim-config/
     │   └── autocmds.lua      # C indent, cscope, tagfunc, prose
     ├── man_code/             # man page highlighting (code, structure)
     ├── lsp_filter/           # per-path LSP gating (init, rules, util)
+    ├── ifdef_all/            # all #if branches toggle (init, scan)
     └── plugins/              # one spec per plugin, named for it:
         ├── dap.lua, dap_languages.lua # nvim-dap, GDB adapters, keys; other debuggers
-        ├── clangd.lua, cscope.lua, asm.lua # C workflow and low-level highlighting
+        ├── clangd.lua, cscope.lua, asm.lua, ifdef_all.lua # C workflow, all #if branches, low-level highlighting
         ├── treesitter.lua, formatting.lua, linting.lua # parsers, oxfmt/taplo, ktlint/detekt/yamllint
         ├── python.lua, elixir.lua, haskell.lua, lisp.lua, lean.lua # per-language setup
         ├── im_control.lua, imstate.lua # langmap, IME reset, statusline state
@@ -177,6 +178,7 @@ lazy.nvim (stable) is cloned on first run and imports LazyVim plus `lua/plugins/
 - **clangd**: `--background-index --clang-tidy --completion-style=detailed --header-insertion=never --pch-storage=disk --background-index-priority=background --limit-results=200 --limit-references=2000 --log=error -j=<half the CPUs>`, inlay hints off.
 - **cscope**: `cscope_maps.nvim` with Telescope under `<leader>i`; reading a `*.c`/`*.h`/`*.S` file adds the nearest `cscope.out` above it, once per session.
 - **`<C-]>`**: the LSP `tagfunc` is cleared in C/C++ buffers, so it jumps through `tags` (`make tags`).
+- **All `#if` branches**: `<leader>uB` (off by default; the choice is saved and followed at once by every running nvim) colours every preprocessor branch and answers hover, definition and completion in the inactive ones, through an extra clangd per inactive branch that parses the shown file with that branch forced on (its diagnostics are dropped).
 
 ### Low-level highlighting (`lua/plugins/asm.lua`, `after/queries/`)
 
@@ -370,6 +372,7 @@ Hex view: `t` source, `L` layout, `w` bytes per row, `g` bytes per group, `+`/`-
 |-----|------|--------|
 | `<leader>uK` | n | Toggle the ChKeys keystroke display |
 | `<leader>uR` | n | Refresh buffers and file explorers from disk (`:FsRefresh`) |
+| `<leader>uB` | n | Toggle all `#if` branches (colour and LSP in inactive code) |
 | `<leader>uD` | n | Toggle Discord Rich Presence |
 | `n` / `N` / `*` / `#` / `g*` / `g#` | n | Search as usual, with the hlslens match index shown |
 | `<CR>` | n (in mini.files) | Open file and close explorer / enter directory |
