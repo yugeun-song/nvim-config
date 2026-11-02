@@ -157,7 +157,7 @@ nvim-config/
         ├── python.lua, elixir.lua, haskell.lua, lisp.lua, lean.lua # per-language setup
         ├── im_control.lua, imstate.lua # langmap, IME reset, statusline state
         ├── lualine.lua, git_tag.lua, hlslens.lua, noice.lua # statusline, tag, search index
-        ├── snacks.lua, mini-files.lua, markview.lua, diagnostics.lua # pickers, explorer, markdown, floats
+        ├── snacks.lua, mini-files.lua, markview.lua, diagnostics.lua, trouble.lua # pickers, explorer, markdown, floats, Trouble splits
         ├── open_folder.lua   # Open Folder entry and key, Projects with recent folders
         ├── colorscheme.lua, neovide.lua, neovide-ime.lua # spaceduck, GUI
         ├── ansi_color.lua, discord_rpc.lua, fs_refresh.lua # baleia, presence, reload
@@ -265,6 +265,7 @@ heaptrack_gui, Settings → Code Navigation → Custom...: `nvim -l <home>/.conf
 - **mini.files**: `<CR>` opens a file and closes the explorer, or enters a directory.
 - **Snacks**: `bigfile` from 5 MiB; explorer, files and grep include hidden and gitignored files (noisy in a kernel tree); the explorer watches the disk.
 - **Diagnostics**: on `CursorHold` the line's diagnostics open in a float with their source.
+- **Trouble**: `<leader>cs` (symbols) and `<leader>cS` (LSP references, definitions, ...) open at the bottom like `<leader>xx`, not in a 30-column right split.
 - **Discord presence**: Rich Presence over Discord's IPC socket, on by default on Linux, showing "Editing in Neovim" and the elapsed time, no file names.
 - **markview** renders Markdown; **baleia.nvim** colours ANSI escapes in the gdb console (`:BaleiaColorize` elsewhere); **lean.nvim** keeps its infoview at the bottom.
 
