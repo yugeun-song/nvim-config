@@ -1,4 +1,5 @@
 fork = true
+startup-message-capture = false
 
 # kitty at scale 1: its 11 pt glyph boxes, 8 px cells (cell_width 90%), SemiBold for bold.
 # Above 11.15 pt the glyphs widen and bold stands out less than in kitty.

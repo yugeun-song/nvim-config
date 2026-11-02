@@ -302,6 +302,8 @@ The font lives in `neovide/config.toml` and is tuned against kitty at scale 1: C
 
 `neovide/config.toml` sets `fork = true`: `neovide .` typed in a terminal returns at once and the editor runs in its own session, so closing the terminal leaves it open (`&` is not needed; zsh would only lower its priority). Launched from a menu, with no terminal, Neovide never forks. `neovide --no-fork` waits as before.
 
+`startup-message-capture = false` keeps noice in charge of the cmdline and messages. Since 0.17 Neovide advertises `ext_messages` and `ext_cmdline` until its first redraw; noice, set up inside that window, left both to the GUI, so `:` lost its popup and a startup warning appeared.
+
 ---
 
 ## Keymap reference
