@@ -442,7 +442,7 @@ return {
     vim.api.nvim_create_user_command("DiscordRpcStatus", function()
       vim.notify("Discord RPC: " .. (S.running and S.status or "off"), vim.log.levels.INFO)
     end, { desc = "Show Discord RPC status" })
-    vim.keymap.set("n", "<leader>uD", toggle, { desc = "Discord RPC toggle" })
+    vim.keymap.set("n", "<leader>uP", toggle, { desc = "Discord RPC toggle" })
     if ENABLED_BY_DEFAULT then
       start()
     end

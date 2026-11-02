@@ -373,7 +373,7 @@ Hex view: `t` source, `L` layout, `w` bytes per row, `g` bytes per group, `+`/`-
 | `<leader>uK` | n | Toggle the ChKeys keystroke display |
 | `<leader>uR` | n | Refresh buffers and file explorers from disk (`:FsRefresh`) |
 | `<leader>uB` | n | Toggle all `#if` branches (colour and LSP in inactive code) |
-| `<leader>uD` | n | Toggle Discord Rich Presence |
+| `<leader>uP` | n | Toggle Discord Rich Presence |
 | `n` / `N` / `*` / `#` / `g*` / `g#` | n | Search as usual, with the hlslens match index shown |
 | `<CR>` | n (in mini.files) | Open file and close explorer / enter directory |
 | `<leader>fo` | n | Open Folder in yazi (only when `yazi` is installed) |
