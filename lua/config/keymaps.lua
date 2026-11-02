@@ -7,3 +7,5 @@ end)
 vim.keymap.set("n", "<leader>uK", function()
   require("chkeys").toggle()
 end, { desc = "Toggle ChKeys" })
+
+require("indent_motion").setup()

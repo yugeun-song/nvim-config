@@ -116,6 +116,7 @@ nvim-config/
     ├── open_folder.lua       # Open Folder, folder arguments, recent folders
     ├── remote_open.lua       # records the focused instance for scripts/open-at.lua
     ├── terminal_background.lua # the terminal's background follows Normal (OSC 11)
+    ├── indent_motion.lua     # h/l/arrows step by shiftwidth through leading spaces
     ├── dbg/                  # GDB debugger support:
     │   ├── discover.lua      #   ELF reading, gdb choice, kbuildlab and gdbtools lookup
     │   ├── breakpoints.lua   #   function/address breakpoints, run-to
@@ -167,7 +168,7 @@ nvim-config/
 
 ### Base (`init.lua`, `lua/config/lazy.lua`, `lua/config/options.lua`)
 
-lazy.nvim (stable) is cloned on first run and imports LazyVim plus `lua/plugins/`. Plugins load at startup and track their latest commit, with silent update checks. Options: absolute line numbers, `tags = "./tags;,tags;"`, a bar cursor in Insert mode, no modelines, no swap files (so no swap recovery), `h`/`l`/arrows wrap across lines, node/perl/ruby providers off.
+lazy.nvim (stable) is cloned on first run and imports LazyVim plus `lua/plugins/`. Plugins load at startup and track their latest commit, with silent update checks. Options: absolute line numbers, `tags = "./tags;,tags;"`, a bar cursor in Insert mode, no modelines, no swap files (so no swap recovery), `h`/`l`/arrows wrap across lines, node/perl/ruby providers off. In leading spaces `h`/`l`/arrows (and Insert-mode arrows) step by `shiftwidth`, as over a tab (`lua/indent_motion.lua`); `x`/`dl` still take one space.
 
 ### Prose buffers (`lua/config/autocmds.lua`)
 
