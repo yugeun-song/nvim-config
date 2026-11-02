@@ -287,7 +287,7 @@ heaptrack_gui, Settings → Code Navigation → Custom...: `nvim -l <home>/.conf
 - **Python**: `ty` (Mason) for types and hover; `ruff`, when on `PATH`, lints (hover off) and formats through conform.
 - **Elixir**: `expert` is the only server; `elixir-ls` stays for debugging. Each session gives Expert a random cookie instead of the public `expert` one and keeps its manager on loopback; the engine still listens on every interface, but the public cookie no longer opens it.
 - **Kotlin**: `ktlint` on read and save; `detekt` only where the project ships `config/detekt/detekt.yml` or `detekt.yml`. **YAML**: `yamllint` with the nearest `.yamllint*`, `$YAMLLINT_CONFIG_FILE` or `~/.config/yamllint/config`, else `relaxed` without line length.
-- **Formatting**: `oxfmt` for JS/TS, JSON, CSS and HTML, `taplo` for TOML. **Parsers**: `treesitter.lua` adds `awk`, `css`, `dockerfile`, `erlang`, `git_config`, `git_rebase`, `gitattributes`, `gitcommit`, `java`, `julia`, `kconfig`, `kotlin`, `make`, `racket`, `rust`.
+- **Formatting**: `oxfmt` for JS/TS, JSON, CSS and HTML, `taplo` for TOML. C/C++ go through clang-format: a `.clang-format` found upward wins; without one, the buffer's indentation with function braces on their own line, other braces attached, no one-line functions and includes left in order. **Parsers**: `treesitter.lua` adds `awk`, `css`, `dockerfile`, `erlang`, `git_config`, `git_rebase`, `gitattributes`, `gitcommit`, `java`, `julia`, `kconfig`, `kotlin`, `make`, `racket`, `rust`.
 
 ### External change detection & refresh (`lua/plugins/fs_refresh.lua`)
 
