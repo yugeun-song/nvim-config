@@ -24,5 +24,6 @@ return {
       end
       return true
     end, { force = true })
+    require("asm_highlight").setup()
   end,
 }

@@ -101,11 +101,10 @@ nvim-config/
 │   │   ├── racket.lua        # Racket buffer settings, REPL keys
 │   │   └── man.lua           # man windows, man_code passes
 │   └── queries/              # Tree-sitter injections:
-│       ├── asm/injections.scm #   C in .S/.s directives
-│       ├── c/injections.scm  #   assembly in asm("…")
-│       └── cpp/injections.scm #   same, for cpp headers
+│       └── asm/injections.scm #   C in .S/.s directives
 ├── colors/spaceduck.lua      # the colorscheme
 ├── neovide/config.toml       # Neovide's own settings (fork), linked to ~/.config/neovide
+├── queries/asm/highlights.scm # tree-sitter-asm colours only comments and strings
 ├── scripts/
 │   ├── alive-lsp-stdio.lisp  # alive-lsp launcher
 │   └── open-at.lua           # FILE LINE into the focused Neovim, for heaptrack and other tools
@@ -117,6 +116,7 @@ nvim-config/
     ├── remote_open.lua       # records the focused instance for scripts/open-at.lua
     ├── terminal_background.lua # the terminal's background follows Normal (OSC 11)
     ├── indent_motion.lua     # h/l/arrows step by shiftwidth through leading spaces
+    ├── asm_highlight.lua     # assembly colours in asm buffers and asm("…") templates
     ├── dbg/                  # GDB debugger support:
     │   ├── discover.lua      #   ELF reading, gdb choice, kbuildlab and gdbtools lookup
     │   ├── breakpoints.lua   #   function/address breakpoints, run-to
@@ -184,7 +184,7 @@ lazy.nvim (stable) is cloned on first run and imports LazyVim plus `lua/plugins/
 
 ### Low-level highlighting (`lua/plugins/asm.lua`, `after/queries/`)
 
-In `.S`/`.s`, `#` lines starting with a preprocessor directive are parsed as C, while a `#` comment after an instruction stays a comment (via the `#at-line-start?` predicate in `asm.lua`, which the query needs). In C/C++, including kernel headers detected as `cpp`, each string of an `asm("…")` body is parsed as assembly. `.S`/`.s`/`.sx` are pinned to `asm`; `*.lds`/`*.ld`/`*.lds.S` use `linkerscript`, `*.dts`/`*.dtsi` `devicetree`. This is injection, not preprocessing: `#if 0` bodies stay highlighted, and `linkerscript` leaves `#` lines plain.
+In `.S`/`.s`, `#` lines starting with a preprocessor directive are parsed as C, while a `#` comment after an instruction stays a comment (via the `#at-line-start?` predicate in `asm.lua`, which the query needs). Assembly in `asm` buffers and in C/C++ `asm("…")` templates is coloured by `lua/asm_highlight.lua`, a tokenizer over the visible lines, since tree-sitter-asm misparses numeric labels, dotted mnemonics, prefixes and GCC operands; `queries/asm/highlights.scm` leaves tree-sitter-asm only comments and strings. Labels, mnemonics, registers, symbols, immediates and GCC operands keep one colour each, and a token it does not know stays plain. `.S`/`.s`/`.sx` are pinned to `asm`; `*.lds`/`*.ld`/`*.lds.S` use `linkerscript`, `*.dts`/`*.dtsi` `devicetree`. This is injection, not preprocessing: `#if 0` bodies stay highlighted, and `linkerscript` leaves `#` lines plain.
 
 ### Man pages (`after/ftplugin/man.lua`, `lua/man_code/`)
 
