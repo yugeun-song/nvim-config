@@ -2,13 +2,13 @@
 -- Debug support for the languages that are not gdb targets. Nothing here goes
 -- through lua/dbg.
 
--- Mason extends PATH only once loaded, and nvim-dap can come first.
+local MASON = vim.fs.joinpath(vim.fn.stdpath("data"), "mason")
+
+-- Mason extends PATH only once loaded, and nvim-dap can come first. uv.spawn
+-- finds Mason's Windows .cmd shims only by full name, which exepath gives.
 local function mason_bin(name)
-  local path = vim.fs.joinpath(vim.fn.stdpath("data"), "mason", "bin", name)
-  if vim.uv.fs_stat(path) then
-    return path
-  end
-  return name
+  local path = vim.fn.exepath(vim.fs.joinpath(MASON, "bin", name))
+  return path ~= "" and path or name
 end
 
 return {
@@ -25,7 +25,10 @@ return {
           { "<leader>dPc", function() require("dap-python").test_class() end, desc = "Debug: python test class", ft = "python" },
         },
         config = function()
-          require("dap-python").setup(mason_bin("debugpy-adapter"))
+          local venv = vim.fs.joinpath(MASON, "packages", "debugpy", "venv")
+          local python =
+            vim.fn.exepath(vim.fs.joinpath(venv, vim.fn.has("win32") == 1 and "Scripts" or "bin", "python"))
+          require("dap-python").setup(python ~= "" and python or nil)
         end,
       },
     },
@@ -158,40 +161,25 @@ return {
       { "<leader>dPr", function() vim.cmd.RustLsp("debuggables") end, desc = "Debug: rust debuggables", ft = "rust" },
     },
     config = function()
-      -- rustaceanvim finds the cargo targets itself; it only needs the adapter.
-      local opts = {}
-      local codelldb = mason_bin("codelldb")
-      if vim.uv.fs_stat(codelldb) then
-        local lib = vim.fs.joinpath(vim.fn.stdpath("data"), "mason", "opt", "lldb", "lib", "liblldb.so")
-        local adapter
-        if vim.uv.fs_stat(lib) then
-          adapter = require("rustaceanvim.config").get_codelldb_adapter(codelldb, lib)
-        else
-          adapter = {
-            type = "server",
-            port = "${port}",
-            host = "127.0.0.1",
-            executable = { command = codelldb, args = { "--port", "${port}" } },
-          }
-        end
-        opts.dap = { adapter = adapter }
-      end
-      opts.server = {
-        settings = function(project_root, default_settings)
-          local settings = require("rustaceanvim.config.server").load_rust_analyzer_settings(project_root, {
-            default_settings = default_settings,
-          })
-          local detached = not project_root
-            or not vim.fs.find({ "Cargo.toml", "rust-project.json" }, { path = project_root, upward = true })[1]
-          if detached then
-            local ra = settings["rust-analyzer"]
-            ra.cargo = vim.tbl_deep_extend("force", ra.cargo or {}, {
-              extraEnv = { RUSTC_BOOTSTRAP = "1" },
-              autoreload = false,
+      -- rustaceanvim finds the cargo targets and Mason's codelldb itself.
+      local opts = {
+        server = {
+          settings = function(project_root, default_settings)
+            local settings = require("rustaceanvim.config.server").load_rust_analyzer_settings(project_root, {
+              default_settings = default_settings,
             })
-          end
-          return settings
-        end,
+            local detached = not project_root
+              or not vim.fs.find({ "Cargo.toml", "rust-project.json" }, { path = project_root, upward = true })[1]
+            if detached then
+              local ra = settings["rust-analyzer"]
+              ra.cargo = vim.tbl_deep_extend("force", ra.cargo or {}, {
+                extraEnv = { RUSTC_BOOTSTRAP = "1" },
+                autoreload = false,
+              })
+            end
+            return settings
+          end,
+        },
       }
       vim.g.rustaceanvim = vim.tbl_deep_extend("keep", vim.g.rustaceanvim or {}, opts)
     end,
