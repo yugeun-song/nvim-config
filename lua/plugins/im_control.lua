@@ -1,30 +1,3 @@
-local function english_command()
-  local candidates
-  if vim.fn.has("mac") == 1 then
-    candidates = {
-      { "macism", "com.apple.keylayout.ABC" },
-      { "im-select", "com.apple.keylayout.ABC" },
-      { "issw", "com.apple.keylayout.ABC" },
-    }
-  elseif vim.fn.has("win32") == 1 or vim.fn.has("wsl") == 1 then
-    candidates = { { "im-select.exe", "1033" } }
-  else
-    local fcitx = { { "fcitx5-remote", "-c" }, { "fcitx-remote", "-c" } }
-    local ibus = { { "ibus", "engine", vim.g.ibus_english_engine or "xkb:us::eng" } }
-    if (vim.env.XMODIFIERS or ""):find("ibus") then
-      candidates = vim.list_extend(ibus, fcitx)
-    else
-      candidates = vim.list_extend(fcitx, ibus)
-    end
-  end
-  for _, cmd in ipairs(candidates) do
-    if vim.fn.executable(cmd[1]) == 1 then
-      return cmd
-    end
-  end
-  return nil
-end
-
 return {
   "im_control",
   virtual = true,
@@ -32,7 +5,7 @@ return {
     vim.opt.langmap =
       "ㅁa,ㅠb,ㅊc,ㅇd,ㄷe,ㄹf,ㅎg,ㅗh,ㅑi,ㅓj,ㅏk,ㅣl,ㅡm,ㅜn,ㅐo,ㅔp,ㅂq,ㄱr,ㄴs,ㅅt,ㅕu,ㅍv,ㅈw,ㅌx,ㅛy,ㅋz,ㅃQ,ㅉW,ㄸE,ㄲR,ㅆT,ㅒO,ㅖP"
 
-    local cmd = english_command()
+    local cmd = require("config.ime").english_command()
     if cmd then
       vim.api.nvim_create_autocmd({ "InsertLeave", "FocusGained" }, {
         group = vim.api.nvim_create_augroup("IMControl", { clear = true }),

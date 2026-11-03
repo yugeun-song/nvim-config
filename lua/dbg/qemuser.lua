@@ -40,8 +40,15 @@ function M.default_sysroot(arch)
   return nil
 end
 
-local function qemu_bin(m)
-  for _, name in ipairs(m.qemu) do
+function M.arches()
+  local out = vim.tbl_keys(ARCH)
+  table.sort(out)
+  return out
+end
+
+function M.binary(arch)
+  local m = M.meta(arch)
+  for _, name in ipairs(m and m.qemu or {}) do
     if vim.fn.executable(name) == 1 then
       return name
     end
@@ -72,7 +79,7 @@ function M.spawn(cfg, on_ready, on_fail)
   if not m then
     return settle(on_fail, "no usermode QEMU known for arch " .. tostring(cfg.arch))
   end
-  local qemu = qemu_bin(m)
+  local qemu = M.binary(cfg.arch)
   if not qemu then
     return settle(on_fail, m.qemu[1] .. " is not installed")
   end

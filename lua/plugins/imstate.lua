@@ -1,7 +1,7 @@
 local uv = vim.uv
 
-local has_fcitx5 = vim.fn.executable("fcitx5-remote") == 1
-local caps_path = vim.fn.glob("/sys/class/leds/input*::capslock/brightness", true, true)[1]
+local sources = require("config.ime").indicators()
+local has_fcitx5, caps_path = sources.im, sources.caps
 
 local state = { im = "en", caps = "" }
 
