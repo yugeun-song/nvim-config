@@ -33,6 +33,7 @@ function M.forget_win(win)
 end
 
 vim.api.nvim_create_autocmd("WinClosed", {
+  group = vim.api.nvim_create_augroup("dbg_panel_windows", { clear = true }),
   callback = function(ev)
     M.forget_win(tonumber(ev.match))
   end,
@@ -53,6 +54,11 @@ function M.buffer(key, filetype)
   vim.bo[buf].filetype = filetype or ("dbg-" .. key)
   pcall(vim.api.nvim_buf_set_name, buf, "dbg://" .. key)
   return buf, true
+end
+
+function M.visible(key)
+  local buf = buffers[key]
+  return buf ~= nil and vim.api.nvim_buf_is_valid(buf) and #vim.fn.win_findbuf(buf) > 0
 end
 
 function M.width(buf, fallback)

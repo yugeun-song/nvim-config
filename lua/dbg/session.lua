@@ -7,6 +7,16 @@ local M = {}
 
 local probes = {}
 local caps_cache = nil
+local fixed = { session = nil, out = {} }
+
+local FIXED = {
+  ["show architecture"] = true,
+  ["show endian"] = true,
+  ["lx-version"] = true,
+  checksec = true,
+  piebase = true,
+  ["info files"] = true,
+}
 
 local ALWAYS = { "show architecture", "show endian" }
 
@@ -20,7 +30,7 @@ function M.buffer()
   local buf, created = panel.buffer("session", "dbg-session")
   if created then
     vim.keymap.set("n", "r", function()
-      M.probe()
+      M.probe(true)
     end, { buffer = buf, nowait = true, desc = "Target: refresh" })
   end
   return buf
@@ -304,31 +314,47 @@ function M.render()
   panel.render(buf, lines, hls)
 end
 
-function M.probe()
+function M.probe(force)
   local session = gdbq.session()
   if not session then
     probes = {}
     M.render()
     return
   end
+  if force or fixed.session ~= session then
+    fixed = { session = session, out = {} }
+  end
   caps.detect(session, function(c)
     caps_cache = c
-    local queries = {}
-    for _, q in ipairs(ALWAYS) do
-      queries[#queries + 1] = q
-    end
+    local wanted = vim.list_extend({}, ALWAYS)
     if c then
       for _, query in ipairs(BY_KIND[c.kind] or {}) do
         local head = query:match("^(%S+)")
         if c.commands[head] or not head:match("^%a[%w%-]*$") or head == "info" then
-          queries[#queries + 1] = query
+          wanted[#wanted + 1] = query
         end
+      end
+    end
+    local queries = vim.tbl_filter(function(q)
+      return fixed.out[q] == nil
+    end, wanted)
+    for _, q in ipairs(queries) do
+      if FIXED[q] then
+        fixed.out[q] = false
       end
     end
     gdbq.run_all(queries, function(out)
       probes = {}
+      for cmd, text in pairs(fixed.out) do
+        if text then
+          probes[cmd] = text
+        end
+      end
       for cmd, text in pairs(out) do
         probes[cmd] = vim.trim(tostring(text))
+        if FIXED[cmd] then
+          fixed.out[cmd] = probes[cmd]
+        end
       end
       vim.schedule(M.render)
     end)

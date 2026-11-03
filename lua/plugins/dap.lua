@@ -799,6 +799,53 @@ return {
       -- lands, `current_frame` is the previous stop's.
       local awaiting = {}
 
+      local PANELS = {
+        registers = function()
+          require("dbg.registers").render()
+        end,
+        watch = function()
+          require("dbg.watch").probe()
+        end,
+        memory = function()
+          require("dbg.memory").on_stopped()
+        end,
+        session = function()
+          require("dbg.session").probe()
+        end,
+        mappings = function()
+          require("dbg.mappings").probe()
+        end,
+        cfg = function()
+          require("dbg.cfg").probe()
+        end,
+      }
+      local dirty = {}
+      local function refresh_panels()
+        local panel = require("dbg.panel")
+        for key, refresh in pairs(PANELS) do
+          if panel.visible(key) then
+            dirty[key] = nil
+            pcall(refresh)
+          else
+            dirty[key] = true
+          end
+        end
+      end
+      vim.api.nvim_create_autocmd("BufWinEnter", {
+        group = vim.api.nvim_create_augroup("dbg_panel_refresh", { clear = true }),
+        pattern = "dbg://*",
+        callback = function(ev)
+          local key = ev.file:match("^dbg://(.+)$")
+          if key and dirty[key] and dap.session() then
+            dirty[key] = nil
+            vim.schedule(function()
+              pcall(PANELS[key])
+            end)
+          end
+        end,
+        desc = "Refresh a debugger panel that missed stops while hidden",
+      })
+
       local function paint(session)
         if dap.session() ~= session then
           return
@@ -806,13 +853,8 @@ return {
         if not context.is_low_level(session) then
           return
         end
+        refresh_panels()
         pcall(function()
-          require("dbg.registers").render()
-          require("dbg.watch").probe()
-          require("dbg.memory").on_stopped()
-          require("dbg.session").probe()
-          require("dbg.mappings").probe()
-          require("dbg.cfg").probe()
           require("dbg.layout").resize()
           if not require("dbg.console").has_source(session.current_frame) then
             pcall(vim.fn.sign_unplace, session.sign_group)
