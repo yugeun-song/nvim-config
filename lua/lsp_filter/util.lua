@@ -117,11 +117,14 @@ function M.read_file(path)
   if ok then
     return data
   end
-  return nil
+  return nil, "cannot read " .. tostring(path) .. ": " .. tostring(data)
 end
 
 function M.read_json(path)
-  local raw = M.read_file(path)
+  local raw, err = M.read_file(path)
+  if err then
+    return nil, err
+  end
   if raw == nil or raw == "" then
     return nil
   end
@@ -180,12 +183,12 @@ function M.write_atomic(path, content)
     pcall(uv.fs_close, fd)
   end
   if not ok_write then
-    pcall(uv.fs_unlink, tmp)
+    uv.fs_unlink(tmp)
     return false, "write failed: " .. tostring(err_write)
   end
-  local ok_rename, err_rename = pcall(uv.fs_rename, tmp, path)
-  if not ok_rename then
-    pcall(uv.fs_unlink, tmp)
+  local renamed, err_rename = uv.fs_rename(tmp, path)
+  if not renamed then
+    uv.fs_unlink(tmp)
     return false, "rename failed: " .. tostring(err_rename)
   end
   return true
@@ -202,18 +205,6 @@ function M.write_json(path, tbl)
   return M.write_atomic(path, encoded .. "\n")
 end
 
-function M.delete_file(path)
-  local lst = M.lstat(path)
-  if not lst or lst.type ~= "file" then
-    return false, "not a regular file"
-  end
-  local ok, err = pcall(uv.fs_unlink, path)
-  if ok then
-    return true
-  end
-  return false, tostring(err)
-end
-
 function M.find_upward(start, names)
   local p = M.normalize(start)
   if not p then
@@ -228,6 +219,10 @@ function M.find_upward(start, names)
     return found[1], vim.fs.dirname(found[1])
   end
   return nil
+end
+
+function M.notify(msg, level)
+  vim.notify("[lsp_filter] " .. msg, level)
 end
 
 function M.warn(msg)

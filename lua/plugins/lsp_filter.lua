@@ -1,12 +1,7 @@
 return {
   "neovim/nvim-lspconfig",
   opts = function(_, opts)
-    pcall(function()
-      require("lsp_filter").setup({
-        default_servers = { "clangd" },
-        default_action = "disable",
-      })
-    end)
+    require("lsp_filter").setup()
     return opts
   end,
   keys = {

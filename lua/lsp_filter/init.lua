@@ -7,7 +7,7 @@ local state = {
   registry = nil,
   enabled = true,
   inline = nil,
-  default_servers = { "clangd" },
+  default_servers = nil,
   group = nil,
 }
 
@@ -20,10 +20,11 @@ function M.registry_path()
 end
 
 local function detach_client(bufnr, client)
-  if type(vim.lsp.buf_detach_client) == "function" then
-    if pcall(vim.lsp.buf_detach_client, bufnr, client.id) then
-      return
+  if pcall(vim.lsp.buf_detach_client, bufnr, client.id) then
+    if next(client.attached_buffers) == nil then
+      client:stop()
     end
+    return
   end
   pcall(function()
     client:stop(false)
@@ -63,7 +64,7 @@ end
 function M.reload()
   rules.load(state.inline)
   reapply_open_buffers()
-  vim.notify("[lsp_filter] reloaded (" .. #rules.get_global_rules() .. " global rule(s))")
+  util.notify("reloaded (" .. #rules.get_global_rules() .. " global rule(s))")
 end
 
 local function servers_signature(servers)
@@ -96,16 +97,13 @@ end
 
 function M.add_rule(raw)
   if type(raw) ~= "table" or (not raw.within and not raw.contains) then
-    vim.notify("[lsp_filter] invalid rule (need within or contains)", vim.log.levels.WARN)
+    util.notify("invalid rule (need within or contains)", vim.log.levels.WARN)
     return false
   end
   local registry = M.registry_path()
   local current, err = util.read_json(registry)
   if err then
-    vim.notify(
-      "[lsp_filter] registry is malformed; fix it first (aborting to avoid data loss):\n" .. err,
-      vim.log.levels.ERROR
-    )
+    util.notify("registry cannot be used; fix it first (aborting to avoid data loss):\n" .. err, vim.log.levels.ERROR)
     return false
   end
   if current == nil then
@@ -116,25 +114,19 @@ function M.add_rule(raw)
   end
   for _, existing in ipairs(current.rules) do
     if same_rule(existing, raw) then
-      vim.notify("[lsp_filter] rule already present: " .. (raw.within or raw.contains))
+      util.notify("rule already present: " .. (raw.within or raw.contains))
       return true
     end
   end
   current.rules[#current.rules + 1] = raw
   local ok, werr = util.write_json(registry, current)
   if not ok then
-    vim.notify("[lsp_filter] failed to write registry: " .. tostring(werr), vim.log.levels.ERROR)
+    util.notify("failed to write registry: " .. tostring(werr), vim.log.levels.ERROR)
     return false
   end
   M.reload()
-  vim.notify(
-    "[lsp_filter] added "
-      .. (raw.within or raw.contains)
-      .. " ["
-      .. servers_signature(raw.servers)
-      .. " / "
-      .. raw.action
-      .. "]"
+  util.notify(
+    "added " .. (raw.within or raw.contains) .. " [" .. servers_signature(raw.servers) .. " / " .. raw.action .. "]"
   )
   return true
 end
@@ -160,7 +152,7 @@ end
 function M.add_current_file()
   local path = vim.api.nvim_buf_get_name(0)
   if path == "" then
-    vim.notify("[lsp_filter] no file in current buffer", vim.log.levels.WARN)
+    util.notify("no file in current buffer", vim.log.levels.WARN)
     return
   end
   M.add_rule({ within = util.normalize(path), servers = vim.deepcopy(state.default_servers), action = "disable" })
@@ -169,7 +161,7 @@ end
 function M.add_current_dir()
   local path = vim.api.nvim_buf_get_name(0)
   if path == "" then
-    vim.notify("[lsp_filter] no file in current buffer", vim.log.levels.WARN)
+    util.notify("no file in current buffer", vim.log.levels.WARN)
     return
   end
   local items = ancestors_of(path)
@@ -202,7 +194,7 @@ function M.add_advanced()
     end
     local within = util.normalize(input)
     if not within then
-      vim.notify("[lsp_filter] invalid path", vim.log.levels.WARN)
+      util.notify("invalid path", vim.log.levels.WARN)
       return
     end
     vim.ui.select({ "clangd", "all servers", "custom..." }, { prompt = "lsp_filter: servers?" }, function(choice)
@@ -235,7 +227,7 @@ end
 function M.list_current()
   local path = vim.api.nvim_buf_get_name(0)
   if path == "" then
-    vim.notify("[lsp_filter] no file in current buffer", vim.log.levels.WARN)
+    util.notify("no file in current buffer", vim.log.levels.WARN)
     return
   end
   local names = {}
@@ -258,7 +250,7 @@ function M.edit_registry()
   if not util.is_file(registry) then
     local ok = util.write_json(registry, { rules = {} })
     if not ok then
-      vim.notify("[lsp_filter] cannot create registry file", vim.log.levels.ERROR)
+      util.notify("cannot create registry file", vim.log.levels.ERROR)
       return
     end
   end
@@ -267,7 +259,7 @@ end
 
 function M.toggle()
   state.enabled = not state.enabled
-  vim.notify("[lsp_filter] " .. (state.enabled and "enabled" or "disabled (session)"))
+  util.notify(state.enabled and "enabled" or "disabled (session)")
   if state.enabled then
     reapply_open_buffers()
   end
