@@ -7,7 +7,6 @@ local state = {
   registry = nil,
   enabled = true,
   inline = nil,
-  default_servers = nil,
   group = nil,
 }
 
@@ -155,7 +154,7 @@ function M.add_current_file()
     util.notify("no file in current buffer", vim.log.levels.WARN)
     return
   end
-  M.add_rule({ within = util.normalize(path), servers = vim.deepcopy(state.default_servers), action = "disable" })
+  M.add_rule({ within = util.normalize(path), servers = vim.deepcopy(rules.default_servers()), action = "disable" })
 end
 
 function M.add_current_dir()
@@ -172,7 +171,7 @@ function M.add_current_dir()
     if not choice then
       return
     end
-    M.add_rule({ within = choice, servers = vim.deepcopy(state.default_servers), action = "disable" })
+    M.add_rule({ within = choice, servers = vim.deepcopy(rules.default_servers()), action = "disable" })
   end)
 end
 
@@ -235,7 +234,7 @@ function M.list_current()
     names[#names + 1] = c.name
   end
   if #names == 0 then
-    names = state.default_servers
+    names = rules.default_servers()
   end
   local lines = { "lsp_filter: " .. (util.normalize(path) or path) }
   for _, name in ipairs(names) do
@@ -269,15 +268,14 @@ function M.setup(opts)
   opts = opts or {}
   state.registry = opts.registry or default_registry()
   state.inline = opts.rules
-  state.default_servers = opts.default_servers or { "clangd" }
   state.enabled = true
 
   rules.setup({
     data_file = state.registry,
-    default_servers = state.default_servers,
-    default_action = opts.default_action or "disable",
-    markers_enabled = opts.markers_enabled == true,
-    marker_names = opts.marker_names or { ".nvim-lsp-filter.json" },
+    default_servers = opts.default_servers,
+    default_action = opts.default_action,
+    markers_enabled = opts.markers_enabled,
+    marker_names = opts.marker_names,
   })
   rules.load(state.inline)
 

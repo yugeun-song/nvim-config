@@ -81,8 +81,8 @@ function M.setup(opts)
   config = vim.tbl_deep_extend("force", config, opts or {})
 end
 
-function M.data_file()
-  return config.data_file
+function M.default_servers()
+  return config.default_servers
 end
 
 function M.marker_names()
