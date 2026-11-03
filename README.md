@@ -83,7 +83,7 @@ git clone https://github.com/yugeun-song/nvim-config.git ~/.config/test-nvim
 NVIM_APPNAME=test-nvim nvim
 ```
 
-The first start installs lazy.nvim, the plugins, the parsers and the Mason packages from `lua/plugins/mason.lua` (into the data directory's `mason/`, `~/.local/share/nvim/mason/` on Linux and macOS). Check with `:Lazy` and `:LazyHealth`, then restart once. Update plugins with `:Lazy update` (commits are recorded in `lazy-lock.json`) and the config with `git pull`.
+The first start installs lazy.nvim, the plugins, the parsers and the Mason packages from `lua/plugins/mason.lua` (into the data directory's `mason/`, `~/.local/share/nvim/mason/` on Linux and macOS). Check with `:Lazy` and `:LazyHealth`, then restart once. `:checkhealth config` lists what each feature needs here: ready, missing, or not supported on this system. Update plugins with `:Lazy update` (commits are recorded in `lazy-lock.json`) and the config with `git pull`.
 
 Neovide reads its own settings from `~/.config/neovide`; link the ones here:
 
@@ -122,7 +122,7 @@ nvim-config/
     ├── dashboard_header.lua  # dashboard header: system logo and NVIM
     ├── lisp_repl.lua         # sbcl and racket REPLs
     ├── open_folder.lua       # Open Folder, folder arguments, recent folders
-    ├── remote_open.lua       # records the focused instance for scripts/open-at.lua
+    ├── remote_open.lua       # focused instance and window raise for scripts/open-at.lua
     ├── terminal_background.lua # the terminal's background follows Normal (OSC 11)
     ├── indent_motion.lua     # h/l/arrows step by shiftwidth through leading spaces
     ├── asm_highlight.lua     # assembly colours in asm buffers and asm("…") templates
@@ -155,6 +155,8 @@ nvim-config/
     │   ├── lazy.lua          # bootstrap
     │   ├── options.lua       # options, filetypes
     │   ├── keymaps.lua       # ChKeys, indent_motion
+    │   ├── ime.lua           # IME tool and statusline sources
+    │   ├── health.lua        # :checkhealth config
     │   └── autocmds.lua      # C indent, #include gf, cscope, tagfunc, prose
     ├── man_code/             # man page highlighting (code, structure)
     ├── lsp_filter/           # per-path LSP gating (init, rules, util)
