@@ -37,15 +37,15 @@ Linux is the primary target. The IME reset has Windows and macOS branches, but t
 | | `qemu-system-*` | Bare-metal and QEMU-user targets. |
 | | [kbuildlab](https://github.com/yugeun-song/kbuildlab) | Kernel targets: guests, gdb and session come from `kbuildlab attach --json`; without it kernel debugging is off. |
 | | [gdbtools](https://github.com/yugeun-song/gdbtools) (optional) | Early-boot kernel symbols, `cfgjson` and `addr2sym`, sourced into each gdb when installed. |
-| | `<triple>-gdb` (optional) | Preferred per target, else `gdb-multiarch` or an all-targets `gdb`; one whose Python fails to start is skipped, with a notice. `vim.g.dbg_gdb` names one (a string, or a table by arch); a kernel session runs kbuildlab's (`GDB=` in tree.conf, or `$KBL_GDB`). gdb 14 or newer (`gdb -i dap`). |
+| | `<triple>-gdb` (optional) | For a foreign target, else `gdb-multiarch` or a host `gdb` that accepts the architecture; one whose Python fails is skipped with a notice. `vim.g.dbg_gdb` (a string, or a table by arch) overrides; kernel sessions run kbuildlab's gdb. |
 | | `qemu-<arch>` usermode (optional) | Foreign-architecture userspace (`qemu-user`). |
-| | `/usr/<triple>` cross runtime (optional) | Sysroot for dynamic cross binaries, when present. |
+| | `/usr/<triple>` or `/usr/<triple>/sys-root` (optional) | Sysroot for dynamic cross binaries, when present. |
 | **Common Lisp (optional)** | `sbcl`, `ocicl` | alive-lsp, REPL, lint. |
 | **Racket (optional)** | `racket` | REPL and `K` docs; no `raco` packages. |
 | **Haskell (optional)** | `ghc`, `cabal`, `haskell-language-server`, `hlint` from [GHCup](https://www.haskell.org/ghcup/) | `~/.ghcup/bin` joins the end of `PATH`. |
 | **Lean (optional)** | `elan` | The project's Lean toolchain (not Mason). |
 | **Python (optional)** | `ruff` | Lint and format beside `ty` (Mason). |
-| **Korean IME (optional)** | `fcitx5` + `fcitx5-remote` | IME reset and indicator. |
+| **IME reset (optional)** | `fcitx5`, `fcitx` or `ibus` (Linux); `macism`, `im-select` or `issw` (macOS); `im-select.exe` (Windows, WSL) | English on leaving Insert; the `한`/`EN` indicator needs fcitx5. |
 | **Open Folder (optional)** | [yazi](https://yazi-rs.github.io/) | The folder picker; without it the dashboard entry and key are not created. |
 | **Caps Lock indicator (optional)** | Linux sysfs LED node | `/sys/class/leds/input*::capslock/brightness`. |
 | **GUI (optional)** | [Neovide](https://neovide.dev/), `CaskaydiaCove Nerd Font Mono` | The GUI profile. |
@@ -95,9 +95,9 @@ ln -s ~/.config/nvim/neovide ~/.config/neovide
 
 ## Repository structure
 
-```
+```text
 nvim-config/
-├── init.lua                  # → require("config.lazy")
+├── init.lua                  # open_folder, remote_open, terminal_background, then config.lazy
 ├── lazy-lock.json            # plugin lockfile
 ├── lazyvim.json              # LazyVim extras (mini.files)
 ├── .editorconfig             # indentation and line ends for every editor
@@ -154,12 +154,12 @@ nvim-config/
     ├── config/
     │   ├── lazy.lua          # bootstrap
     │   ├── options.lua       # options, filetypes
-    │   ├── keymaps.lua       # ChKeys
+    │   ├── keymaps.lua       # ChKeys, indent_motion
     │   └── autocmds.lua      # C indent, #include gf, cscope, tagfunc, prose
     ├── man_code/             # man page highlighting (code, structure)
     ├── lsp_filter/           # per-path LSP gating (init, rules, util)
     ├── ifdef_all/            # all #if branches toggle (init, scan)
-    └── plugins/              # one spec per plugin, named for it:
+    └── plugins/              # specs, one file per feature:
         ├── dap.lua, dap_languages.lua # nvim-dap, GDB adapters, keys; other debuggers
         ├── clangd.lua, cscope.lua, asm.lua, ifdef_all.lua # C workflow, all #if branches, low-level highlighting
         ├── treesitter.lua, formatting.lua, linting.lua # parsers, oxfmt/taplo, ktlint/detekt/yamllint
@@ -190,11 +190,11 @@ lazy.nvim (stable) is cloned on first run and imports LazyVim plus `lua/plugins/
 - **cscope**: `cscope_maps.nvim` with Telescope under `<leader>i`; reading a `*.c`/`*.h`/`*.S` file adds the nearest `cscope.out` above it, once per session.
 - **`<C-]>`**: the LSP `tagfunc` is cleared in C/C++ buffers, so it jumps through `tags` (`make tags`).
 - **`gf`** on an `#include` line follows the project's own tools: with a project `compile_commands.json` or `compile_flags.txt`, clangd's header when it is in the project or a system one; else a matching `tags` file entry, `cscope.out` file or `cscope.files` line (a picker when several match); else the built-in `gf`.
-- **All `#if` branches**: `<leader>uB` (off by default; the choice is saved and followed at once by every running nvim) colours every preprocessor branch and answers hover, definition and completion in the inactive ones, through an extra clangd per inactive branch that parses the shown file with that branch forced on (its diagnostics are dropped).
+- **All `#if` branches**: `<leader>uB` (off by default, saved, followed by every running nvim) colours every preprocessor branch and answers hover, definition and completion in the inactive ones through an extra clangd per inactive branch.
 
 ### Low-level highlighting (`lua/plugins/asm.lua`, `after/queries/`)
 
-In `.S`/`.s`, `#` lines starting with a preprocessor directive are parsed as C, while a `#` comment after an instruction stays a comment (via the `#at-line-start?` predicate in `asm.lua`, which the query needs). Assembly in `asm` buffers and in C/C++ `asm("…")` templates is coloured by `lua/asm_highlight.lua`, a tokenizer over the visible lines, since tree-sitter-asm misparses numeric labels, dotted mnemonics, prefixes and GCC operands; `queries/asm/highlights.scm` leaves tree-sitter-asm only comments and strings. Labels, mnemonics, registers, symbols, immediates and GCC operands keep one colour each, and a token it does not know stays plain. `.S`/`.s`/`.sx` are pinned to `asm`; `*.lds`/`*.ld`/`*.lds.S` use `linkerscript`, `*.dts`/`*.dtsi` `devicetree`. This is injection, not preprocessing: `#if 0` bodies stay highlighted, and `linkerscript` leaves `#` lines plain.
+In `.S`/`.s`, a line that starts with a preprocessor directive is parsed as C; a `#` comment after an instruction stays a comment. `lua/asm_highlight.lua` colours assembly in `asm` buffers and C/C++ `asm("…")` templates, since tree-sitter-asm misparses labels, dotted mnemonics and GCC operands (it keeps only comments and strings); a token it does not know stays plain. `.S`/`.s`/`.sx` are `asm`, `*.lds`/`*.ld`/`*.lds.S` `linkerscript`, `*.dts`/`*.dtsi` `devicetree`. This is injection, not preprocessing: `#if 0` bodies stay highlighted.
 
 ### Man pages (`after/ftplugin/man.lua`, `lua/man_code/`)
 
@@ -215,11 +215,11 @@ C, C++ and assembly are debugged by GDB itself (`gdb -i dap`), so `~/.gdbinit`, 
 
 `.vscode/launch.json` is read for every language; Julia and Java have no debugger. The rest applies to `gdb` and `gdb_kernel` sessions; others get plain `nvim-dap-view`.
 
-- **Programs.** Launch, launch to `main`, attach by PID, *Run on QEMU user* (Linux; starts `qemu-<arch> -g <socket>` on a private Unix socket with the toolchain's sysroot as `-L`, stopped at `_start`; x86_64, aarch64, riscv64, arm) and *Attach to a QEMU user gdbstub*. Executable and shell-quoted arguments are remembered; `<leader>dc` with no session replays the last run, `<leader>dn` asks again. A cross target gets `vim.g.dbg_gdb`, else the first `<triple>-gdb` or `gdb-multiarch` whose Python starts, else an all-targets `gdb`; with none the session does not start and says why. A QEMU user process that fails to start is reported and no gdb is attached. gdbtools is sourced from `$GDBTOOLS_PATH` or the checkout its `setup.sh` recorded, and a stated location that is wrong is an error, not a search.
-- **Kernel targets.** `<leader>dq` lists the guests `kbuildlab attach --list --json` reports, with their tree, boot mode, KASLR and whether a debugger holds the stub (a busy stub is refused); a guest kbuildlab did not start (no tree recorded) is attached by choosing its registered tree (listed by ID, arch, release and source) and its port. `<leader>dQ` shows the list. It then asks: attach where the kernel is (warning when KASLR is on or unknown), or early boot (`:DbgKernelEarly` skips the question). Early boot exports `GDBTOOLS_AUTO=1`, runs `kearly on` then `kearly bootbreak arm` after the attach stop, continues to the first `head.S` instruction and reports `kearly status`; `kearly kaslr auto` is left to you.
-- **Kernel adapter.** Each start asks `kbuildlab attach TREE --port N --json` for the session, so a replayed configuration follows a guest restarted in another boot mode: the gdb, its `-iex` lines (the tree's own `scripts/gdb` trusted, gdb in the kernel source), gdbtools, the `GDBTOOLS_*` environment, the vmlinux, the target, a u-boot ELF to load and QEMU's pid. Nothing of the tree is re-derived here. nvim-dap waits 60 s before calling gdb unresponsive. A vanished QEMU disconnects the session but leaves the panels; a lost connection gdb reports is announced too.
+- **Programs.** Launch, launch to `main`, attach by PID, *Run on QEMU user* (Linux; `qemu-<arch> -g` on a private Unix socket with the toolchain's sysroot, stopped at `_start`; x86_64, aarch64, riscv64, arm) and *Attach to a QEMU user gdbstub*. The executable and shell-quoted arguments are remembered: `<leader>dc` with no session replays the last run, `<leader>dn` asks again. A cross target gets `vim.g.dbg_gdb`, else the first `<triple>-gdb` or `gdb-multiarch` whose Python starts, else a host `gdb` that accepts the architecture; with none the session does not start and says why. gdbtools is sourced from `$GDBTOOLS_PATH` or the checkout its `setup.sh` recorded.
+- **Kernel targets.** `<leader>dq` lists the guests from `kbuildlab attach --list --json` (tree, boot mode, KASLR, whether a debugger holds the stub; a busy stub is refused); a guest kbuildlab did not start is attached by picking its registered tree and port. It then asks: attach where the kernel is, or early boot (`:DbgKernelEarly` skips the question), which runs `kearly on` and `kearly bootbreak arm` and continues to the first `head.S` instruction; `kearly kaslr auto` is left to you.
+- **Kernel adapter.** Each start asks `kbuildlab attach TREE --port N --json` for the gdb, its `-iex` lines, gdbtools, the vmlinux, the target and QEMU's pid, so a replayed configuration follows a guest restarted in another boot mode. A vanished QEMU or a lost connection is announced, and the panels stay.
 - **All-stop remotes.** A remote target takes no command while it runs: a breakpoint change is held, the target interrupted unseen by nvim-dap, the change sent, the target resumed. If it does not stop within 2 s, the change waits for its next stop (said once).
-- **Stopping.** `<leader>dt` detaches an attached target (interrupting it first if it runs) and terminates a launched one; `<leader>dT` kills, ending a QEMU guest. After a disconnect the session closes once gdb has exited (up to 3 s); quitting Neovim treats every session the same way, then kills any leftover `gdb -i dap`. Requests made while gdb starts the target wait for its launch or attach answer.
+- **Stopping.** `<leader>dt` detaches an attached target (interrupting it first) and terminates a launched one; `<leader>dT` kills, ending a QEMU guest. Quitting Neovim ends every session the same way and kills any leftover `gdb -i dap`.
 - **Breakpoints.** Line breakpoints are allowed without DWARF (a library may carry it); refused ones are reported with gdb's message, unbound ones with the likely reason. `<leader>dF` breaks on a function or `0x` address with no line table. Pending breakpoints keep one sign each, and a breakpoint gdb makes itself (the stop-at-main `tbreak`) never replaces yours on the same line.
 - **Run to cursor and stepping.** `<leader>dC` runs to the source line or disassembly address under the cursor through gdb's own one-shot breakpoint, so your breakpoints stay set (nvim-dap's run-to-cursor would clear them all). The frame selection returns to frame 0 after nvim-dap picks a caller with source, so every view agrees; without source, steps go by instruction and the disassembly is shown.
 - **Panels** (`nvim-dap-view` tabs; the label's letter switches): Scopes, Locals+Globals (frame and file variables, `static` included, optimised-out ones tagged `opt`), Watches, Registers (`<symbol+offset>`, change marks), Memory (hex view of an expression, a physical address or a file, 8 KiB per window), Mappings (pwndbg's `vmmap`), Control flow (gdbtools' `cfgjson`; `:DbgControlFlow` puts it in the source window), Disassembly (pc highlight, connector to a taken branch), Call stack, Breakpoints, Target, gdb console and Output. A stop refreshes only the panels on screen; a hidden one catches up when shown, and Target asks fixed facts (architecture, endianness, checksec) once per session (`r` re-asks). Values also show at the end of lines using them (`:DbgInline off`).
@@ -238,7 +238,7 @@ C, C++ and assembly are debugged by GDB itself (`gdb -i dap`), so `~/.gdbinit`, 
 
 ### `lsp_filter` — per-path LSP gating (`lua/lsp_filter/`, `lua/plugins/lsp_filter.lua`)
 
-Turns servers off for generated or vendored subtrees. A rule matches a path prefix (`within`) or segment (`contains`), targets `clangd` unless `<leader>cFa` picks all servers or a list, and detaches the client (`disable`) or hides its diagnostics (`diagnostics_off`). Rules live in `~/.local/share/nvim/lsp_filter/rules.json`, outside every repository: one line of JSON, written atomically (never through a symlink), reloaded on save. Marker files (`.nvim-lsp-filter.json`) need `setup({ markers_enabled = true })`.
+Turns servers off for generated or vendored subtrees. A rule matches a path prefix (`within`) or segment (`contains`), targets `clangd` unless `<leader>cFa` picks all servers or a list, and detaches the client (`disable`) or hides its diagnostics (`diagnostics_off`). Rules live in `stdpath("data")/lsp_filter/rules.json`, outside every repository, and reload on save. Marker files (`.nvim-lsp-filter.json`) need `setup({ markers_enabled = true })`.
 
 | Want to… | Do this |
 |----------|---------|
@@ -258,7 +258,7 @@ Turns servers off for generated or vendored subtrees. A rule matches a path pref
 
 Folders opened either way are remembered (newest 50, in `stdpath("state")/open_folder_history`) and listed by Projects (`p`, `<leader>fp`) beside the git roots of recent files; picking one switches like Open Folder.
 
-The header draws the running system's logo left of NVIM: on Linux and FreeBSD the first `ID`, then `ID_LIKE`, of `/etc/os-release` that has a logo; macOS and Windows by name. The logo takes its main colour (simple-icons' brand colours, Microsoft's for Windows). When that colour reads below 3:1 against the background, the nearest shade of the same hue that reaches 3:1 replaces it. The background is `Normal`'s or, when the colorscheme leaves it transparent, the terminal's own, asked once with OSC 11; a colorscheme change recomputes the colour. An error, a system without a logo, or a window too narrow for logo and NVIM leaves NVIM alone. It costs one file read when the dashboard first draws.
+The header draws the system's logo (from `/etc/os-release` on Linux and FreeBSD, by name on macOS and Windows) left of NVIM, in its brand colour, shifted to the nearest shade that reads at 3:1 against the background. An unknown system, an error or a narrow window leaves NVIM alone.
 
 ### Opening a location from other programs (`lua/remote_open.lua`, `scripts/open-at.lua`)
 
@@ -269,8 +269,8 @@ heaptrack_gui, Settings → Code Navigation → Custom...: `nvim -l <home>/.conf
 ### UI & appearance
 
 - **`spaceduck`**: hand-written, true colour, with a C/C++ palette; no `Normal` background in the terminal, opaque under Neovide. Its 16 terminal colours are those of kitty's `spaceduck.conf`, so yazi, lazygit and `:terminal` draw in the palette. Its `vim.g.spaceduck_lualine` theme is unused (the statusline keeps LazyVim's `auto`). `colorscheme.lua` also installs `gruvbox-material` and `kanagawa.nvim`, the latter with its README's transparent floats and no gutter background. A colorscheme confirmed in `<leader>uC` stays the default across restarts (`stdpath("state")/colorscheme`); confirming `spaceduck` clears it.
-- **Terminal background**: in the TUI the terminal's own background follows `Normal` (OSC 11), so kitty's padding matches the editor; it is restored on exit and suspend, and left alone inside tmux, screen and `:terminal` (`lua/terminal_background.lua`).
-- **Statusline**: the full path, never shortened; an encoding/line-ending flag (`UTF-8/LF`, `UTF-8+BOM/CRLF`); after the branch, the `git describe --tags` tag (`v6.12.95`, or `v6.12.95+12` twelve commits past it), cached 10 s per repository.
+- **Terminal background**: in the TUI the terminal's own background follows `Normal` (OSC 11), so kitty's padding matches the editor; it is restored on exit and suspend, and left alone inside tmux, screen, Zellij and `:terminal` (`lua/terminal_background.lua`).
+- **Statusline**: the full path, never shortened; an encoding/line-ending flag (`UTF-8/LF`, `UTF-8+BOM/CRLF`); after the branch, the `git describe --tags` tag (`v6.12.95`, or `v6.12.95+12` twelve commits past it), re-read after 60 s, on focus and on `:cd`, never while unfocused.
 - **hlslens**: `[current/total]` beside the nearest match after `n`/`N`/`*`/`#`/`g*`/`g#` and `/`/`?`; noice's search count is off.
 - **mini.files**: `<CR>` opens a file and closes the explorer, or enters a directory.
 - **Snacks**: `bigfile` from 5 MiB; explorer, files and grep include hidden and gitignored files (noisy in a kernel tree); the explorer watches the disk.
@@ -284,10 +284,12 @@ heaptrack_gui, Settings → Code Navigation → Custom...: `nvim -l <home>/.conf
 - **Common Lisp.** The `commonlisp` parser highlights `lisp` buffers. [alive-lsp](https://github.com/nobody-famous/alive-lsp) runs in SBCL (completion, hover, definition, references, symbols, formatting on `gq`/`<leader>cf`, semantic tokens); `ocicl lint` adds INFO diagnostics on read and write. `'` and `` ` `` are not auto-paired and nothing is formatted on save. `.el` files get neither server, linter nor REPL keys.
 - **`scripts/alive-lsp-stdio.lisp`** runs alive-lsp over stdio instead of a TCP port, turns `*read-eval*` off after loading, and reshapes hover, definition, formatting and shutdown replies. It calls alive's internal `create-deps`, so re-check it before moving the pin.
 - **Installing alive-lsp** (pinned to the v0.4.5 commit; the server is enabled when `sbcl` is on `PATH` and the directory holds `ocicl.csv`):
+
   ```sh
   mkdir -p ~/.local/share/nvim/alive-lsp && cd ~/.local/share/nvim/alive-lsp && : > ocicl.csv
   OCICL_LOCAL_ONLY=1 ocicl install git+https://github.com/nobody-famous/alive-lsp@85f118b85d1543bb7413166b6793b87975b4d439
   ```
+
 - **REPL** (`lua/lisp_repl.lua`): `sbcl` with `~/.sbclrc` in a bottom terminal split, started in the project root (`ocicl.csv`, `.git` or an `.asd`). Code reaches it through a temp file that `(nvim-repl:ev …)` reads and deletes, never through the pty; no socket is opened, and ocicl's `*download*` is off.
 - **Racket** needs only `racket`. The `racket` parser highlights `racket` buffers, Neovim's runtime indents them, and `K` opens the local docs (`raco docs`). There is no language server: racket-langserver loads html-parsing (last release 2022) and mcfly (2016) at startup.
 - **Racket REPL** (`lua/lisp_repl.lua`): `racket -i` in a bottom terminal split, in the nearest folder with `info.rkt` or `.git`. Under `TERM=dumb` xrepl reads plain lines and saves no history; forms go through temp files that the REPL deletes after `,ld`.
@@ -312,7 +314,7 @@ Typed keys show in floats at the bottom right for 1.6 s, with `한` while the IM
 
 Only under Neovide: text gamma 1.5 and contrast 1.0, 120 Hz (5 Hz idle), short cursor animation, 28 px padding (none at the bottom, where an empty cmdline row sits instead: Neovide stretches the last row into the sub-cell gap below it, which doubled the statusline), full opacity, quit confirmation, `neov-ime.nvim` and the keys below.
 
-The font lives in `neovide/config.toml` and is tuned against kitty at scale 1: CaskaydiaCove Nerd Font Mono, slight hinting, SemiBold for bold and bold italic (kitty's `bold_font auto` picks SemiBold), and a `width` that gives kitty's 8 px cells (`modify_font cell_width 90%`). `guifont` stays unset; it would override that table and cannot name SemiBold. At kitty's 11 pt, Neovide's glyph coverage equals kitty's, yet the text looks about 8% lighter and its edges softer. kitty blends in linear light against the real background, while Skia blends in sRGB with a correction keyed only to the text colour. Gamma 1.5 / contrast 1.0 keeps the spaceduck colours within about 5% of one weight; the defaults drew `#ecf0c1` text about 30% heavier than red. 11.15 pt adds a little weight and still draws kitty's pixel boxes. Larger sizes reach kitty's total weight (11.85 pt) but widen the glyphs and make bold stand out less than in kitty. Variable-font weights do not help either: Neovide snaps `W450` to the nearest named instance. Closing the rest needs Neovide to blend in linear light. Dark text on a bright background (mode label, search hits) comes out heavier than in kitty. Neovide adds `width` unscaled, so the cells are exact at scale 1 only (12.4 px instead of 12 at scale 1.5).
+The font lives in `neovide/config.toml`, tuned to match kitty at scale 1: CaskaydiaCove Nerd Font Mono at 11.15 pt, SemiBold for bold, kitty's 8 px cells. `guifont` stays unset, since it would override that table and cannot name SemiBold. Text still looks slightly lighter than in kitty, which blends in linear light where Neovide blends in sRGB.
 
 `neov-ime.nvim` draws the IME preedit in the buffer. fcitx5 answers every cursor move with an empty preedit, and neov-ime re-sets the cursor on each one, which made `$` forget the end of line on the next `j`/`k`; only an empty preedit that ends a composition reaches it now.
 
@@ -361,8 +363,8 @@ The font lives in `neovide/config.toml` and is tuned against kitty at scale 1: C
 | `<leader>dr` | Toggle the debug console |
 | `<leader>dR` / `<leader>dm` / `<leader>dD` | Registers / hex view / disassembly (GDB sessions only) |
 | `<leader>ds` | Target panel (GDB sessions only) |
-| `<leader>dq` | Pick a QEMU gdbstub and attach |
-| `<leader>dQ` | Report every debug target found on this host, with the evidence |
+| `<leader>dq` | Pick a kbuildlab guest and attach |
+| `<leader>dQ` | List the kbuildlab guests |
 | `<leader>dPt` / `<leader>dPc` | Debug the Python test method / class under the cursor (python buffers) |
 | `<leader>dPr` | Pick a cargo target to debug, `:RustLsp debuggables` (rust buffers) |
 
@@ -458,13 +460,13 @@ Hex view: `t` source, `L` layout, `w` bytes per row, `g` bytes per group, `+`/`-
 
 ## Caveats
 
-- **A QEMU gdbstub takes one client.** While Neovim is attached, a separate `gdb` cannot connect, and vice versa; use the gdb console panel.
-- **Your own source lines and stepping need `-g`.** A line breakpoint set without DWARF binds only where a library carries it; `<leader>dF` breaks on a symbol or address regardless. Build with `-g -O0` for line stepping and locals.
-- **A QEMU user-mode stub cannot be interrupted.** `<leader>dP` does nothing there, and a breakpoint changed while the program runs takes effect at its next stop.
-- **Early-boot arming takes seconds, sometimes tens**, longest where the entry must be found first (direct boots, x86 UEFI with KASLR). The session looks stopped at the reset vector meanwhile; it is not hung.
-- **An x86 UEFI guest with KASLR on needs a QEMU monitor and two of x86's four hardware breakpoints**, one for each copy of the image the firmware keeps; gdbtools finds the image through the monitor.
+- **A QEMU gdbstub takes one client**: while Neovim is attached, another `gdb` cannot connect; use the gdb console panel.
+- **Source lines, stepping and locals need `-g`** (`-g -O0` for line stepping); `<leader>dF` breaks on a symbol or address without it.
+- **A QEMU user-mode stub cannot be interrupted**: `<leader>dP` does nothing, and a breakpoint change waits for the next stop.
+- **Early-boot arming can take tens of seconds** (direct boots, x86 UEFI with KASLR); the session sits at the reset vector meanwhile, not hung.
+- **An x86 UEFI guest with KASLR needs a QEMU monitor and two of the four hardware breakpoints.**
 - **Opening a Haskell project runs its code.** HLS builds it, so Template Haskell and a custom `Setup.hs` execute. Treat untrusted repositories accordingly.
-- **alive-lsp knows its own image, not your project**; project names come from document symbols, Tree-sitter and buffer completion. The REPL is a separate SBCL; a huge result keeps it busy until printed (`<localleader>i` interrupts).
+- **alive-lsp knows its own image, not your project**; the REPL is a separate SBCL (`<localleader>i` interrupts a long print).
 - **An Elixir breakpoint on a line holding only a literal is never hit**, though ElixirLS reports it verified; put it on a call or a match.
 - **The first Elixir debug run per Elixir/OTP version is slow**: the `elixir-ls` Mason package fetches and compiles ElixirLS through `Mix.install`.
 - **`<leader>dP` waits for `timeoutlen` (300 ms) in Python and Rust buffers**, being a prefix of `<leader>dPt`/`<leader>dPc`/`<leader>dPr`.
