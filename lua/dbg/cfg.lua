@@ -114,10 +114,6 @@ function M.move(dir)
   end)
 end
 
-function M.toggle_mode()
-  require("dbg.notify").info("Control flow is the graph; the listing is the disassembly panel.")
-end
-
 -- The row the cursor is on, as an index into the payload's instruction list.
 local function row_under_cursor()
   local buf = panel.buffer("cfg")
@@ -564,11 +560,7 @@ local function host_window()
   for _, win in ipairs(vim.api.nvim_list_wins()) do
     if vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_config(win).relative == "" then
       local buf = vim.api.nvim_win_get_buf(win)
-      local ft = vim.bo[buf].filetype
-      local is_debug = ft:match("^dbg%-") ~= nil
-        or ft:match("^dap%-") ~= nil
-        or ft == "dap-repl"
-        or ft == "dap-disassembly"
+      local is_debug = panel.is_debug_ft(vim.bo[buf].filetype)
       local ok, fixed = pcall(function()
         return vim.wo[win].winfixbuf
       end)
@@ -663,13 +655,6 @@ end
 
 function M.open()
   return M.open_in_editor()
-end
-
--- Bottom-bar entry point; nothing calls it at present.
-function M.open_in_panel()
-  local buf = M.buffer()
-  M.probe()
-  return panel.show(buf, 18, "CONTROL FLOW")
 end
 
 return M

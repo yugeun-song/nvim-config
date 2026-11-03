@@ -56,6 +56,10 @@ function M.buffer(key, filetype)
   return buf, true
 end
 
+function M.is_debug_ft(ft)
+  return ft:match("^dbg%-") ~= nil or ft:match("^dap%-") ~= nil
+end
+
 function M.visible(key)
   local buf = buffers[key]
   return buf ~= nil and vim.api.nvim_buf_is_valid(buf) and #vim.fn.win_findbuf(buf) > 0

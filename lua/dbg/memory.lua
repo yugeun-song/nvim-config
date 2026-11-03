@@ -1,3 +1,5 @@
+local gdbq = require("dbg.gdbq")
+local notify = require("dbg.notify")
 local panel = require("dbg.panel")
 local qemumon = require("dbg.qemumon")
 local ui = require("dbg.ui")
@@ -266,14 +268,9 @@ local function annotate_then(base, raw, done)
   else
     annotate_capped = false
   end
-  local frame = session.current_frame
-  session:request("evaluate", {
-    expression = ("x/%dag %s"):format(count, base),
-    context = "repl",
-    frameId = frame and frame.id,
-  }, function(err, res)
-    if not err and res then
-      for line in tostring(res.result or ""):gmatch("[^\n]+") do
+  gdbq.run(("x/%dag %s"):format(count, base), function(text)
+    if text then
+      for line in text:gmatch("[^\n]+") do
         local prefix, rest = line:match("^%s*(0x%x+)[^:]*:%s*(.*)$")
         if prefix then
           local index = 0
@@ -291,7 +288,7 @@ local function annotate_then(base, raw, done)
       end
     end
     vim.schedule(done)
-  end)
+  end, { session = session })
 end
 
 local function do_read(addr)
@@ -450,8 +447,6 @@ function M.show_expr(expr, kind)
   resolve(expr, read_at)
 end
 
-M.goto_expr = M.show_expr
-
 function M.show_file(path, offset)
   path = vim.fn.fnamemodify(vim.fn.expand(path), ":p")
   if not vim.uv.fs_stat(path) then
@@ -601,7 +596,7 @@ end
 
 function M.select_pinned()
   if #state.targets == 0 then
-    vim.notify("No pinned targets yet; press p to pin the current one.", vim.log.levels.INFO)
+    notify.info("No pinned targets yet; press p to pin the current one.")
     return
   end
   vim.ui.select(state.targets, {
@@ -698,7 +693,7 @@ function M.pick_source()
         elseif choice.ask == "buffile" then
           local name = vim.api.nvim_buf_get_name(0)
           if name == "" then
-            vim.notify("The current buffer has no file.", vim.log.levels.WARN)
+            notify.warn("The current buffer has no file.")
             return
           end
           M.show_file(name, 0)
@@ -859,7 +854,7 @@ bind = function(buf)
       "a",
       function()
         state.auto = not state.auto
-        vim.notify("Memory auto refresh " .. (state.auto and "on" or "off"), vim.log.levels.INFO)
+        notify.info("Memory auto refresh " .. (state.auto and "on" or "off"))
       end,
       "Memory: toggle auto refresh",
     },

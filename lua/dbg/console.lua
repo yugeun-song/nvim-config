@@ -12,14 +12,9 @@ local function explain_sourceless(session, frame)
     return
   end
   explained[session.id] = true
-  local name = (frame and frame.name) or "this frame"
-  local prog = (session.config or {}).program
-  local why = prog
-      and require("dbg.discover").elf_debug_info(prog) == "none"
-      and (vim.fs.basename(prog) .. " was built without -g")
-    or "there is no line table here"
   require("dbg.notify").warn(
-    ("%s cannot be shown in the editor: %s. The disassembly follows the program counter instead."):format(name, why)
+    ((frame and frame.name) or "this frame")
+      .. " cannot be shown in the editor: there is no line table here. The disassembly follows the program counter instead."
   )
 end
 
@@ -107,10 +102,6 @@ bind({ "k", "kill" }, function()
   end
   require("dap").terminate()
 end)
-
-function M.handles(name)
-  return COMMANDS[name] ~= nil
-end
 
 -- nvim-dap selects the first frame with a source; without -g that is the caller,
 -- so `list` showed glibc while `bt` said main. Back to frame 0.

@@ -1,26 +1,11 @@
 local D = require("dbg.discover")
 local notify = require("dbg.notify")
+local ui = require("dbg.ui")
 
 local M = {}
 
-local function pad(s, width)
-  s = tostring(s or "")
-  local w = vim.fn.strdisplaywidth(s)
-  if w >= width then
-    return s
-  end
-  return s .. string.rep(" ", width - w)
-end
-
 local function short(path)
-  if not path then
-    return "-"
-  end
-  local home = vim.uv.os_homedir()
-  if home and path:sub(1, #home) == home then
-    return "~" .. path:sub(#home + 1)
-  end
-  return path
+  return path and vim.fn.fnamemodify(path, ":~") or "-"
 end
 
 -- Live guests, as kbuildlab sees them: kbuildlab started them, records their
@@ -39,11 +24,11 @@ end
 
 function M.describe(c)
   return ("%s  %s  pid %d  %s  %s  KASLR %s%s"):format(
-    pad(c.label or "?", 16),
-    pad(c.target or "?", 18),
+    ui.pad(c.label or "?", 16),
+    ui.pad(c.target or "?", 18),
     c.pid or 0,
     c.frozen and "frozen (-S)" or "running",
-    pad(c.boot or "boot?", 6),
+    ui.pad(c.boot or "boot?", 6),
     c.kaslr == true and "on" or (c.kaslr == false and "off" or "unknown"),
     c.busy and "  [attached]"
       or (c.dbg == "unknown" and "  [attach state unknown]")
@@ -73,7 +58,7 @@ function M.report(cb)
         { "debugger", c.dbg or "-" },
       }
       for _, r in ipairs(rows) do
-        lines[#lines + 1] = ("    %s%s"):format(pad(r[1], 12), tostring(r[2] or "-"))
+        lines[#lines + 1] = ("    %s%s"):format(ui.pad(r[1], 12), tostring(r[2] or "-"))
       end
       lines[#lines + 1] = ""
     end
@@ -83,23 +68,7 @@ end
 
 function M.show_report()
   M.report(function(lines)
-    local buf = vim.api.nvim_create_buf(false, true)
-    vim.bo[buf].bufhidden = "wipe"
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-    vim.bo[buf].modifiable = false
-    local width = math.min(vim.o.columns - 4, 110)
-    local height = math.min(vim.o.lines - 6, math.max(#lines, 3))
-    vim.api.nvim_open_win(buf, true, {
-      relative = "editor",
-      width = width,
-      height = height,
-      row = math.floor((vim.o.lines - height) / 2) - 1,
-      col = math.floor((vim.o.columns - width) / 2),
-      style = "minimal",
-      border = "rounded",
-      title = " kbuildlab guests ",
-    })
-    vim.keymap.set("n", "q", "<cmd>close<cr>", { buffer = buf, nowait = true })
+    ui.report(lines, "kbuildlab guests", 110, 3)
   end)
 end
 
@@ -130,9 +99,9 @@ function M.manual(cb, port)
       prompt = "Which tree does the guest run?",
       format_item = function(t)
         return ("%s  %s  %s  %s"):format(
-          pad(t.label or "?", 16),
-          pad(t.arch or "?", 8),
-          pad(t.release or t.version or "", 16),
+          ui.pad(t.label or "?", 16),
+          ui.pad(t.arch or "?", 8),
+          ui.pad(t.release or t.version or "", 16),
           short(t.src)
         )
       end,
@@ -303,7 +272,7 @@ function M.watch_target(session)
         return
       end
       M.stop_watchdog()
-      require("dbg.notify").error(("The QEMU process (pid %s) is gone; the gdbstub died with it"):format(pid))
+      notify.error(("The QEMU process (pid %s) is gone; the gdbstub died with it"):format(pid))
       pcall(function()
         dap.disconnect({ terminateDebuggee = false })
       end)

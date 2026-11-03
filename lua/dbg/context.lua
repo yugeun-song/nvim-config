@@ -20,9 +20,6 @@ end
 function M.is_kernel(s)
   return M.of(s) == "linux_kernel"
 end
-function M.is_native(s)
-  return M.of(s) == "native"
-end
 function M.is_low_level(s)
   local p = M.of(s)
   return p == "linux_kernel" or p == "native"

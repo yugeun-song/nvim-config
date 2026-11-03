@@ -128,14 +128,6 @@ function M.supports(feature, session)
   return check(state)
 end
 
-function M.require(feature, session)
-  local ok, reason = M.supports(feature, session)
-  if not ok then
-    require("dbg.notify").warn(reason or ("unsupported: " .. feature))
-  end
-  return ok, reason
-end
-
 local function classify(caps)
   if caps.symbols.init_task or caps.symbols.linux_banner or caps.symbols.swapper_pg_dir then
     return "kernel"

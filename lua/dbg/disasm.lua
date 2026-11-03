@@ -641,6 +641,7 @@ end
 
 function M.setup()
   vim.api.nvim_create_autocmd({ "BufWinEnter", "WinEnter" }, {
+    group = vim.api.nvim_create_augroup("dbg_disasm", { clear = true }),
     pattern = "*",
     callback = function(ev)
       if vim.bo[ev.buf].filetype ~= "dap-disassembly" then

@@ -79,10 +79,18 @@ local function on_initialized(session)
       or "  (no arguments)"
     M.info("Running " .. prog .. args)
   end
-  if cfg.program and debug_info(cfg.program) == "none" then
+  -- A binary with no DWARF is normal; say it once, at the start.
+  local kind = cfg.program and debug_info(cfg.program)
+  if kind == "none" or kind == "stripped" then
+    session.dbg_no_debug_info = true
+    local why = kind == "stripped"
+        and "is stripped, so unless debuginfod or a debug package supplies it there are no source lines, locals or types"
+      or "was built without -g, so there are no source lines, locals or types"
     M.warn(
-      (base(cfg.program) or "the program")
-        .. " carries no debug info, so no breakpoint can bind and there is no source stepping. Rebuild with -g."
+      ("%s %s. Disassembly, registers, memory, breakpoints and the control-flow graph still work."):format(
+        base(cfg.program) or "the program",
+        why
+      )
     )
   end
 end
@@ -94,6 +102,9 @@ local function why_unbound(session)
   local state = prog and debug_info(prog)
   if state == "none" then
     return (base(prog) or "the program") .. " was built without -g"
+  end
+  if state == "stripped" then
+    return (base(prog) or "the program") .. " is stripped"
   end
   if state == "external" then
     return "the debug info sits in a separate file gdb could not locate"
@@ -259,24 +270,8 @@ function M.show_log()
       lines[#lines + 1] = "  " .. all[i]
     end
   end
-  local buf = vim.api.nvim_create_buf(false, true)
-  vim.bo[buf].bufhidden = "wipe"
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-  vim.bo[buf].modifiable = false
-  local width = math.min(vim.o.columns - 4, 140)
-  local height = math.min(vim.o.lines - 6, math.max(#lines, 5))
-  vim.api.nvim_open_win(buf, true, {
-    relative = "editor",
-    width = width,
-    height = height,
-    row = math.floor((vim.o.lines - height) / 2) - 1,
-    col = math.floor((vim.o.columns - width) / 2),
-    style = "minimal",
-    border = "rounded",
-    title = " Debugger log ",
-  })
-  vim.keymap.set("n", "q", "<cmd>close<cr>", { buffer = buf, nowait = true })
-  vim.api.nvim_win_set_cursor(0, { #lines, 0 })
+  local win = require("dbg.ui").report(lines, "Debugger log", 140, 5)
+  vim.api.nvim_win_set_cursor(win, { #lines, 0 })
 end
 
 return M

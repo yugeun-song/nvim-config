@@ -64,10 +64,4 @@ function M.run_all(cmds, cb, opts)
   end
 end
 
-function M.has_pwndbg(cb)
-  M.run("pwndbg --help", function(text)
-    cb(text ~= nil and not tostring(text):find("Undefined command"))
-  end)
-end
-
 return M

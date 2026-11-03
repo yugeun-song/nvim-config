@@ -143,12 +143,6 @@ local function width_of(text)
   return vim.fn.strdisplaywidth(text or "")
 end
 
-local function pad(text, width)
-  text = text or ""
-  local short = width - width_of(text)
-  return short > 0 and (text .. string.rep(" ", short)) or text
-end
-
 local function clip(text, width)
   text = text or ""
   if width_of(text) <= width then
@@ -168,7 +162,7 @@ local function cell(entry, namew, valuew)
   local room = math.max(4, valuew - width_of(tag))
   local value = clip(entry.value or "-", room)
   local mark = state.changed[entry.key] and "*" or " "
-  return ("%s %s %s%s"):format(mark, pad(entry.name, namew), pad(value, room), tag)
+  return ("%s %s %s%s"):format(mark, ui.pad(entry.name, namew), ui.pad(value, room), tag)
 end
 
 function M.render()
@@ -231,13 +225,13 @@ function M.render()
   if split then
     local lh, rh = header("LOCALS", #left), header("GLOBALS", #rightcol)
     push(
-      " " .. pad(lh, colw) .. "  " .. rh,
+      " " .. ui.pad(lh, colw) .. "  " .. rh,
       { { 1, 1 + #lh, "DbgPanelTitle" }, { colw + 3, colw + 3 + #rh, "DbgPanelTitle" } }
     )
     for i = 1, math.max(#left, #rightcol) do
       local l = left[i] and cell(left[i], lnw, lvw) or ""
       local r = rightcol[i] and cell(rightcol[i], rnw, rvw) or ""
-      local text = " " .. pad(clip(l, colw), colw) .. "  " .. r
+      local text = " " .. ui.pad(clip(l, colw), colw) .. "  " .. r
       lines[#lines + 1] = text
       local ln = #lines - 1
       if left[i] then

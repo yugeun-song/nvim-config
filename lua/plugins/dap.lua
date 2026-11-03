@@ -377,8 +377,7 @@ return {
         "<leader>dw",
         function()
           -- A panel has no expression under the cursor; ask for one there.
-          local ft = vim.bo.filetype
-          local in_panel = ft:match("^dbg%-") or ft:match("^dap%-") or vim.bo.buftype ~= ""
+          local in_panel = require("dbg.panel").is_debug_ft(vim.bo.filetype) or vim.bo.buftype ~= ""
           local word = vim.fn.expand("<cexpr>")
           if in_panel or vim.trim(word) == "" then
             vim.ui.input({ prompt = "Watch expression: ", default = vim.trim(word) }, function(answer)
@@ -436,6 +435,7 @@ return {
       local dap = require("dap")
       local discover = require("dbg.discover")
       local context = require("dbg.context")
+      local group = vim.api.nvim_create_augroup("dbg", { clear = true })
 
       -- The winbar of a gdb / Linux Kernel session; dbg.context only switches to it.
       context.set_low_level_winbar({
@@ -715,6 +715,7 @@ return {
       -- Labelled "gdb console", so <CR> sends the line under the cursor to GDB
       -- instead of nvim-dap's variable expansion.
       vim.api.nvim_create_autocmd("FileType", {
+        group = group,
         pattern = "dap-repl",
         callback = function(ev)
           -- A managed adapter keeps nvim-dap's own REPL.
@@ -768,6 +769,7 @@ return {
       if ok_baleia then
         local colorizer = baleia.setup({})
         vim.api.nvim_create_autocmd("FileType", {
+          group = group,
           pattern = { "dap-repl", "dap-view-term" },
           callback = function(ev)
             pcall(colorizer.automatically, ev.buf)
@@ -778,6 +780,7 @@ return {
 
       require("dbg.ui").setup_highlights()
       vim.api.nvim_create_autocmd("ColorScheme", {
+        group = group,
         callback = function()
           require("dbg.ui").setup_highlights()
         end,
@@ -830,7 +833,7 @@ return {
         end
       end
       vim.api.nvim_create_autocmd("BufWinEnter", {
-        group = vim.api.nvim_create_augroup("dbg_panel_refresh", { clear = true }),
+        group = group,
         pattern = "dbg://*",
         callback = function(ev)
           local key = ev.file:match("^dbg://(.+)$")
@@ -959,28 +962,6 @@ return {
       end
 
       -- Losing the gdbstub does not terminate the DAP session, so say so.
-      -- A binary with no DWARF is normal; say it once, at the start.
-      dap.listeners.after.event_initialized["dbg_debuginfo"] = function(session)
-        if not context.is_low_level(session) then
-          return
-        end
-        pcall(function()
-          local prog = (session.config or {}).program
-          local kind = prog and require("dbg.discover").elf_debug_info(prog)
-          if kind ~= "none" and kind ~= "stripped" then
-            return
-          end
-          session["dbg_no_debug_info"] = true
-          local why = kind == "stripped"
-              and "is stripped, so unless debuginfod or a debug package supplies it there are no source lines, locals or types"
-            or "was built without -g, so there are no source lines, locals or types"
-          require("dbg.notify").warn(
-            ("%s %s. "):format(vim.fs.basename(prog), why)
-              .. "Disassembly, registers, memory, breakpoints and the control-flow graph still work."
-          )
-        end)
-      end
-
       dap.listeners.after.event_initialized["dbg_watchdog"] = function(session)
         if not context.is_kernel(session) then
           return
@@ -1087,6 +1068,7 @@ return {
       end, { desc = "Report what this session supports and why" })
 
       vim.api.nvim_create_autocmd("VimLeavePre", {
+        group = group,
         callback = function()
           pcall(function()
             require("dbg.session").shutdown()
@@ -1096,6 +1078,7 @@ return {
       })
 
       vim.api.nvim_create_autocmd("VimResized", {
+        group = group,
         callback = function()
           if not context.is_low_level() then
             return
@@ -1110,6 +1093,7 @@ return {
       })
 
       vim.api.nvim_create_autocmd({ "WinNew", "WinClosed" }, {
+        group = group,
         callback = function()
           if not context.is_low_level() then
             return
@@ -1155,9 +1139,10 @@ return {
       end, { nargs = "?", desc = "Open the DAP-driven memory view" })
 
       vim.api.nvim_create_autocmd({ "BufWinEnter", "WinEnter" }, {
+        group = group,
         callback = function(ev)
           local ft = vim.bo[ev.buf].filetype
-          if not (ft:match("^dbg%-") or ft:match("^dap%-view") or ft == "dap-repl" or ft == "dap-disassembly") then
+          if not require("dbg.panel").is_debug_ft(ft) then
             return
           end
           local win = vim.fn.bufwinid(ev.buf)
@@ -1186,12 +1171,12 @@ return {
         end
         local mode = o.args ~= "" and o.args or "auto"
         if mode ~= "on" and mode ~= "off" and mode ~= "auto" then
-          vim.notify("DbgSafeMem takes on, off or auto", vim.log.levels.ERROR)
+          require("dbg.notify").error("DbgSafeMem takes on, off or auto")
           return
         end
         require("dbg.qemumon").mode = mode
         require("dbg.qemumon").invalidate()
-        vim.notify("Memory read guard: " .. mode, vim.log.levels.INFO)
+        require("dbg.notify").info("Memory read guard: " .. mode)
       end, {
         nargs = "?",
         complete = function()

@@ -297,14 +297,6 @@ function M.show_disassembly()
   end)
 end
 
-function M.sidebar_toggle()
-  if panel.win(slot(1)) then
-    M.sidebar_close()
-  else
-    M.sidebar_open()
-  end
-end
-
 function M.sidebar_cycle(delta)
   index = ((index - 1 + (delta or 1)) % #PANELS) + 1
   M.sidebar_open()
@@ -393,31 +385,10 @@ function M.fit()
   end
 end
 
-function M.refresh_sidebar()
-  local _, list = live_slots()
-  for _, win in ipairs(list) do
-    local buf = vim.api.nvim_win_get_buf(win)
-    for _, p in ipairs(PANELS) do
-      local ok, mod = pcall(require, p.mod)
-      if ok and mod.buffer() == buf then
-        refresh(p)
-      end
-    end
-  end
-end
-
 local restore = nil
 
 local function is_debug_buf(buf)
-  if not vim.api.nvim_buf_is_valid(buf) then
-    return false
-  end
-  local ft = vim.bo[buf].filetype
-  return ft:match("^dbg%-") ~= nil
-    or ft:match("^dap%-view") ~= nil
-    or ft == "dap-repl"
-    or ft == "dap-disassembly"
-    or ft == "dapui_console"
+  return vim.api.nvim_buf_is_valid(buf) and panel.is_debug_ft(vim.bo[buf].filetype)
 end
 
 local function debug_windows()
@@ -653,7 +624,7 @@ function M.rebuild()
   local left = vim.api.nvim_list_wins()
   if #left == 1 and is_debug_buf(vim.api.nvim_win_get_buf(left[1])) then
     local win = left[1]
-    require("dbg.ui").unstyle_window(win)
+    ui.unstyle_window(win)
     local target
     local frame = session and session.current_frame
     if frame and frame.source and frame.source.path then
@@ -770,6 +741,7 @@ end
 
 -- Applies a jump that was skipped while the graph had the window.
 vim.api.nvim_create_autocmd("BufWinEnter", {
+  group = vim.api.nvim_create_augroup("dbg_layout_jump", { clear = true }),
   callback = function(ev)
     local p = M.pending_jump
     if not p or ev.buf ~= p.buf then

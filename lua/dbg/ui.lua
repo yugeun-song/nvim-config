@@ -103,11 +103,32 @@ function M.style_window(win, name)
   end
 end
 
-function M.is_pointerish(hi, lo)
-  if hi == 0 and lo < 0x10000 then
-    return false
-  end
-  return true
+-- string.format pads by bytes and to at most 99; this pads by display cells.
+function M.pad(text, width)
+  text = tostring(text or "")
+  local short = width - vim.fn.strdisplaywidth(text)
+  return short > 0 and (text .. string.rep(" ", short)) or text
+end
+
+function M.report(lines, title, max_width, min_height)
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].bufhidden = "wipe"
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].modifiable = false
+  local width = math.min(vim.o.columns - 4, max_width)
+  local height = math.min(vim.o.lines - 6, math.max(#lines, min_height))
+  local win = vim.api.nvim_open_win(buf, true, {
+    relative = "editor",
+    width = width,
+    height = height,
+    row = math.floor((vim.o.lines - height) / 2) - 1,
+    col = math.floor((vim.o.columns - width) / 2),
+    style = "minimal",
+    border = "rounded",
+    title = " " .. title .. " ",
+  })
+  vim.keymap.set("n", "q", "<cmd>close<cr>", { buffer = buf, nowait = true })
+  return win
 end
 
 return M

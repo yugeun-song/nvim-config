@@ -1,6 +1,7 @@
--- QEMU human-monitor queries (gpa2hva, gva2gpa, xp, cpu) through the gdbstub's
--- `monitor` passthrough. A non-QEMU target has no monitor, so the guard answers
--- "unknown" there.
+-- QEMU monitor queries (gpa2hva, gva2gpa, xp, cpu) through the gdbstub's `monitor` passthrough; a non-QEMU
+-- target has none, so the guard answers "unknown".
+local gdbq = require("dbg.gdbq")
+
 local M = {}
 
 M.mode = "auto"
@@ -58,32 +59,18 @@ function M.active(session)
 end
 
 local function monitor(session, cmd, cb)
-  local frame = session.current_frame
-  session:request(
-    "evaluate",
-    { expression = "monitor " .. cmd, context = "repl", frameId = frame and frame.id },
-    function(err, res)
-      if err then
-        cb(nil)
-        return
-      end
-      cb(tostring((res or {}).result or ""))
-    end
-  )
+  gdbq.run("monitor " .. cmd, function(text)
+    cb(text)
+  end, { session = session })
 end
 
 -- The monitor translates on the core it points at (shared gdbstub state); a parked secondary answers Unmapped
 -- for every kernel VA. `idx` names a core, nil the one gdb stopped on.
 local function pin_cpu(session, idx, cb)
   local expr = idx and ("monitor cpu " .. idx) or 'eval "monitor cpu %d", $_thread > 0 ? $_thread - 1 : 0'
-  local frame = session.current_frame
-  session:request("evaluate", {
-    expression = expr,
-    context = "repl",
-    frameId = frame and frame.id,
-  }, function()
+  gdbq.run(expr, function()
     cb()
-  end)
+  end, { session = session })
 end
 
 -- Asked only for a sweep; dropped with the cache at every stop.
@@ -235,26 +222,21 @@ function M.qemu_check_range(session, addr, count, cb)
 end
 
 function M.qemu_read_phys(session, addr, count, cb)
-  local frame = session.current_frame
-  session:request(
-    "evaluate",
-    { expression = ("monitor xp/%dxb %s"):format(count, addr), context = "repl", frameId = frame and frame.id },
-    function(err, res)
-      if err then
-        cb(nil, err.message or "monitor xp failed")
-        return
-      end
-      local bytes = {}
-      for b in tostring((res or {}).result or ""):gmatch("0x(%x%x)%f[%W]") do
-        bytes[#bytes + 1] = string.char(tonumber(b, 16))
-      end
-      if #bytes == 0 then
-        cb(nil, "monitor xp returned no bytes")
-        return
-      end
-      cb(table.concat(bytes))
+  gdbq.run(("monitor xp/%dxb %s"):format(count, addr), function(text, err)
+    if not text then
+      cb(nil, err)
+      return
     end
-  )
+    local bytes = {}
+    for b in text:gmatch("0x(%x%x)%f[%W]") do
+      bytes[#bytes + 1] = string.char(tonumber(b, 16))
+    end
+    if #bytes == 0 then
+      cb(nil, "monitor xp returned no bytes")
+      return
+    end
+    cb(table.concat(bytes))
+  end, { session = session })
 end
 
 function M.explain(verdict, why)

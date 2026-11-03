@@ -69,10 +69,6 @@ function M.remember(config)
   last_config = copy
 end
 
-function M.forget()
-  last_config = nil
-end
-
 function M.last()
   return last_config
 end
