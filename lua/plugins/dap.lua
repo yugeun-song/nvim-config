@@ -550,6 +550,8 @@ return {
         dap_utils.dbg_quiet_source_missing = true
       end
 
+      local warned = {}
+
       -- Same toolkit as the kernel adapter: the control-flow backend is generic,
       -- and the kernel-only commands stay inert without a vmlinux.
       dap.adapters.gdb = function(callback, config)
@@ -570,14 +572,17 @@ return {
         end
 
         -- The host's own gdb debugs host programs; another arch needs one built for it.
-        local bin, why = config.gdb_bin, nil
+        local bin, why, broken = config.gdb_bin, nil, nil
 
-        if not bin then
-          if config.arch then
-            bin, why = discover.gdb_for(config.arch)
-          else
-            bin = "gdb"
+        if bin then
+          local ok
+
+          ok, why = discover.gdb_supports_dap(bin)
+          if not ok then
+            bin = nil
           end
+        else
+          bin, why, broken = discover.gdb_for(config.arch)
         end
 
         if not bin then
@@ -586,12 +591,11 @@ return {
           return
         end
 
-        local dap_ok, dap_why = discover.gdb_supports_dap(bin)
-
-        if not dap_ok then
-          notify.error(dap_why)
-
-          return
+        for _, note in ipairs(broken or {}) do
+          if not warned[note] then
+            warned[note] = true
+            notify.warn("skipped " .. note)
+          end
         end
 
         local args = { "-q", "-i", "dap", "-iex", "set pagination off" }
@@ -766,6 +770,52 @@ return {
         c_configs = vim.tbl_filter(function(c)
           return not (c.dbg_qemuser or c.qemu_user)
         end, c_configs)
+      end
+
+      -- macOS debugs C and C++ through LLDB (gdb cannot on Apple silicon); vim.g.dbg_lldb offers it elsewhere.
+      if vim.fn.has("mac") == 1 or vim.g.dbg_lldb then
+        dap.adapters.lldb = function(callback)
+          local cmd, why = discover.lldb()
+
+          if not cmd then
+            require("dbg.notify").error(why)
+
+            return
+          end
+
+          callback({ type = "executable", command = cmd })
+        end
+
+        local lldb_configs = {
+          {
+            name = "Launch executable (lldb)",
+            type = "lldb",
+            request = "launch",
+            program = input_path("Executable: ", cwd_exe),
+            args = input_args("Arguments: "),
+            cwd = "${workspaceFolder}",
+          },
+          {
+            name = "Launch executable, stop at main (lldb)",
+            type = "lldb",
+            request = "launch",
+            program = input_path("Executable: ", cwd_exe),
+            args = input_args("Arguments: "),
+            cwd = "${workspaceFolder}",
+            preRunCommands = { "breakpoint set --one-shot true --name main" },
+          },
+          {
+            name = "Attach to a running process (lldb)",
+            type = "lldb",
+            request = "attach",
+            program = input_path("Executable: ", cwd_exe),
+            pid = function()
+              return tonumber(vim.fn.input("PID: "))
+            end,
+          },
+        }
+
+        c_configs = vim.list_extend(discover.apple_silicon and {} or c_configs, lldb_configs)
       end
 
       dap.configurations.c = c_configs

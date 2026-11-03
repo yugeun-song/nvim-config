@@ -11,7 +11,7 @@ It is built on Arch Linux with Hyprland, kitty and fcitx5; [Environments](#envir
 - **LazyVim base** with this repo's `lua/plugins/` on top.
 - **C/C++**: indentation from `.editorconfig`/`.clang-format` or the file, no autoformat; clangd, cscope and `tags` tuned for big trees.
 - **Low-level highlighting** for `.S`/`.s`, inline `asm("…")`, linker scripts and device trees; man pages with highlighted code.
-- **Debugger on GDB's own DAP** for userspace, QEMU user mode and Linux kernels behind a QEMU gdbstub; Python, Rust, JS/TS and Elixir use their own adapters.
+- **Debugger on GDB's own DAP** for userspace, QEMU user mode and Linux kernels behind a QEMU gdbstub; LLDB on macOS; Python, Rust, JS/TS and Elixir use their own adapters.
 - **`lsp_filter`** turns clangd (or any server) off per file or directory.
 - **Korean IME integration**, **ChKeys** keystroke display, **`spaceduck-remix`** colorscheme, **Neovide** profile.
 - **Open Folder**: pick a folder in yazi from the dashboard and switch the editor to it, its session coming back.
@@ -32,12 +32,13 @@ It is built on Arch Linux with Hyprland, kitty and fcitx5; [Environments](#envir
 | **C / kernel workflow** | `clangd` | C/C++ language server (Mason installs one too). |
 | | `cscope` | Symbol navigation. |
 | | `universal-ctags` | The `tags` file behind `<C-]>`. |
-| **Debugging (optional)** | `gdb` **14+** | The debug adapter is GDB itself. |
+| **Debugging (optional)** | `gdb` **14+** with Python | The debug adapter is GDB itself. |
+| | `lldb-dap` (Xcode 16 tools) or Mason's `codelldb` | macOS: C and C++, where gdb cannot debug. `vim.g.dbg_lldb` names another and offers the LLDB configurations on any system. |
 | | `codelldb`, `js-debug-adapter`, `debugpy`, `elixir-ls` | The other adapters (Mason). |
 | | `qemu-system-*` | Bare-metal and QEMU-user targets. |
 | | [kbuildlab](https://github.com/yugeun-song/kbuildlab) | Kernel targets: guests, gdb and session come from `kbuildlab attach --json`; without it kernel debugging is off. |
 | | [gdbtools](https://github.com/yugeun-song/gdbtools) (optional) | Early-boot kernel symbols, `cfgjson` and `addr2sym`, sourced into each gdb when installed. |
-| | `<triple>-gdb` (optional) | For a foreign target, else `gdb-multiarch` or a host `gdb` that accepts the architecture; one whose Python fails is skipped with a notice. `vim.g.dbg_gdb` (a string, or a table by arch) overrides; kernel sessions run kbuildlab's gdb. |
+| | `<triple>-gdb` (optional) | For a foreign target, else `gdb-multiarch` or a host `gdb` built for it. One run of each gdb tells whether it starts, its Python works, it is 14 or newer and it knows the target; a broken one is skipped with a notice. `vim.g.dbg_gdb` (a string, or a table by arch) overrides; kernel sessions run kbuildlab's gdb. |
 | | `qemu-<arch>` usermode (optional) | Foreign-architecture userspace (`qemu-user`). |
 | | `/usr/<triple>` or `/usr/<triple>/sys-root` (optional) | Sysroot for dynamic cross binaries, when present. |
 | **Common Lisp (optional)** | `sbcl`, `ocicl` | alive-lsp, REPL, lint. |
@@ -63,7 +64,7 @@ It is built on Arch Linux with Hyprland, kitty and fcitx5; [Environments](#envir
 | Environment | What changes | Status |
 |---|---|---|
 | Arch Linux on x86_64, Hyprland, kitty or Neovide, fcitx5 | The baseline it is built and tested on. | Full |
-| Debian, Ubuntu, Fedora, openSUSE | Package names differ (`fdfind`, `gdb-multiarch`, Fedora's `/usr/<triple>/sys-root`); Debian's Mason Python packages need `python3-venv`. | Full |
+| Debian, Ubuntu, Fedora, openSUSE | Package names differ (`fdfind`, Fedora's `/usr/<triple>/sys-root`); Debian, Ubuntu and Alpine need `gdb-multiarch` for foreign targets; Debian 12 and Ubuntu 22.04 ship gdb 13 and 12, which have no DAP; openSUSE Leap's gdb has no riscv64; Debian's Mason Python packages need `python3-venv`. | Full |
 | NixOS | Mason's downloaded binaries need `nix-ld`; a QEMU-user launch needs its `sysroot` set by hand. | Full with `nix-ld` |
 | musl (Alpine, Void musl) | Mason has no musl `clangd` or `codelldb`; the distribution's are used. | Full with system tools |
 | Linux on aarch64 | Mason has no Linux arm64 `clangd`; gdb is chosen for the host architecture. | Full |
@@ -72,8 +73,8 @@ It is built on Arch Linux with Hyprland, kitty and fcitx5; [Environments](#envir
 | Other terminals, tmux, Zellij | The background follow needs OSC 11 and OSC 111 and is skipped inside tmux, screen, Zellij and nested Neovim; foot gets its IME mode sequence. | Full |
 | ibus, fcitx4 | The IME still returns to English; the `한`/`EN` indicator reads fcitx5. `langmap` assumes Dubeolsik. | Indicator unsupported |
 | No `$XDG_RUNTIME_DIR` | The focus records move to `stdpath("state")`. | Full |
-| macOS | IME through `macism`, `im-select` or `issw`, window raise through `osascript`, Discord through its socket. gdb has no Apple silicon port; QEMU user mode, kernels and the Caps Lock and IME indicators are Linux-only. | Partly |
-| Windows | Paths under `%LOCALAPPDATA%`; Mason's `.cmd` shims, GHCup's `C:\ghcup\bin` and `im-select.exe` are handled, window raise goes through PowerShell. No `:Man`, no Mason `elp`, gdb from MSYS2; QEMU user mode, kernels and the indicators are Linux-only. | Partly |
+| macOS | IME through `macism`, `im-select` or `issw`, window raise through `osascript`, Discord through its socket. C and C++ debug through LLDB with nvim-dap-view's own panels, since gdb cannot debug on Apple silicon (an Intel gdb must be codesigned). QEMU user mode, kernels and the Caps Lock and IME indicators are Linux-only. | Partly |
+| Windows | Paths under `%LOCALAPPDATA%`; Mason's `.cmd` shims, GHCup's `C:\ghcup\bin` and `im-select.exe` are handled, window raise goes through PowerShell. No `:Man`, no Mason `elp`, gdb from MSYS2 (found under `C:\msys64` when not on PATH); QEMU user mode, kernels and the indicators are Linux-only. | Partly |
 | WSL | As Linux; the IME switches through `im-select.exe`. No window raise, and the Windows Discord client is out of reach. | Partly |
 | SSH | The background follow reaches the local terminal and the clipboard goes through OSC 52; the IME switch and the window raise would act on the remote host. | Partly |
 | Neovim 0.11 or older | nvim-treesitter's `main` branch needs 0.12. | Unsupported |
@@ -226,12 +227,13 @@ In `.S`/`.s`, a line that starts with a preprocessor directive is parsed as C; a
 
 ### Debugging (`lua/plugins/dap.lua`, `lua/dbg/`)
 
-C, C++ and assembly are debugged by GDB itself (`gdb -i dap`), so `~/.gdbinit`, pwndbg and other GDB Python tooling load as usual. Other languages use their own adapters (`lua/plugins/dap_languages.lua`):
+C, C++ and assembly are debugged by GDB itself (`gdb -i dap`), so `~/.gdbinit`, pwndbg and other GDB Python tooling load as usual. On macOS the *(lldb)* configurations launch and attach through `lldb-dap` or `codelldb` instead. Other languages use their own adapters (`lua/plugins/dap_languages.lua`):
 
 | Language | Debug support | What it brings |
 |---|---|---|
 | C / C++ / asm | `gdb -i dap` | The panels below, QEMU user mode, gdbtools |
 | Linux Kernel | `gdb -i dap` (`gdb_kernel`) | The same, plus kernel attach |
+| C / C++ on macOS | `lldb-dap` or `codelldb` | Launch, launch to `main`, attach; nvim-dap-view's own panels |
 | Python | [`nvim-dap-python`](https://github.com/mfussenegger/nvim-dap-python) on `debugpy` | Its configurations, the test under the cursor |
 | Rust | [`rustaceanvim`](https://github.com/mrcjkb/rustaceanvim) on `codelldb` | `:RustLsp debuggables`, LLDB's Rust formatters |
 | JavaScript / TypeScript | `js-debug-adapter` | `pwa-node`/`-chrome`/`-msedge`; `.ts` on Node's type stripping, or `tsx`/`ts-node` if installed |
@@ -239,7 +241,7 @@ C, C++ and assembly are debugged by GDB itself (`gdb -i dap`), so `~/.gdbinit`, 
 
 `.vscode/launch.json` is read for every language; Julia and Java have no debugger. The rest applies to `gdb` and `gdb_kernel` sessions; others get plain `nvim-dap-view`.
 
-- **Programs.** Launch, launch to `main`, attach by PID, *Run on QEMU user* (Linux; `qemu-<arch> -g` on a private Unix socket with the toolchain's sysroot, stopped at `_start`; x86_64, aarch64, riscv64, arm) and *Attach to a QEMU user gdbstub*. The executable and shell-quoted arguments are remembered: `<leader>dc` with no session replays the last run, `<leader>dn` asks again. A cross target gets `vim.g.dbg_gdb`, else the first `<triple>-gdb` or `gdb-multiarch` whose Python starts, else a host `gdb` that accepts the architecture; with none the session does not start and says why. gdbtools is sourced from `$GDBTOOLS_PATH` or the checkout its `setup.sh` recorded.
+- **Programs.** Launch, launch to `main`, attach by PID, *Run on QEMU user* (Linux; `qemu-<arch> -g` on a private Unix socket with the toolchain's sysroot, stopped at `_start`; x86_64, aarch64, riscv64, arm) and *Attach to a QEMU user gdbstub*. The executable and shell-quoted arguments are remembered: `<leader>dc` with no session replays the last run, `<leader>dn` asks again. A cross target gets `vim.g.dbg_gdb`, else the first `<triple>-gdb`, `gdb-multiarch` or host `gdb` that runs DAP and knows the architecture; with none the session does not start and says why, naming the package to install. gdbtools is sourced from `$GDBTOOLS_PATH` or the checkout its `setup.sh` recorded.
 - **Kernel targets.** `<leader>dq` lists the guests from `kbuildlab attach --list --json` (tree, boot mode, KASLR, whether a debugger holds the stub; a busy stub is refused); a guest kbuildlab did not start is attached by picking its registered tree and port. It then asks: attach where the kernel is, or early boot (`:DbgKernelEarly` skips the question), which runs `kearly on` and `kearly bootbreak arm` and continues to the first `head.S` instruction; `kearly kaslr auto` is left to you.
 - **Kernel adapter.** Each start asks `kbuildlab attach TREE --port N --json` for the gdb, its `-iex` lines, gdbtools, the vmlinux, the target and QEMU's pid, so a replayed configuration follows a guest restarted in another boot mode. A vanished QEMU or a lost connection is announced, and the panels stay.
 - **All-stop remotes.** A remote target takes no command while it runs: a breakpoint change is held, the target interrupted unseen by nvim-dap, the change sent, the target resumed. If it does not stop within 2 s, the change waits for its next stop (said once).
@@ -615,6 +617,7 @@ Programs it runs:
 | [cscope](https://cscope.sourceforge.net) | BSD-3-Clause | symbol navigation |
 | [Universal Ctags](https://ctags.io) | GPL-2.0 | the `tags` file |
 | [GDB](https://www.gnu.org/software/gdb) | GPL-3.0 | the debug adapter |
+| [LLDB](https://lldb.llvm.org) | Apache-2.0 WITH LLVM-exception | C and C++ on macOS (lldb-dap) |
 | [QEMU](https://www.qemu.org) | GPL-2.0, parts under other licenses | user-mode and kernel targets |
 | [SBCL](https://www.sbcl.org) | public domain and BSD-style | Common Lisp |
 | [ocicl](https://github.com/ocicl/ocicl) | MIT | Lisp systems and lint |

@@ -81,47 +81,58 @@ end
 local function debugging()
   h.start("Debugging")
   local discover = require("dbg.discover")
+  local gdb, why, broken = discover.gdb_for()
 
-  if OS == "macOS" and machine == "arm64" then
-    unsupported("C, C++ and assembly", "gdb has no Apple silicon port")
+  if gdb then
+    h.ok(("C, C++ and assembly: %s (gdb %s)"):format(gdb, discover.gdb_version(gdb)))
+  elseif discover.apple_silicon then
+    unsupported("gdb", "it cannot debug programs on Apple silicon")
   else
-    local ok, why = discover.gdb_supports_dap("gdb")
+    h.warn("C, C++ and assembly: " .. why)
+  end
 
-    if ok then
-      h.ok("C, C++ and assembly: gdb -i dap")
+  for _, note in ipairs(broken or {}) do
+    h.warn(note)
+  end
+
+  if OS == "macOS" or vim.g.dbg_lldb then
+    local lldb, lwhy = discover.lldb()
+
+    if lldb then
+      h.ok("C and C++ through LLDB: " .. lldb)
     else
-      h.warn("C, C++ and assembly: " .. why)
+      h.warn("C and C++ through LLDB: " .. lwhy)
     end
-  end
-
-  local qemuser = require("dbg.qemuser")
-  local native = qemuser.norm(machine)
-  local cross, missing = {}, {}
-
-  for _, arch in ipairs(qemuser.arches()) do
-    if arch ~= native then
-      local bin, why = discover.gdb_for(arch)
-
-      if bin then
-        cross[#cross + 1] = arch .. " " .. bin
-      else
-        missing[#missing + 1] = why
-      end
-    end
-  end
-
-  if #cross > 0 then
-    h.ok("foreign targets: " .. table.concat(cross, ", "))
-  end
-
-  for _, why in ipairs(missing) do
-    h.warn("foreign targets: " .. why)
   end
 
   if not LINUX then
     unsupported("QEMU user mode and kernels", "QEMU user mode and kbuildlab run on Linux only")
 
     return
+  end
+
+  local qemuser = require("dbg.qemuser")
+  local native = qemuser.norm(machine)
+  local cross = {}
+
+  for _, arch in ipairs(qemuser.arches()) do
+    if arch ~= native then
+      local bin, fwhy, fbroken = discover.gdb_for(arch)
+
+      if bin then
+        cross[#cross + 1] = arch .. " " .. bin
+      else
+        h.warn("foreign targets: " .. fwhy)
+      end
+
+      for _, note in ipairs(fbroken or {}) do
+        h.warn("foreign targets: " .. note)
+      end
+    end
+  end
+
+  if #cross > 0 then
+    h.ok("foreign targets: " .. table.concat(cross, ", "))
   end
 
   local qemu, absent = {}, {}

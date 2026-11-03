@@ -13,6 +13,7 @@ local PROGRAMS = {
   { "cscope", "https://cscope.sourceforge.net", "BSD-3-Clause", "symbol navigation" },
   { "Universal Ctags", "https://ctags.io", "GPL-2.0", "the `tags` file" },
   { "GDB", "https://www.gnu.org/software/gdb", "GPL-3.0", "the debug adapter" },
+  { "LLDB", "https://lldb.llvm.org", "Apache-2.0 WITH LLVM-exception", "C and C++ on macOS (lldb-dap)" },
   { "QEMU", "https://www.qemu.org", "GPL-2.0, parts under other licenses", "user-mode and kernel targets" },
   { "SBCL", "https://www.sbcl.org", "public domain and BSD-style", "Common Lisp" },
   { "ocicl", "https://github.com/ocicl/ocicl", "MIT", "Lisp systems and lint" },

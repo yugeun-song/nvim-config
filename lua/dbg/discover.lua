@@ -7,8 +7,7 @@ local EM_NAMES = {
   [243] = "riscv64",
 }
 
--- Cross-gdb names vary by distribution, and an --enable-targets=all gdb ships none; probe them, then fall back
--- on a host gdb that accepts the target architecture.
+-- Cross-gdb names vary by distribution; gdb-multiarch and a host gdb built for more targets come after them.
 local GDB_CANDIDATES = {
   aarch64 = { "aarch64-linux-gnu-gdb", "aarch64-none-linux-gnu-gdb", "aarch64-none-elf-gdb" },
   riscv64 = { "riscv64-linux-gnu-gdb", "riscv64-unknown-linux-gnu-gdb", "riscv64-unknown-elf-gdb" },
@@ -151,8 +150,16 @@ function M.elf_debug_info(path)
   return "none"
 end
 
-local reported_unusable = {}
-local probed = {}
+local HOST = vim.uv.os_uname().machine
+local MAC = vim.fn.has("mac") == 1
+
+local function norm(arch)
+  return ARCH_ALIASES[arch] or arch
+end
+
+local HOST_ARCH = norm(HOST)
+
+M.apple_silicon = MAC and HOST_ARCH == "aarch64"
 
 -- A probe's answer holds until the binary itself changes.
 local function identity(what, bin)
@@ -162,64 +169,224 @@ local function identity(what, bin)
   return st and ("%s:%s:%d:%d"):format(what, path, st.mtime.sec, st.size) or (what .. ":" .. bin)
 end
 
-local function knows_arch(bin, arch)
-  if not GDB_ARCH[arch] then
-    return false
+-- One gdb run tells whether it starts, whether its Python works, its version and its targets.
+local PROBE = "python import gdb, json; print('dbg-probe ' + json.dumps({'version': gdb.VERSION, "
+  .. "'arches': gdb.architecture_names() if hasattr(gdb, 'architecture_names') else []}))"
+
+local probes = {}
+
+local function failure(res)
+  local err = res.stderr or ""
+  local lib = err:match("error while loading shared libraries: ([^:\n]+)")
+  local kind, msg = err:match("Python Exception <class '([^']+)'>: ([^\n]*)")
+
+  if lib then
+    return ("could not start: %s is missing"):format(lib)
+  elseif res.code == 124 then
+    return "gave no answer within 10 s"
+  elseif (res.signal or 0) ~= 0 then
+    return ("crashed (signal %d)"):format(res.signal)
+  elseif err:find("Python scripting is not supported", 1, true) then
+    return "built without Python, which gdb -i dap needs"
+  elseif kind then
+    return ("its Python fails (%s: %s)"):format(kind, msg)
   end
 
-  local key = identity("arch:" .. arch, bin)
-
-  if probed[key] == nil then
-    local ok, proc = pcall(vim.system, { bin, "-nx", "-batch", "-ex", "set architecture " .. GDB_ARCH[arch] })
-
-    probed[key] = ok and proc:wait(5000).code == 0
-  end
-
-  return probed[key]
+  return ("exit status %d: %s"):format(res.code, err:match("%S[^\n]*") or "no output")
 end
 
-local function python_starts(bin)
-  local key = identity("python", bin)
+-- { version, major, arches } or { why }.
+local function probe(bin)
+  local key = identity("probe", bin)
 
-  if probed[key] ~= nil then
-    return probed[key]
+  if probes[key] then
+    return probes[key]
   end
 
-  local ok, proc = pcall(vim.system, { bin, "-nx", "-batch", "-ex", "python gdb.VERSION" }, { text = true })
-  local res = ok and proc:wait(5000) or { code = -1, signal = 0, stderr = (tostring(proc):gsub("^[^\n]-:%d+: ", "")) }
+  local started, proc = pcall(vim.system, { bin, "-nx", "-batch", "-ex", PROBE }, { text = true })
+  local p
 
-  probed[key] = res.code == 0 and (res.signal or 0) == 0
-  if probed[key] then
-    return true
+  if not started then
+    p = { why = "could not start: " .. tostring(proc):gsub("^[^\n]-:%d+: ", "") }
+  else
+    local res = proc:wait(10000)
+    local json = (res.stdout or ""):match("dbg%-probe (%b{})")
+    local ok, info = pcall(vim.json.decode, json or "")
+
+    if json and ok and type(info) == "table" and type(info.version) == "string" then
+      local arches = {}
+
+      for _, name in ipairs(info.arches or {}) do
+        arches[name] = true
+      end
+
+      p = { version = info.version, major = tonumber(info.version:match("^(%d+)")) or 0, arches = arches }
+    else
+      p = { why = failure(res) }
+    end
   end
 
-  if not reported_unusable[bin] then
-    reported_unusable[bin] = true
-    local err = res.stderr or ""
-    local why = err:match("Python Exception[^\n]*") or err:match("[^\n]*not supported[^\n]*") or err:match("%S[^\n]*")
-    local status = not ok and "could not start"
-      or (res.signal or 0) ~= 0 and ("signal " .. res.signal)
-      or ("exit status " .. res.code)
+  probes[key] = p
 
-    require("dbg.notify").warn(
-      ("%s: 'python gdb.VERSION' failed (%s)%s"):format(bin, status, why and ("\n" .. why) or "")
-    )
-  end
-
-  return false
+  return p
 end
 
--- vim.g.dbg_gdb when stated (a name, a path or a table keyed by arch), else the first candidate whose Python
--- starts, else a host gdb that accepts the arch. nil and the reason when none fits.
+-- An Intel Mac's gdb debugs programs only when codesigned with the debugger entitlement.
+local function codesigned(bin)
+  local key = identity("codesign", bin)
+
+  if probes[key] == nil then
+    local cmd = { "codesign", "-d", "--entitlements", "-", vim.fn.exepath(bin) }
+    local ok, proc = pcall(vim.system, cmd, { text = true })
+    local res = ok and proc:wait(5000) or {}
+
+    probes[key] = ((res.stdout or "") .. (res.stderr or "")):find("com.apple.security.cs.debugger", 1, true) ~= nil
+  end
+
+  return probes[key]
+end
+
+-- Why bin cannot run a DAP session (debugging arch, when given), or nil when it can.
+function M.gdb_unusable(bin, arch)
+  local key = arch and norm(arch)
+  local native = key == HOST_ARCH
+
+  if native and M.apple_silicon then
+    return "gdb cannot debug programs on Apple silicon"
+  end
+
+  if vim.fn.executable(bin) ~= 1 then
+    return "not installed"
+  end
+
+  local p = probe(bin)
+
+  if p.why then
+    return p.why
+  end
+
+  if p.major < 14 then
+    return ("gdb %s has no DAP (it came in gdb 14)"):format(p.version)
+  end
+
+  if key and GDB_ARCH[key] and not p.arches[GDB_ARCH[key]] then
+    return "built without " .. key
+  end
+
+  if native and MAC and not codesigned(bin) then
+    return "not codesigned for debugging (sourceware.org/gdb/wiki/PermissionsDarwin)"
+  end
+end
+
+-- gdb -i dap needs gdb 14 with Python. true, or false and the reason.
+function M.gdb_supports_dap(bin)
+  local why = M.gdb_unusable(bin)
+
+  if why then
+    return false, ("%s: %s"):format(bin, why)
+  end
+
+  return true
+end
+
+function M.gdb_version(bin)
+  return probe(bin).version
+end
+
+-- MSYS2 puts nothing on PATH.
+local MSYS2 = { "C:/msys64/ucrt64/bin", "C:/msys64/mingw64/bin", "C:/msys64/clang64/bin" }
+
+local function candidates(key)
+  local names = key == HOST_ARCH and { "gdb", "gdb-multiarch" }
+    or vim.list_extend(vim.list_extend({}, GDB_CANDIDATES[key] or {}), { "gdb-multiarch", "gdb" })
+
+  if vim.fn.has("win32") == 1 then
+    for _, dir in ipairs(MSYS2) do
+      vim.list_extend(names, { dir .. "/gdb.exe", dir .. "/gdb-multiarch.exe" })
+    end
+  end
+
+  return names
+end
+
+local release
+
+-- ID and ID_LIKE of os-release(5).
+local function distro()
+  if release then
+    return release
+  end
+
+  release = { id = "", like = {} }
+
+  for _, path in ipairs({ "/etc/os-release", "/usr/lib/os-release" }) do
+    local ok, lines = pcall(vim.fn.readfile, path)
+
+    if ok then
+      for _, line in ipairs(lines) do
+        local k, v = line:match("^(%u[%u_]*)=[\"']?([^\"']*)")
+
+        if k == "ID" then
+          release.id = v:lower()
+        elseif k == "ID_LIKE" then
+          for word in v:lower():gmatch("%S+") do
+            release.like[word] = true
+          end
+        end
+      end
+
+      break
+    end
+  end
+
+  return release
+end
+
+-- The package with a gdb for key, as each family shipped it on 2026-11-04.
+local function install_hint(key)
+  local native = key == HOST_ARCH
+  local d = distro()
+
+  local function is(name)
+    return d.id == name or d.like[name]
+  end
+
+  if vim.fn.has("win32") == 1 then
+    return ("pacman -S mingw-w64-ucrt-x86_64-gdb%s in MSYS2"):format(native and "" or "-multiarch")
+  elseif MAC then
+    return "use the (lldb) configurations, or brew install gdb and codesign it"
+  elseif is("debian") or is("ubuntu") then
+    return native and "apt install gdb" or "apt install gdb-multiarch"
+  elseif is("alpine") then
+    return native and "apk add gdb" or "apk add gdb-multiarch"
+  elseif is("fedora") or is("rhel") then
+    return "dnf install gdb"
+  elseif d.id == "opensuse-leap" and key == "riscv64" then
+    return "openSUSE Leap's gdb has no riscv64 target"
+  elseif is("suse") then
+    return "zypper install gdb"
+  elseif is("arch") then
+    return "pacman -S gdb"
+  elseif is("void") then
+    return "xbps-install gdb"
+  elseif is("nixos") then
+    return "add pkgs.gdb"
+  end
+
+  return "install gdb 14 or newer built with Python" .. (native and "" or (" and " .. key))
+end
+
+-- vim.g.dbg_gdb when stated (a name, a path or a table keyed by arch), else the first candidate that debugs
+-- arch (default: the host's). The gdb, nil and the broken candidates it passed; or nil and why none fits.
 function M.gdb_for(arch)
-  local key = ARCH_ALIASES[arch] or arch
+  local key = norm(arch or HOST_ARCH)
   local stated = vim.g.dbg_gdb
 
   if type(stated) == "table" then
     local pick = nil
 
     for k, v in pairs(stated) do
-      if (ARCH_ALIASES[k] or k) == key then
+      if norm(k) == key then
         pick = v
       end
     end
@@ -228,61 +395,109 @@ function M.gdb_for(arch)
   end
 
   if type(stated) == "string" and stated ~= "" then
-    if vim.fn.executable(stated) == 1 and python_starts(stated) then
-      return stated
+    local why = M.gdb_unusable(stated, key)
+
+    if why then
+      return nil, ("vim.g.dbg_gdb names %s: %s"):format(stated, why)
     end
 
-    return nil, ("vim.g.dbg_gdb names %s, which is not an executable gdb with Python"):format(stated)
+    return stated, nil, {}
   end
 
-  local machine = vim.uv.os_uname().machine
-  local native = key == (ARCH_ALIASES[machine] or machine)
-  local cands = native and { "gdb" } or vim.list_extend({}, GDB_CANDIDATES[key] or {})
+  if key == HOST_ARCH and M.apple_silicon then
+    return nil, "gdb cannot debug programs on Apple silicon; C and C++ use the (lldb) configurations"
+  end
 
-  cands[#cands + 1] = "gdb-multiarch"
-  for _, cand in ipairs(cands) do
-    if vim.fn.executable(cand) == 1 and python_starts(cand) then
-      return cand
+  local skipped, broken, seen = {}, {}, {}
+  local lacking = true
+
+  for _, cand in ipairs(candidates(key)) do
+    local path = vim.fn.exepath(cand)
+
+    if path ~= "" and not seen[path] then
+      seen[path] = true
+      local why = M.gdb_unusable(cand, key)
+
+      if not why then
+        return cand, nil, broken
+      end
+
+      local note = ("%s: %s"):format(cand, why)
+      local missing_target = why:find("^built without") ~= nil
+
+      skipped[#skipped + 1] = note
+      lacking = lacking and missing_target
+      if not missing_target and not why:find("has no DAP", 1, true) then
+        broken[#broken + 1] = note
+      end
     end
   end
 
-  local tried = table.concat(cands, ", ")
-
-  if not native then
-    if vim.fn.executable("gdb") == 1 and knows_arch("gdb", key) and python_starts("gdb") then
-      return "gdb"
-    end
-
-    tried = tried .. " and the host gdb"
+  if #skipped == 0 then
+    return nil, ("no gdb for %s is installed: %s, or set vim.g.dbg_gdb"):format(key, install_hint(key))
   end
 
-  return nil,
-    ("no gdb for %s: tried %s; install one (gdb-multiarch on Debian and Void) or set vim.g.dbg_gdb"):format(
-      tostring(arch),
-      tried
-    )
+  local msg = ("no gdb here debugs %s (%s)"):format(key, table.concat(skipped, "; "))
+
+  return nil, lacking and ("%s: %s, or set vim.g.dbg_gdb"):format(msg, install_hint(key)) or msg
 end
 
--- gdb -i dap exists from gdb 14.  true, or false and the reason.
-function M.gdb_supports_dap(bin)
-  if vim.fn.executable(bin) ~= 1 then
-    return false, bin .. " is not installed or not executable"
+local xcode
+
+-- Xcode 16 and its Command Line Tools ship lldb-dap. xcrun runs only once xcode-select names an existing
+-- developer directory: without one it opens the tools' install dialog.
+local function xcode_lldb_dap()
+  if xcode == nil then
+    xcode = false
+    local ok, proc = pcall(vim.system, { "xcode-select", "-p" }, { text = true })
+    local dir = ok and vim.trim(proc:wait(5000).stdout or "") or ""
+
+    if dir ~= "" and vim.uv.fs_stat(dir) then
+      local res = vim.system({ "xcrun", "--find", "lldb-dap" }, { text = true }):wait(10000)
+      local path = res.code == 0 and vim.trim(res.stdout or "") or ""
+
+      xcode = path ~= "" and path or false
+    end
   end
 
-  local key = identity("dap", bin)
+  return xcode or nil
+end
 
-  if probed[key] == nil then
-    local res = vim.system({ bin, "--version" }, { text = true }):wait(5000)
-    local major = res.code == 0 and tonumber(((res.stdout or ""):match("GNU gdb%D*(%d+)"))) or nil
+-- macOS's C and C++ debugger: vim.g.dbg_lldb, else Xcode's lldb-dap, Mason's codelldb, an lldb-dap on PATH or
+-- Homebrew's llvm. All of them speak DAP on stdio.
+function M.lldb()
+  local stated = vim.g.dbg_lldb
 
-    probed[key] = (major or 0) >= 14
+  if type(stated) == "string" and stated ~= "" then
+    local path = vim.fn.exepath(stated)
+
+    if path == "" then
+      return nil, ("vim.g.dbg_lldb names %s, which is not executable"):format(stated)
+    end
+
+    return path
   end
 
-  if not probed[key] then
-    return false, bin .. " has no DAP interpreter (gdb -i dap needs gdb 14 or newer)"
+  local cands = {}
+
+  if MAC then
+    cands[1] = xcode_lldb_dap()
   end
 
-  return true
+  vim.list_extend(cands, { vim.fs.joinpath(vim.fn.stdpath("data"), "mason", "bin", "codelldb"), "lldb-dap" })
+  if MAC then
+    vim.list_extend(cands, { "/opt/homebrew/opt/llvm/bin/lldb-dap", "/usr/local/opt/llvm/bin/lldb-dap" })
+  end
+
+  for _, cand in ipairs(cands) do
+    local path = vim.fn.exepath(cand)
+
+    if path ~= "" then
+      return path
+    end
+  end
+
+  return nil, "no LLDB adapter: :MasonInstall codelldb, or xcode-select --install for lldb-dap (Xcode 16 tools)"
 end
 
 local function config_home()
