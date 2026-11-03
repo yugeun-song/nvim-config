@@ -1,138 +1,144 @@
-local uv = vim.uv or vim.loop
-if not uv then
-  return {}
-end
+local uv = vim.uv
 
 local has_fcitx5 = vim.fn.executable("fcitx5-remote") == 1
+local caps_path = vim.fn.glob("/sys/class/leds/input*::capslock/brightness", true, true)[1]
 
-local caps_paths = vim.fn.glob("/sys/class/leds/input*::capslock/brightness", true, true)
-local actual_caps_path = caps_paths and caps_paths[1] or nil
+local state = { im = "en", caps = "" }
 
-if not has_fcitx5 and not actual_caps_path then
-  return {}
+local function set(key, value)
+  if state[key] ~= value then
+    state[key] = value
+    vim.g[key == "im" and "im_state" or "caps_state"] = value
+  end
 end
 
-local im_state = "en"
-local caps_state = ""
-local caps_in_flight = false
-local fcitx_in_flight = false
-
-local function set_im_state(res)
-  if res == "hangul" then
-    im_state = "한"
+local function set_im(engine)
+  if engine == "hangul" then
+    set("im", "한")
   else
-    im_state = (caps_state ~= "") and "EN" or "en"
-  end
-  vim.g.im_state = im_state
-end
-
-local function set_caps_state(data)
-  caps_state = (data and data:find("1")) and "󰬈 CAPS" or ""
-  vim.g.caps_state = caps_state
-  if has_fcitx5 and im_state ~= "한" then
-    set_im_state(nil)
+    set("im", state.caps ~= "" and "EN" or "en")
   end
 end
 
-local function update_caps_status()
-  if not actual_caps_path or caps_in_flight then
+local caps_busy, fcitx_busy = false, false
+
+local function read_caps()
+  if caps_busy then
     return
   end
-  caps_in_flight = true
-
-  uv.fs_open(actual_caps_path, "r", 438, function(err, fd)
+  caps_busy = true
+  uv.fs_open(caps_path, "r", 438, function(err, fd)
     if err or not fd then
-      caps_in_flight = false
+      caps_busy = false
       return
     end
     uv.fs_read(fd, 8, 0, function(rerr, data)
       uv.fs_close(fd)
-      caps_in_flight = false
+      caps_busy = false
       if not rerr then
         vim.schedule(function()
-          set_caps_state(data)
+          set("caps", (data and data:find("1")) and "󰬈 CAPS" or "")
+          if has_fcitx5 and state.im ~= "한" then
+            set_im(nil)
+          end
         end)
       end
     end)
   end)
 end
 
-local function poll_fcitx_async()
-  if fcitx_in_flight then
+local function read_fcitx()
+  if fcitx_busy then
     return
   end
-  fcitx_in_flight = true
+  fcitx_busy = true
+  local ok = pcall(vim.system, { "fcitx5-remote", "-n" }, { text = true }, function(res)
+    fcitx_busy = false
+    if res.code == 0 then
+      vim.schedule(function()
+        set_im((res.stdout or ""):gsub("%s+", ""))
+      end)
+    end
+  end)
+  if not ok then
+    fcitx_busy = false
+  end
+end
 
-  local stdout_lines = {}
-  vim.fn.jobstart({ "fcitx5-remote", "-n" }, {
-    stdout_buffered = true,
-    on_stdout = function(_, data)
-      if data then
-        stdout_lines = data
+local function start()
+  vim.g.im_state, vim.g.caps_state = state.im, state.caps
+  local timers = {}
+  if caps_path then
+    timers[#timers + 1] = { assert(uv.new_timer()), 200, read_caps }
+  end
+  if has_fcitx5 then
+    timers[#timers + 1] = { assert(uv.new_timer()), 1000, vim.schedule_wrap(read_fcitx) }
+  end
+  local function run()
+    for _, t in ipairs(timers) do
+      t[1]:start(0, t[2], t[3])
+    end
+  end
+  local group = vim.api.nvim_create_augroup("IMState", { clear = true })
+  vim.api.nvim_create_autocmd("FocusLost", {
+    group = group,
+    callback = function()
+      for _, t in ipairs(timers) do
+        t[1]:stop()
       end
-    end,
-    on_exit = function(_, code)
-      fcitx_in_flight = false
-      if code ~= 0 then
-        return
-      end
-      local res = table.concat(stdout_lines, ""):gsub("%s+", "")
-      set_im_state(res)
     end,
   })
-end
-
-local function start_kbd_check()
-  if actual_caps_path then
-    local timer = uv.new_timer()
-    if not timer then
-      return false
-    end
-    timer:start(0, 200, update_caps_status)
-  end
-
+  vim.api.nvim_create_autocmd("FocusGained", { group = group, callback = run })
   if has_fcitx5 then
-    local timer = uv.new_timer()
-    if not timer then
-      return false
-    end
-    timer:start(0, 1000, vim.schedule_wrap(poll_fcitx_async))
-    vim.api.nvim_create_autocmd({ "InsertEnter", "InsertLeave", "FocusGained", "CursorHold", "CursorHoldI" }, {
-      group = vim.api.nvim_create_augroup("IMState", { clear = true }),
-      callback = vim.schedule_wrap(poll_fcitx_async),
+    vim.api.nvim_create_autocmd({ "InsertEnter", "InsertLeave", "CursorHold", "CursorHoldI" }, {
+      group = group,
+      callback = read_fcitx,
     })
   end
-  return true
+  vim.api.nvim_create_autocmd("VimLeavePre", {
+    group = group,
+    callback = function()
+      for _, t in ipairs(timers) do
+        t[1]:close()
+      end
+    end,
+  })
+  run()
 end
 
-if not _G._kbd_timer_started then
-  _G._kbd_timer_started = start_kbd_check()
+if not has_fcitx5 and not caps_path then
+  return {}
 end
 
 return {
   {
+    "imstate",
+    virtual = true,
+    event = "VeryLazy",
+    config = start,
+  },
+  {
     "nvim-lualine/lualine.nvim",
     opts = function(_, opts)
-      if actual_caps_path then
+      if caps_path then
         table.insert(opts.sections.lualine_x, 1, {
           function()
-            return caps_state
+            return state.caps
           end,
           color = { fg = "#f7768e", gui = "bold" },
           cond = function()
-            return caps_state ~= ""
+            return state.caps ~= ""
           end,
           padding = { left = 1, right = 1 },
         })
       end
-
       if has_fcitx5 then
-        table.insert(opts.sections.lualine_x, actual_caps_path and 2 or 1, {
+        table.insert(opts.sections.lualine_x, caps_path and 2 or 1, {
           function()
-            return im_state
+            return state.im
           end,
           color = function()
-            return { fg = im_state == "한" and "#ff9e64" or "#7aa2f7", gui = "bold" }
+            return { fg = state.im == "한" and "#ff9e64" or "#7aa2f7", gui = "bold" }
           end,
           padding = { left = 1, right = 1 },
         })

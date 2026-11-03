@@ -241,7 +241,7 @@ Turns servers off for generated or vendored subtrees. A rule matches a path pref
 
 ### Korean input-method integration (`lua/plugins/im_control.lua`, `lua/plugins/imstate.lua`)
 
-`langmap` maps Dubeolsik jamo to their QWERTY keys for Normal mode. On `InsertLeave` and `FocusGained` the IME is set to English (`fcitx5-remote -c`, `im-select.exe` or `issw`), never to Korean; outside Neovide, foot's IME mode sequence keeps the IME on only in Insert mode. The statusline shows `󰬈 CAPS` (LED read every 200 ms) and `한`, or `EN`/`en` following Caps Lock (`fcitx5-remote -n` on mode, focus and idle events, plus every second), each only when its backend exists; `vim.g.caps_state` and `vim.g.im_state` hold the same.
+`langmap` maps Dubeolsik jamo to their QWERTY keys for Normal mode. On `InsertLeave` and `FocusGained` the IME is set to English, never to Korean, by the first tool found: fcitx5 or fcitx4 (`-remote -c`) or ibus (`ibus engine`, `vim.g.ibus_english_engine`, default `xkb:us::eng`) on Linux, `macism`, `im-select` or `issw` on macOS, `im-select.exe` on Windows and WSL. In foot, its IME mode sequence keeps the IME on only in Insert mode. The statusline shows `󰬈 CAPS` (LED read every 200 ms) and `한`, or `EN`/`en` (`fcitx5-remote -n` on mode, focus and idle events, plus every second); both pause while Neovim is unfocused and need fcitx5 and a Linux LED; `vim.g.caps_state` and `vim.g.im_state` hold the same.
 
 ### Open Folder and the dashboard (`lua/open_folder.lua`, `lua/dashboard_header.lua`, `lua/plugins/open_folder.lua`)
 
