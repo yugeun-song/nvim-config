@@ -3,7 +3,7 @@
 -- The default CLIENT_ID and the "neovim" art asset belong to the public Discord
 -- application of andweeb/presence.nvim; replace both to be independent.
 
-local uv = vim.uv or vim.loop
+local uv = vim.uv
 
 local CLIENT_ID = "793271441293967371"
 local ENABLED_BY_DEFAULT = true

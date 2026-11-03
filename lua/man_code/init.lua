@@ -3,7 +3,7 @@
 
 local M = {}
 
-local uv = vim.uv or vim.loop
+local uv = vim.uv
 
 local ns = vim.api.nvim_create_namespace("man_code")
 
