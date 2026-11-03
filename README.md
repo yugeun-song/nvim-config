@@ -93,7 +93,9 @@ nvim-config/
 ├── init.lua                  # → require("config.lazy")
 ├── lazy-lock.json            # plugin lockfile
 ├── lazyvim.json              # LazyVim extras (mini.files)
-├── .neoconf.json             # lua_ls settings
+├── .editorconfig             # indentation and line ends for every editor
+├── .luarc.json               # lua_ls runtime and globals (lazydev adds the libraries)
+├── .rumdl.toml               # Markdown lint rules
 ├── stylua.toml               # StyLua style
 ├── after/
 │   ├── ftplugin/
