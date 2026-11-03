@@ -12,7 +12,10 @@ local DIRECTIVE = {
 }
 
 local function strip_cr(s)
-  return (s:gsub("\r$", ""))
+  if s:byte(-1) == 13 then
+    return s:sub(1, -2)
+  end
+  return s
 end
 
 local function comment_open_after(line, open)
@@ -259,9 +262,15 @@ function M.rewrite(lines, tree, assign)
   return out
 end
 
+local last_text, last_lines, last_tree
+
 function M.rewrite_text(text, assign)
-  local lines = vim.split(text, "\n", { plain = true })
-  return table.concat(M.rewrite(lines, M.parse(lines), assign), "\n")
+  if text ~= last_text then
+    last_lines = vim.split(text, "\n", { plain = true })
+    last_tree = M.parse(last_lines)
+    last_text = text
+  end
+  return table.concat(M.rewrite(last_lines, last_tree, assign), "\n")
 end
 
 return M

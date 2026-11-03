@@ -155,6 +155,8 @@ local function token_tracker()
     end
     local kept, dropped = strip(data, cidx, keep_line)
     return { resultId = result.resultId, data = kept }, whole and dropped or nil
+  end, function(uri)
+    docs[uri] = nil
   end
 end
 
@@ -221,8 +223,8 @@ local function hook_main(client)
   local rpc = client.rpc
   local request = rpc.request
   local cidx = comment_index(vim.tbl_get(client.server_capabilities or {}, "semanticTokensProvider", "legend"))
-  local track = token_tracker()
-  hooked[client.id] = { rpc = rpc, request = request }
+  local track, forget = token_tracker()
+  hooked[client.id] = { rpc = rpc, request = request, forget = forget }
   rpc.request = function(method, params, callback, notify_reply)
     local td = M.enabled and type(params) == "table" and params.textDocument
     if td then
@@ -273,7 +275,7 @@ end
 
 local function proxy(rpc, k)
   local cidx
-  local track = token_tracker()
+  local track, forget = token_tracker()
   return {
     is_closing = rpc.is_closing,
     terminate = rpc.terminate,
@@ -296,6 +298,8 @@ local function proxy(rpc, k)
             contentChanges = { { text = M._rewrite(params.textDocument.uri, k, ch[1].text) } },
           }
         end
+      elseif method == "textDocument/didClose" then
+        forget(params.textDocument.uri)
       elseif method == "$/cancelRequest" and type(params.id) == "number" and params.id < 0 then
         return true
       end
@@ -529,6 +533,10 @@ local function untrack(buf)
   by_buf[buf] = nil
   if by_uri[st.uri] == st then
     by_uri[st.uri] = nil
+  end
+  local main = hooked[st.main]
+  if main then
+    main.forget(st.uri)
   end
   for k = 1, st.n do
     detach_variant(st, k)
