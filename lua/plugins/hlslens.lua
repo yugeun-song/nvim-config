@@ -1,3 +1,4 @@
+-- Parts adapted from https://github.com/kevinhwang91/nvim-hlslens (BSD-3-Clause). See THIRD-PARTY-NOTICES.
 local function override_lens(render, pos_list, nearest, idx, rel_idx)
   local sfw = vim.v.searchforward == 1
   local abs_rel_idx = math.abs(rel_idx)
