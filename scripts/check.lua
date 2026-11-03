@@ -141,7 +141,7 @@ local function blank_lines()
     local src = fd:read("*a")
     fd:close()
     local rows, lines = blank_rows(src)
-    if not rows then
+    if not (rows and lines) then
       report[#report + 1] = file .. ": not parsed"
     elseif #rows > 0 then
       missing = missing + #rows
@@ -253,4 +253,6 @@ if vim.uv.fs_stat(credits) then
   end
 end
 
-os.exit(failed and 1 or 0)
+if failed then
+  vim.cmd.cquit(1)
+end
