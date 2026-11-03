@@ -1,21 +1,25 @@
--- Foreign-arch userspace debugging over a QEMU user-mode gdbstub
--- (`qemu-aarch64 -g 1234 -L /usr/aarch64-linux-gnu ./a.out`), either attaching to
--- one already running or launching the binary under a background QEMU. The arch
--- comes from the ELF, and gdb, sysroot and QEMU follow from it.
+-- Foreign-arch userspace debugging over a QEMU user-mode gdbstub, either attaching to one
+-- already running or launching the binary under a background QEMU on a private Unix socket.
 local M = {}
-local discover = require("dbg.discover")
 
--- The sysroot is a host-toolchain convention (Arch and Debian: /usr/<triple>),
--- probed before use: a static binary needs none and another distro puts it
--- elsewhere.
+-- Sysroots follow host-toolchain conventions (Arch/Debian /usr/<triple>, Fedora .../sys-root);
+-- a static binary needs none.
 local ARCH = {
-  x86_64 = { qemu = "qemu-x86_64", sysroot = nil },
-  aarch64 = { qemu = "qemu-aarch64", sysroot = "/usr/aarch64-linux-gnu" },
-  riscv64 = { qemu = "qemu-riscv64", sysroot = "/usr/riscv64-linux-gnu" },
-  arm = { qemu = "qemu-arm", sysroot = "/usr/arm-linux-gnueabihf" },
+  x86_64 = { qemu = { "qemu-x86_64", "qemu-x86_64-static" }, sysroot = {} },
+  aarch64 = {
+    qemu = { "qemu-aarch64", "qemu-aarch64-static" },
+    sysroot = { "/usr/aarch64-linux-gnu", "/usr/aarch64-linux-gnu/sys-root" },
+  },
+  riscv64 = {
+    qemu = { "qemu-riscv64", "qemu-riscv64-static" },
+    sysroot = { "/usr/riscv64-linux-gnu", "/usr/riscv64-linux-gnu/sys-root" },
+  },
+  arm = {
+    qemu = { "qemu-arm", "qemu-arm-static" },
+    sysroot = { "/usr/arm-linux-gnueabihf", "/usr/arm-linux-gnueabihf/sys-root" },
+  },
 }
 
--- Kernel spellings (arm64, riscv) map onto the ELF ones the table uses.
 local ALIAS = { arm64 = "aarch64", amd64 = "x86_64", riscv = "riscv64" }
 
 function M.norm(arch)
@@ -26,118 +30,117 @@ function M.meta(arch)
   return ARCH[M.norm(arch or "")]
 end
 
-function M.arch_of(program)
-  if not program or program == "" then
-    return nil
-  end
-  return discover.elf_arch(program)
-end
-
--- nil when the conventional sysroot is absent, so the caller leaves it unset.
 function M.default_sysroot(arch)
   local m = M.meta(arch)
-  if m and m.sysroot and vim.fn.isdirectory(m.sysroot) == 1 then
-    return m.sysroot
+  for _, dir in ipairs(m and m.sysroot or {}) do
+    if vim.fn.isdirectory(dir) == 1 then
+      return dir
+    end
   end
   return nil
 end
 
--- Keyed by gdbstub port, so teardown stops exactly the QEMUs this editor started.
-local jobs = {}
-
-local function listening(port)
-  local listen = discover.tcp_states()
-  return listen[port] == true
+local function qemu_bin(m)
+  for _, name in ipairs(m.qemu) do
+    if vim.fn.executable(name) == 1 then
+      return name
+    end
+  end
+  return nil
 end
 
--- Runs `qemu-<arch> -g <port> [-L <sysroot>] <program> [args...]`; exactly one of
+local jobs = {}
+local serial = 0
+
+function M.socket_path()
+  serial = serial + 1
+  return vim.fs.joinpath(vim.fn.stdpath("run"), ("qemu-gdb-%d-%d.sock"):format(vim.fn.getpid(), serial))
+end
+
+-- Runs `qemu-<arch> -g <socket> [-L <sysroot>] <program> [args...]`; exactly one of
 -- on_ready / on_fail(reason) fires.
 function M.spawn(cfg, on_ready, on_fail)
   local settled = false
-  local function fail(msg)
+  local function settle(fn, ...)
     if not settled then
       settled = true
-      on_fail(msg)
-    end
-  end
-  local function ready()
-    if not settled then
-      settled = true
-      on_ready()
+      fn(...)
     end
   end
 
   local m = M.meta(cfg.arch)
   if not m then
-    return fail("no usermode QEMU known for arch " .. tostring(cfg.arch))
+    return settle(on_fail, "no usermode QEMU known for arch " .. tostring(cfg.arch))
   end
-  if vim.fn.executable(m.qemu) ~= 1 then
-    return fail(m.qemu .. " is not installed")
+  local qemu = qemu_bin(m)
+  if not qemu then
+    return settle(on_fail, m.qemu[1] .. " is not installed")
   end
-  local port = tonumber(cfg.qemu_port)
-  if not port then
-    return fail("no gdbstub port given")
-  end
-  if listening(port) then
-    return fail("port " .. port .. " is already in use; attach to it or pick another")
-  end
+  local sock = cfg.qemu_socket
+  vim.uv.fs_unlink(sock)
 
-  local cmd = { m.qemu, "-g", tostring(port) }
+  local cmd = { qemu, "-g", sock }
   if cfg.sysroot and cfg.sysroot ~= "" then
-    cmd[#cmd + 1] = "-L"
-    cmd[#cmd + 1] = cfg.sysroot
+    vim.list_extend(cmd, { "-L", cfg.sysroot })
   end
   cmd[#cmd + 1] = cfg.program
-  for _, a in ipairs(cfg.qemu_args or {}) do
-    cmd[#cmd + 1] = a
-  end
+  vim.list_extend(cmd, cfg.qemu_args or {})
 
-  local stderr = {}
+  local last_err = ""
   local jid = vim.fn.jobstart(cmd, {
     on_stderr = function(_, data)
       for _, line in ipairs(data or {}) do
         if line ~= "" then
-          stderr[#stderr + 1] = line
+          last_err = line
         end
       end
     end,
     on_exit = function(_, code)
-      jobs[port] = nil
-      local tail = #stderr > 0 and (": " .. stderr[#stderr]) or ""
-      fail(m.qemu .. " exited (" .. code .. ") before the gdbstub was ready" .. tail)
+      jobs[sock] = nil
+      vim.uv.fs_unlink(sock)
+      local tail = last_err ~= "" and (": " .. last_err) or ""
+      settle(on_fail, qemu .. " exited (" .. code .. ") before the gdbstub was ready" .. tail)
     end,
   })
   if jid <= 0 then
-    return fail("could not start " .. m.qemu)
+    return settle(on_fail, "could not start " .. qemu)
   end
-  jobs[port] = jid
+  jobs[sock] = jid
 
-  -- QEMU waits for a client before running any guest code, so polling the socket
-  -- is enough.
-  vim.wait(8000, function()
-    return settled or listening(port)
-  end, 50)
-  if settled then
-    return -- on_exit already reported a failure
-  end
-  if not listening(port) then
-    M.stop(port)
-    return fail(m.qemu .. " gdbstub did not open on port " .. port .. " in time")
-  end
-  ready()
+  local deadline = vim.uv.now() + 8000
+  local timer = assert(vim.uv.new_timer())
+  timer:start(
+    50,
+    50,
+    vim.schedule_wrap(function()
+      if settled or vim.uv.fs_stat(sock) or vim.uv.now() > deadline then
+        if not timer:is_closing() then
+          timer:close()
+        end
+        if not settled and vim.uv.fs_stat(sock) then
+          settle(on_ready)
+        elseif not settled then
+          M.stop(sock)
+          settle(on_fail, qemu .. " gdbstub did not open in time")
+        end
+      end
+    end)
+  )
 end
 
-function M.stop(port)
-  local jid = jobs[port]
+function M.stop(sock)
+  local jid = jobs[sock]
   if jid then
-    jobs[port] = nil
+    jobs[sock] = nil
     pcall(vim.fn.jobstop, jid)
   end
+  vim.uv.fs_unlink(sock)
 end
 
 function M.stop_all()
-  for _, jid in pairs(jobs) do
+  for sock, jid in pairs(jobs) do
     pcall(vim.fn.jobstop, jid)
+    vim.uv.fs_unlink(sock)
   end
   jobs = {}
 end

@@ -511,8 +511,9 @@ return {
         -- configs set neither, so this is a no-op for them.
         if config.program and (config.dbg_qemuser or config.target) then
           config.arch = config.arch or discover.elf_arch(config.program)
-          if config.dbg_qemuser and config.qemu_port and not config.target then
-            config.target = ":" .. tostring(config.qemu_port)
+          if config.dbg_qemuser and not config.target then
+            config.qemu_socket = require("dbg.qemuser").socket_path()
+            config.target = config.qemu_socket
           end
           if config.sysroot == nil then
             config.sysroot = require("dbg.qemuser").default_sysroot(config.arch)
@@ -553,9 +554,8 @@ return {
           table.insert(args, "source " .. tool)
         end
         local spec = { type = "executable", command = bin, args = args }
-        if config.dbg_qemuser and config.qemu_port then
-          -- A gdb attached to a QEMU that never started would wait on a port
-          -- nothing serves; say why and start nothing.
+        if config.dbg_qemuser and config.qemu_socket then
+          -- A gdb attached to a QEMU that never started would wait forever; say why and start nothing.
           require("dbg.qemuser").spawn(config, function()
             callback(spec)
           end, function(msg)
@@ -665,9 +665,6 @@ return {
           dbg_qemuser = true,
           program = input_path("Guest executable: ", cwd_exe),
           qemu_args = input_args("Guest arguments: "),
-          qemu_port = function()
-            return tonumber(vim.fn.input("QEMU gdbstub port: ", "1234"))
-          end,
         },
         {
           -- e.g. qemu-aarch64 -g 1234 -L /usr/aarch64-linux-gnu ./a.out
@@ -675,8 +672,9 @@ return {
           type = "gdb",
           request = "attach",
           program = input_path("Guest executable (for symbols): ", cwd_exe),
+          qemu_user = true,
           target = function()
-            local t = vim.trim(vim.fn.input("gdbstub (host:port or :port): ", ":1234"))
+            local t = vim.trim(vim.fn.input("gdbstub (socket path, host:port or :port): ", ":1234"))
             if t:match("^%d+$") then
               t = ":" .. t
             end
@@ -684,6 +682,11 @@ return {
           end,
         },
       }
+      if vim.fn.has("linux") == 0 then
+        c_configs = vim.tbl_filter(function(c)
+          return not (c.dbg_qemuser or c.qemu_user)
+        end, c_configs)
+      end
 
       dap.configurations.c = c_configs
       dap.configurations.cpp = c_configs
@@ -692,9 +695,9 @@ return {
       -- Stop exactly the usermode QEMU this session started; jobstart also
       -- terminates it on nvim exit.
       local function stop_qemuser(session)
-        local port = session and session.config and session.config.qemu_port
-        if port then
-          require("dbg.qemuser").stop(tonumber(port))
+        local sock = session and session.config and session.config.qemu_socket
+        if sock then
+          require("dbg.qemuser").stop(sock)
         end
       end
       dap.listeners.after.event_terminated["dbg_qemuser"] = stop_qemuser

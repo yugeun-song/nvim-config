@@ -20,7 +20,6 @@ local GDB_CANDIDATES = {
 -- Kernel trees say "arm64" (ARCH=), the ELF header says "aarch64".
 local ARCH_ALIASES = { arm64 = "aarch64", amd64 = "x86_64", riscv = "riscv64" }
 
-
 function M.elf_arch(path)
   local fd = vim.uv.fs_open(path, "r", 438)
   if not fd then
@@ -122,57 +121,6 @@ function M.elf_debug_info(path)
     return "stripped"
   end
   return "none"
-end
-
--- Read a /proc file whole. st_size is 0 there, and a fixed-size read of
--- /proc/net/tcp on a busy host silently drops the tail.
-local function slurp_proc(path)
-  local fd = vim.uv.fs_open(path, "r", 438)
-  if not fd then
-    return nil
-  end
-  local parts, off = {}, 0
-  while true do
-    local chunk = vim.uv.fs_read(fd, 262144, off)
-    if not chunk or chunk == "" then
-      break
-    end
-    parts[#parts + 1] = chunk
-    off = off + #chunk
-  end
-  vim.uv.fs_close(fd)
-  return table.concat(parts)
-end
-
--- listen[port] = true, estab[port] = { inode, ... }.  Both families are read:
--- a client from ::1 appears only in /proc/net/tcp6.
-function M.tcp_states()
-  local listen, estab = {}, {}
-  for _, f in ipairs({ "/proc/net/tcp", "/proc/net/tcp6" }) do
-    local data = slurp_proc(f)
-    if data then
-      for line in data:gmatch("[^\n]+") do
-        local col = {}
-        for w in line:gmatch("%S+") do
-          col[#col + 1] = w
-        end
-        -- sl local rem st tx:rx tr:when retrnsmt uid timeout inode
-        if #col >= 10 then
-          local hex = col[2]:match(":(%x+)$")
-          local port = hex and tonumber(hex, 16)
-          if port then
-            if col[4] == "0A" then
-              listen[port] = true
-            elseif col[4] == "01" then
-              estab[port] = estab[port] or {}
-              estab[port][#estab[port] + 1] = col[10]
-            end
-          end
-        end
-      end
-    end
-  end
-  return listen, estab
 end
 
 local reported_unusable = {}
@@ -335,7 +283,8 @@ function M.kbuildlab()
   if bin and vim.fn.executable(bin) == 1 then
     return bin
   end
-  return nil, "kbuildlab is not installed (not on PATH, no " .. config_home() .. "/kbuildlab/root); kernel debugging needs it"
+  return nil,
+    "kbuildlab is not installed (not on PATH, no " .. config_home() .. "/kbuildlab/root); kernel debugging needs it"
 end
 
 -- Run `kbuildlab ARGS` and decode its JSON, null as nil; cb(value) or cb(nil, why).
