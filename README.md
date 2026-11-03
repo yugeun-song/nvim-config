@@ -46,7 +46,7 @@ It is built on Arch Linux with Hyprland, kitty and fcitx5; [Environments](#envir
 | **Haskell (optional)** | `ghc`, `cabal`, `haskell-language-server`, `hlint` from [GHCup](https://www.haskell.org/ghcup/) | `~/.ghcup/bin` joins the end of `PATH`. |
 | **Lean (optional)** | `elan` | The project's Lean toolchain (not Mason). |
 | **Python (optional)** | `ruff` | Lint and format beside `ty` (Mason). |
-| **IME reset (optional)** | `fcitx5`, `fcitx` or `ibus` (Linux); `macism`, `im-select` or `issw` (macOS); `im-select.exe` (Windows, WSL) | English on leaving Insert; the `한`/`EN` indicator needs fcitx5. |
+| **IME reset (optional)** | `fcitx5`, `fcitx` or `ibus` (Linux); `macism`, `im-select` or `issw` (macOS); `im-select.exe` (Windows, WSL) | English on leaving Insert; the `한`/`EN` indicator reads fcitx5 on Linux and the same tool on macOS. |
 | **Open Folder (optional)** | [yazi](https://yazi-rs.github.io/) | The folder picker; without it the dashboard entry and key are not created. |
 | **Caps Lock indicator (optional)** | Linux sysfs LED node | `/sys/class/leds/input*::capslock/brightness`. |
 | **GUI (optional)** | [Neovide](https://neovide.dev/), `CaskaydiaCove Nerd Font Mono` | The GUI profile. |
@@ -73,8 +73,8 @@ It is built on Arch Linux with Hyprland, kitty and fcitx5; [Environments](#envir
 | Other terminals, tmux, Zellij | The background follow needs OSC 11 and OSC 111 and is skipped inside tmux, screen, Zellij and nested Neovim; foot gets its IME mode sequence. | Full |
 | ibus, fcitx4 | The IME still returns to English; the `한`/`EN` indicator reads fcitx5. `langmap` assumes Dubeolsik. | Indicator unsupported |
 | No `$XDG_RUNTIME_DIR` | The focus records move to `stdpath("state")`. | Full |
-| macOS | IME through `macism`, `im-select` or `issw`, window raise through `osascript`, Discord through its socket. C and C++ debug through LLDB with nvim-dap-view's own panels, since gdb cannot debug on Apple silicon (an Intel gdb must be codesigned). QEMU user mode, kernels and the Caps Lock and IME indicators are Linux-only. | Partly |
-| Windows | Paths under `%LOCALAPPDATA%`; Mason's `.cmd` shims, GHCup's `C:\ghcup\bin` and `im-select.exe` are handled, window raise goes through PowerShell. No `:Man`, no Mason `elp`, gdb from MSYS2 (found under `C:\msys64` when not on PATH); QEMU user mode, kernels and the indicators are Linux-only. | Partly |
+| macOS | IME switch and `한`/`EN` through `macism`, `im-select` or `issw`; Caps Lock and window raise through `osascript`; Discord through its socket. C and C++ debug through LLDB with nvim-dap-view's own panels, since gdb cannot debug on Apple silicon (an Intel gdb must be codesigned). QEMU user mode and kernels are Linux-only. | Partly |
+| Windows | Paths under `%LOCALAPPDATA%`; Mason's `.cmd` shims, GHCup's `C:\ghcup\bin` and `im-select.exe` are handled, window raise goes through PowerShell. No `:Man`, no Mason `elp`, gdb from MSYS2 (found under `C:\msys64` when not on PATH); QEMU user mode, kernels and the indicators are absent. | Partly |
 | WSL | As Linux; the IME switches through `im-select.exe`. No window raise, and the Windows Discord client is out of reach. | Partly |
 | SSH | The background follow reaches the local terminal and the clipboard goes through OSC 52; the IME switch and the window raise would act on the remote host. | Partly |
 | Neovim 0.11 or older | nvim-treesitter's `main` branch needs 0.12. | Unsupported |
@@ -274,7 +274,7 @@ Turns servers off for generated or vendored subtrees. A rule matches a path pref
 
 ### Korean input-method integration (`lua/plugins/im_control.lua`, `lua/plugins/imstate.lua`)
 
-`langmap` maps Dubeolsik jamo to their QWERTY keys for Normal mode. On `InsertLeave` and `FocusGained` the IME is set to English, never to Korean, by the first tool found: fcitx5 or fcitx4 (`-remote -c`) or ibus (`ibus engine`, `vim.g.ibus_english_engine`, default `xkb:us::eng`) on Linux, `macism`, `im-select` or `issw` on macOS, `im-select.exe` on Windows and WSL. In foot, its IME mode sequence keeps the IME on only in Insert mode. The statusline shows `󰬈 CAPS` (LED read every 200 ms) and `한`, or `EN`/`en` (`fcitx5-remote -n` on mode, focus and idle events, plus every second); both pause while Neovim is unfocused and need fcitx5 and a Linux LED; `vim.g.caps_state` and `vim.g.im_state` hold the same.
+`langmap` maps Dubeolsik jamo to their QWERTY keys for Normal mode. On `InsertLeave` and `FocusGained` the IME is set to English, never to Korean, by the first tool found: fcitx5 or fcitx4 (`-remote -c`) or ibus (`ibus engine`, `vim.g.ibus_english_engine`, default `xkb:us::eng`) on Linux, `macism`, `im-select` or `issw` on macOS, `im-select.exe` on Windows and WSL. In foot, its IME mode sequence keeps the IME on only in Insert mode. The statusline shows `󰬈 CAPS` (LED read every 200 ms) and `한`, or `EN`/`en` (`fcitx5-remote -n` on mode, focus and idle events, plus every second); on macOS the input source comes from `macism`, `im-select` or `issw` and Caps Lock from one `osascript` process; all of them pause while Neovim is unfocused; `vim.g.caps_state` and `vim.g.im_state` hold the same.
 
 ### Open Folder and the dashboard (`lua/open_folder.lua`, `lua/dashboard_header.lua`, `lua/plugins/open_folder.lua`)
 

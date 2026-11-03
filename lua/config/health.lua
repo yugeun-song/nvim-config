@@ -241,8 +241,8 @@ local function input()
     h.warn("English on leaving Insert: no IME tool found", { "install " .. advice })
   end
 
-  if not LINUX then
-    unsupported("IME and Caps Lock in the statusline", "they read fcitx5 and a sysfs LED")
+  if not (LINUX or OS == "macOS") then
+    unsupported("IME and Caps Lock in the statusline", "they read fcitx5 and a sysfs LED, or macOS tools")
 
     return
   end
@@ -250,15 +250,15 @@ local function input()
   local src = ime.indicators()
 
   if src.im then
-    h.ok("IME in the statusline: fcitx5-remote")
+    h.ok("IME in the statusline: " .. table.concat(src.im.cmd, " "))
   else
-    h.warn("IME in the statusline: missing fcitx5-remote")
+    h.warn("IME in the statusline: missing " .. (LINUX and "fcitx5-remote" or "macism, im-select or issw"))
   end
 
-  if src.caps then
-    h.ok("Caps Lock in the statusline: " .. src.caps)
+  if src.caps or src.caps_watch then
+    h.ok("Caps Lock in the statusline: " .. (src.caps or src.caps_watch[1]))
   else
-    h.warn("Caps Lock in the statusline: no /sys/class/leds/input*::capslock node")
+    h.warn("Caps Lock in the statusline: " .. (LINUX and "no /sys/class/leds/input*::capslock node" or "no osascript"))
   end
 end
 
