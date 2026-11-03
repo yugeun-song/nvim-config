@@ -27,6 +27,10 @@ end
 local function split_args(line)
   local out, cur, started = {}, {}, false
   local i, n = 1, #line
+  local win = vim.fn.has("win32") == 1
+  local function escape_at(at)
+    return line:sub(at, at) == "\\" and at < n and (not win or line:sub(at + 1, at + 1) == '"')
+  end
   while i <= n do
     local c = line:sub(i, i)
     if c == " " or c == "\t" then
@@ -43,13 +47,13 @@ local function split_args(line)
       started = true
       i = i + 1
       while i <= n and line:sub(i, i) ~= '"' do
-        if line:sub(i, i) == "\\" and i < n then
+        if escape_at(i) then
           i = i + 1
         end
         cur[#cur + 1] = line:sub(i, i)
         i = i + 1
       end
-    elseif c == "\\" and i < n then
+    elseif escape_at(i) then
       started = true
       i = i + 1
       cur[#cur + 1] = line:sub(i, i)

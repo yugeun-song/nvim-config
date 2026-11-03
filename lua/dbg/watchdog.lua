@@ -90,7 +90,7 @@ end
 function M.start(session)
   M.stop()
   local cfg = session and session.config or {}
-  if cfg.type ~= "gdb_kernel" then
+  if cfg.type ~= "gdb_kernel" or vim.fn.has("linux") == 0 then
     return
   end
   local _, port = split_target(cfg.target)

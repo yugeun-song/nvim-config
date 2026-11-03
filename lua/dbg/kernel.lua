@@ -304,7 +304,7 @@ function M.watch_target(session)
         M.stop_watchdog()
         return
       end
-      if vim.uv.fs_stat("/proc/" .. tostring(pid)) then
+      if vim.uv.kill(pid, 0) == 0 then
         return
       end
       M.stop_watchdog()

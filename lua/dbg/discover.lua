@@ -9,16 +9,18 @@ local EM_NAMES = {
 
 -- Cross-gdb naming varies by distribution and toolchain, and a gdb built with
 -- --enable-targets=all ships no cross binary at all. Probe, then fall back on
--- the host gdb only if it is multi-target.
+-- a host gdb that accepts the target architecture.
 local GDB_CANDIDATES = {
-  aarch64 = { "aarch64-linux-gnu-gdb", "aarch64-none-linux-gnu-gdb", "aarch64-none-elf-gdb", "gdb-multiarch" },
-  riscv64 = { "riscv64-linux-gnu-gdb", "riscv64-unknown-linux-gnu-gdb", "riscv64-unknown-elf-gdb", "gdb-multiarch" },
-  arm = { "arm-none-eabi-gdb", "arm-linux-gnueabihf-gdb", "gdb-multiarch" },
-  x86_64 = { "gdb" },
+  aarch64 = { "aarch64-linux-gnu-gdb", "aarch64-none-linux-gnu-gdb", "aarch64-none-elf-gdb" },
+  riscv64 = { "riscv64-linux-gnu-gdb", "riscv64-unknown-linux-gnu-gdb", "riscv64-unknown-elf-gdb" },
+  arm = { "arm-none-eabi-gdb", "arm-linux-gnueabihf-gdb" },
+  x86_64 = { "x86_64-linux-gnu-gdb", "x86_64-elf-gdb" },
 }
 
+local GDB_ARCH = { aarch64 = "aarch64", riscv64 = "riscv:rv64", arm = "arm", x86_64 = "i386:x86-64" }
+
 -- Kernel trees say "arm64" (ARCH=), the ELF header says "aarch64".
-local ARCH_ALIASES = { arm64 = "aarch64", amd64 = "x86_64", riscv = "riscv64" }
+local ARCH_ALIASES = { arm64 = "aarch64", amd64 = "x86_64", riscv = "riscv64", armv7l = "arm", armv6l = "arm" }
 
 function M.elf_arch(path)
   local fd = vim.uv.fs_open(path, "r", 438)
@@ -133,11 +135,14 @@ local function identity(what, bin)
   return st and ("%s:%s:%d:%d"):format(what, path, st.mtime.sec, st.size) or (what .. ":" .. bin)
 end
 
-local function multi_target(bin)
-  local key = identity("targets", bin)
+local function knows_arch(bin, arch)
+  if not GDB_ARCH[arch] then
+    return false
+  end
+  local key = identity("arch:" .. arch, bin)
   if probed[key] == nil then
-    local probe = vim.system({ bin, "--configuration" }, { text = true }):wait(5000)
-    probed[key] = probe.code == 0 and (probe.stdout or ""):find("--enable-targets=all", 1, true) ~= nil
+    local ok, proc = pcall(vim.system, { bin, "-nx", "-batch", "-ex", "set architecture " .. GDB_ARCH[arch] })
+    probed[key] = ok and proc:wait(5000).code == 0
   end
   return probed[key]
 end
@@ -189,22 +194,26 @@ function M.gdb_for(arch)
     end
     return nil, ("vim.g.dbg_gdb names %s, which is not an executable gdb with Python"):format(stated)
   end
-  local cands = GDB_CANDIDATES[key] or { "gdb" }
+  local machine = vim.uv.os_uname().machine
+  local native = key == (ARCH_ALIASES[machine] or machine)
+  local cands = native and { "gdb" } or vim.list_extend({}, GDB_CANDIDATES[key] or {})
+  cands[#cands + 1] = "gdb-multiarch"
   for _, cand in ipairs(cands) do
     if vim.fn.executable(cand) == 1 and python_starts(cand) then
       return cand
     end
   end
-  -- No cross-gdb: the host one only counts if built for every target.
-  if not vim.list_contains(cands, "gdb") and vim.fn.executable("gdb") == 1 then
-    if multi_target("gdb") and python_starts("gdb") then
+  local tried = table.concat(cands, ", ")
+  if not native then
+    if vim.fn.executable("gdb") == 1 and knows_arch("gdb", key) and python_starts("gdb") then
       return "gdb"
     end
+    tried = tried .. " and the host gdb"
   end
   return nil,
-    ("no gdb for %s: tried %s and a multi-target host gdb; install one (gdb-multiarch on Debian and Void) or set vim.g.dbg_gdb"):format(
+    ("no gdb for %s: tried %s; install one (gdb-multiarch on Debian and Void) or set vim.g.dbg_gdb"):format(
       tostring(arch),
-      table.concat(cands, ", ")
+      tried
     )
 end
 

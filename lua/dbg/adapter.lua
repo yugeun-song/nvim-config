@@ -98,26 +98,19 @@ local function is_dap_gdb(argv)
 end
 
 local function gdb_children()
-  local me = vim.fn.getpid()
   local out = {}
-  local tasks = vim.uv.fs_scandir("/proc/" .. me .. "/task")
-  while tasks do
-    local tid = vim.uv.fs_scandir_next(tasks)
-    if not tid then
-      break
-    end
-    local list = io.open(("/proc/%d/task/%s/children"):format(me, tid))
-    if list then
-      for pid in list:read("*a"):gmatch("%d+") do
-        local f = io.open("/proc/" .. pid .. "/cmdline", "rb")
-        if f then
-          if is_dap_gdb(vim.split(f:read("*a"), "\0", { plain = true, trimempty = true })) then
-            out[#out + 1] = tonumber(pid)
-          end
-          f:close()
-        end
+  for _, pid in ipairs(vim.api.nvim_get_proc_children(vim.fn.getpid())) do
+    local f = io.open("/proc/" .. pid .. "/cmdline", "rb")
+    if f then
+      if is_dap_gdb(vim.split(f:read("*a"), "\0", { plain = true, trimempty = true })) then
+        out[#out + 1] = pid
       end
-      list:close()
+      f:close()
+    else
+      local proc = vim.api.nvim_get_proc(pid)
+      if proc and (proc.name or ""):find("gdb") then
+        out[#out + 1] = pid
+      end
     end
   end
   return out
