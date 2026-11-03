@@ -8,6 +8,7 @@ return {
     vim.g.neovime_manual_setup = true
   end,
   config = function()
+    ---@diagnostic disable-next-line: undefined-field
     local neovide = _G.neovide
     if not neovide then
       return

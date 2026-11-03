@@ -7,6 +7,7 @@ local function private_tmp()
     end
   end
   local dir = vim.fs.joinpath(base, tostring(vim.fn.getpid()))
+  ---@diagnostic disable-next-line: param-type-mismatch
   vim.fn.mkdir(dir, "p", tonumber("700", 8))
   vim.api.nvim_create_autocmd("VimLeavePre", {
     group = vim.api.nvim_create_augroup("clangd_tmp", { clear = true }),

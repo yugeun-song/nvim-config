@@ -28,6 +28,7 @@ return {
       {
         "<localleader>r",
         function()
+          ---@diagnostic disable-next-line: missing-parameter
           require("haskell-tools").repl.toggle()
         end,
         desc = "REPL (Package)",

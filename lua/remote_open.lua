@@ -14,6 +14,7 @@ local function record()
   if addr == "" or #vim.api.nvim_list_uis() == 0 then
     return
   end
+  ---@diagnostic disable-next-line: param-type-mismatch
   vim.fn.mkdir(M.focus_dir(), "p", tonumber("700", 8))
   local path = own_file()
   local tmp = path .. ".tmp"

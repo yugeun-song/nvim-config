@@ -63,6 +63,7 @@ function M.open(dir, files)
   if session_exists() then
     require("persistence").load()
   elseif #files == 0 then
+    ---@diagnostic disable-next-line: missing-fields
     Snacks.dashboard({ buf = current, win = vim.api.nvim_get_current_win() })
   end
   for _, file in ipairs(files) do
