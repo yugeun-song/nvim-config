@@ -2,7 +2,7 @@
 
 A [LazyVim](https://www.lazyvim.org/)-based Neovim configuration tuned for **Linux kernel / C development**, with a GDB-native debugger, a per-path LSP gate, Korean input-method integration, an on-screen keystroke display, a hand-written colorscheme and a Neovide profile.
 
-Linux is the primary target. The IME reset has Windows and macOS branches, but the kernel workflow and the Caps Lock indicator expect Linux.
+It is built on Arch Linux with Hyprland, kitty and fcitx5; [Environments](#environments) lists what changes elsewhere and what is not supported, and `:checkhealth config` reports it for the running system.
 
 ---
 
@@ -55,6 +55,28 @@ Linux is the primary target. The IME reset has Windows and macOS branches, but t
 | **Terminal (optional)** | kitty / WezTerm / foot / ghostty / rio | kitty keyboard protocol for ChKeys. |
 
 > For the kernel workflow, generate the index files from the source tree: `make C=2 compile_commands.json` (or `scripts/clang-tools/gen_compile_commands.py`), `make cscope`, `make tags`.
+
+---
+
+## Environments
+
+| Environment | What changes | Status |
+|---|---|---|
+| Arch Linux on x86_64, Hyprland, kitty or Neovide, fcitx5 | The baseline it is built and tested on. | Full |
+| Debian, Ubuntu, Fedora, openSUSE | Package names differ (`fdfind`, `gdb-multiarch`, Fedora's `/usr/<triple>/sys-root`); Debian's Mason Python packages need `python3-venv`. | Full |
+| NixOS | Mason's downloaded binaries need `nix-ld`; a QEMU-user launch needs its `sysroot` set by hand. | Full with `nix-ld` |
+| musl (Alpine, Void musl) | Mason has no musl `clangd` or `codelldb`; the distribution's are used. | Full with system tools |
+| Linux on aarch64 | Mason has no Linux arm64 `clangd`; gdb is chosen for the host architecture. | Full |
+| Sway, niri, KDE Plasma 6, X11 | `scripts/open-at.lua` raises the window through `swaymsg`, `niri`, `kdotool` or `xdotool`. | Full |
+| GNOME on Wayland | No program may raise a window, so `scripts/open-at.lua` opens the file without bringing the window forward. | Raise unsupported |
+| Other terminals, tmux, Zellij | The background follow needs OSC 11 and OSC 111 and is skipped inside tmux, screen, Zellij and nested Neovim; foot gets its IME mode sequence. | Full |
+| ibus, fcitx4 | The IME still returns to English; the `한`/`EN` indicator reads fcitx5. `langmap` assumes Dubeolsik. | Indicator unsupported |
+| No `$XDG_RUNTIME_DIR` | The focus records move to `stdpath("state")`. | Full |
+| macOS | IME through `macism`, `im-select` or `issw`, window raise through `osascript`, Discord through its socket. gdb has no Apple silicon port; QEMU user mode, kernels and the Caps Lock and IME indicators are Linux-only. | Partly |
+| Windows | Paths under `%LOCALAPPDATA%`; Mason's `.cmd` shims, GHCup's `C:\ghcup\bin` and `im-select.exe` are handled, window raise goes through PowerShell. No `:Man`, no Mason `elp`, gdb from MSYS2; QEMU user mode, kernels and the indicators are Linux-only. | Partly |
+| WSL | As Linux; the IME switches through `im-select.exe`. No window raise, and the Windows Discord client is out of reach. | Partly |
+| SSH | The background follow reaches the local terminal and the clipboard goes through OSC 52; the IME switch and the window raise would act on the remote host. | Partly |
+| Neovim 0.11 or older | nvim-treesitter's `main` branch needs 0.12. | Unsupported |
 
 ---
 
