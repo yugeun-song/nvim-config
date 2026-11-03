@@ -1,5 +1,5 @@
 -- Parts adapted from https://github.com/rebelot/kanagawa.nvim (MIT). See THIRD-PARTY-NOTICES.
-local default = "spaceduck"
+local default = "spaceduck-remix"
 -- Two lines: the confirmed colorscheme and the default it replaced; a new default drops the choice.
 local record = vim.fn.stdpath("state") .. "/colorscheme"
 
@@ -32,6 +32,11 @@ return {
     opts = {
       colorscheme = function()
         local ok, lines = pcall(vim.fn.readfile, record)
+        -- The default was "spaceduck" before its rename.
+        if ok and lines[2] == "spaceduck" then
+          lines[2] = "spaceduck-remix"
+          pcall(vim.fn.writefile, lines, record)
+        end
         local chosen = ok and lines[2] == default and (lines[1] or ""):match("%S+")
         if ok and not chosen then
           os.remove(record)

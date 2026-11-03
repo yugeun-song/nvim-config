@@ -3,10 +3,11 @@ Third-party notices
 The files below, or the stated parts of them, come from other projects. They
 stay under those projects' licenses, not under LICENSE.
 
-colors/spaceduck.lua
-    An independent re-implementation of the "spaceduck" theme by pineapplegiant
-    (https://github.com/pineapplegiant/spaceduck), reusing its color palette and
-    name. MIT License, reproduced at the end of this file.
+colors/spaceduck-remix.lua
+    An unofficial derivative of the "spaceduck" theme by Guillermo Rodriguez
+    (pineapplegiant, https://github.com/pineapplegiant/spaceduck): its palette
+    and 16 terminal colours, re-implemented in Lua for Neovim. MIT License,
+    reproduced at the end of this file.
 
 stylua.toml
     Copied from LazyVim/starter (https://github.com/LazyVim/starter); only a

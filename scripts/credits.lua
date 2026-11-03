@@ -36,7 +36,7 @@ local PROGRAMS = {
 local ADAPTED = {
   "[LazyVim starter](https://github.com/LazyVim/starter) (Apache-2.0): `init.lua`, `lua/config/lazy.lua`, `stylua.toml`.",
   "[LazyVim](https://github.com/LazyVim/LazyVim) (Apache-2.0): parts of `lua/config/autocmds.lua` and `lua/plugins/dap_languages.lua`.",
-  "[spaceduck](https://github.com/pineapplegiant/spaceduck) by pineapplegiant (MIT): the palette and terminal colours of `colors/spaceduck.lua`, an independent re-implementation.",
+  "[spaceduck](https://github.com/pineapplegiant/spaceduck) by Guillermo Rodriguez (MIT): the palette and terminal colours of `colors/spaceduck-remix.lua`, an unofficial derivative.",
   "[nvim-hlslens](https://github.com/kevinhwang91/nvim-hlslens) by kevinhwang91 (BSD-3-Clause): the lens override and search keys in `lua/plugins/hlslens.lua`.",
   "[kanagawa.nvim](https://github.com/rebelot/kanagawa.nvim) by Tommaso Laurenzi (MIT): the float and gutter recipes in `lua/plugins/colorscheme.lua`.",
   "[fastfetch](https://github.com/fastfetch-cli/fastfetch) (MIT): the system logos in `lua/dashboard_header.lua`.",

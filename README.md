@@ -13,7 +13,7 @@ Linux is the primary target. The IME reset has Windows and macOS branches, but t
 - **Low-level highlighting** for `.S`/`.s`, inline `asm("…")`, linker scripts and device trees; man pages with highlighted code.
 - **Debugger on GDB's own DAP** for userspace, QEMU user mode and Linux kernels behind a QEMU gdbstub; Python, Rust, JS/TS and Elixir use their own adapters.
 - **`lsp_filter`** turns clangd (or any server) off per file or directory.
-- **Korean IME integration**, **ChKeys** keystroke display, **`spaceduck`** colorscheme, **Neovide** profile.
+- **Korean IME integration**, **ChKeys** keystroke display, **`spaceduck-remix`** colorscheme, **Neovide** profile.
 - **Open Folder**: pick a folder in yazi from the dashboard and switch the editor to it, its session coming back.
 - **Dashboard header**: the running system's logo beside NVIM, in the logo's own colour.
 
@@ -111,7 +111,7 @@ nvim-config/
 │   │   └── man.lua           # man windows, man_code passes
 │   └── queries/              # Tree-sitter injections:
 │       └── asm/injections.scm #   C in .S/.s directives
-├── colors/spaceduck.lua      # the colorscheme
+├── colors/spaceduck-remix.lua # the colorscheme
 ├── neovide/config.toml       # Neovide's own settings (fork), linked to ~/.config/neovide
 ├── queries/asm/highlights.scm # tree-sitter-asm colours only comments and strings
 ├── scripts/
@@ -170,7 +170,7 @@ nvim-config/
         ├── lualine.lua, git_tag.lua, hlslens.lua, noice.lua # statusline, tag, search index
         ├── snacks.lua, mini-files.lua, markview.lua, diagnostics.lua, trouble.lua # pickers, explorer, markdown, floats, Trouble splits
         ├── open_folder.lua   # Open Folder entry and key, Projects with recent folders
-        ├── colorscheme.lua, neovide.lua, neovide-ime.lua # spaceduck, GUI
+        ├── colorscheme.lua, neovide.lua, neovide-ime.lua # spaceduck-remix, GUI
         ├── ansi_color.lua, discord_rpc.lua, fs_refresh.lua # baleia, presence, reload
         └── lsp_filter.lua, mason.lua # filter keys, Mason packages
 ```
@@ -270,7 +270,7 @@ heaptrack_gui, Settings → Code Navigation → Custom...: `nvim -l <home>/.conf
 
 ### UI & appearance
 
-- **`spaceduck`**: hand-written, true colour, with a C/C++ palette; no `Normal` background in the terminal, opaque under Neovide. Its 16 terminal colours are those of kitty's `spaceduck.conf`, so yazi, lazygit and `:terminal` draw in the palette. Its `vim.g.spaceduck_lualine` theme is unused (the statusline keeps LazyVim's `auto`). `colorscheme.lua` also installs `gruvbox-material` and `kanagawa.nvim`, the latter with its README's transparent floats and no gutter background. A colorscheme confirmed in `<leader>uC` stays the default across restarts (`stdpath("state")/colorscheme`); confirming `spaceduck` clears it.
+- **`spaceduck-remix`**: an unofficial derivative of [spaceduck](https://github.com/pineapplegiant/spaceduck) by Guillermo Rodriguez, hand-written in Lua on its palette with a C/C++ palette of its own; true colour, no `Normal` background in the terminal, opaque under Neovide. Its 16 terminal colours are spaceduck's kitty theme, so yazi, lazygit and `:terminal` match. `colorscheme.lua` also installs `gruvbox-material` and `kanagawa.nvim` (with its README's transparent floats and no gutter background). A colorscheme confirmed in `<leader>uC` stays the default across restarts (`stdpath("state")/colorscheme`); confirming `spaceduck-remix` clears it.
 - **Terminal background**: in the TUI the terminal's own background follows `Normal` (OSC 11), so kitty's padding matches the editor; it is restored on exit and suspend, and left alone inside tmux, screen, Zellij and `:terminal` (`lua/terminal_background.lua`).
 - **Statusline**: the full path, never shortened; an encoding/line-ending flag (`UTF-8/LF`, `UTF-8+BOM/CRLF`); after the branch, the `git describe --tags` tag (`v6.12.95`, or `v6.12.95+12` twelve commits past it), re-read after 60 s, on focus and on `:cd`, never while unfocused.
 - **hlslens**: `[current/total]` beside the nearest match after `n`/`N`/`*`/`#`/`g*`/`g#` and `/`/`?`; noice's search count is off.
@@ -483,7 +483,7 @@ Code and assets taken into this repository (notices in `THIRD-PARTY-NOTICES`):
 
 - [LazyVim starter](https://github.com/LazyVim/starter) (Apache-2.0): `init.lua`, `lua/config/lazy.lua`, `stylua.toml`.
 - [LazyVim](https://github.com/LazyVim/LazyVim) (Apache-2.0): parts of `lua/config/autocmds.lua` and `lua/plugins/dap_languages.lua`.
-- [spaceduck](https://github.com/pineapplegiant/spaceduck) by pineapplegiant (MIT): the palette and terminal colours of `colors/spaceduck.lua`, an independent re-implementation.
+- [spaceduck](https://github.com/pineapplegiant/spaceduck) by Guillermo Rodriguez (MIT): the palette and terminal colours of `colors/spaceduck-remix.lua`, an unofficial derivative.
 - [nvim-hlslens](https://github.com/kevinhwang91/nvim-hlslens) by kevinhwang91 (BSD-3-Clause): the lens override and search keys in `lua/plugins/hlslens.lua`.
 - [kanagawa.nvim](https://github.com/rebelot/kanagawa.nvim) by Tommaso Laurenzi (MIT): the float and gutter recipes in `lua/plugins/colorscheme.lua`.
 - [fastfetch](https://github.com/fastfetch-cli/fastfetch) (MIT): the system logos in `lua/dashboard_header.lua`.

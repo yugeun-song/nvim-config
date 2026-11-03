@@ -1,10 +1,8 @@
--- spaceduck colorscheme for Neovim
--- An independent Lua re-implementation of the "spaceduck" theme by pineapplegiant,
--- reusing its color palette and name.
--- Original: https://github.com/pineapplegiant/spaceduck (MIT, Copyright (c) 2020 pineapplegiant)
+-- spaceduck-remix: an unofficial Lua derivative of spaceduck by Guillermo Rodriguez (pineapplegiant), on its palette.
+-- https://github.com/pineapplegiant/spaceduck (MIT, Copyright (c) 2020 pineapplegiant). See THIRD-PARTY-NOTICES.
 
 vim.cmd("highlight clear")
-vim.g.colors_name = "spaceduck"
+vim.g.colors_name = "spaceduck-remix"
 vim.o.termguicolors = true
 
 local p = {
@@ -268,19 +266,8 @@ hi("@constant.macro.cpp", { fg = p.purple })
 hi("@function.macro.c", { fg = p.indigo })
 hi("@function.macro.cpp", { fg = p.indigo })
 
--- Assembly (x86, ARM, RISC-V — via tree-sitter-asm / nasm / gas)
-hi("@keyword.asm", { fg = p.red })
-hi("@function.builtin.asm", { fg = p.red })
-hi("@label.asm", { fg = p.blue })
-hi("@variable.builtin.asm", { fg = p.yellow })
-hi("@keyword.directive.asm", { fg = p.indigo })
-hi("@number.asm", { fg = p.purple })
+-- Assembly: tree-sitter-asm keeps comments and strings; lua/asm_highlight.lua colours the rest.
 hi("@string.asm", { fg = p.green })
-
-hi("@keyword.nasm", { fg = p.red })
-hi("@label.nasm", { fg = p.blue })
-hi("@variable.builtin.nasm", { fg = p.yellow })
-hi("@keyword.directive.nasm", { fg = p.indigo })
 
 -- Python
 hi("@keyword.python", { fg = p.red })
@@ -1437,18 +1424,3 @@ for i, color in ipairs({
 }) do
   vim.g["terminal_color_" .. (i - 1)] = color
 end
-
--- Lualine integration (set g:spaceduck_lualine for lualine.lua to pick up) ---
-
-vim.g.spaceduck_lualine = {
-  normal = {
-    a = { fg = p.bg1, bg = p.blue, gui = "bold" },
-    b = { fg = p.fg, bg = p.bg2 },
-    c = { fg = p.grey, bg = p.bg1 },
-  },
-  insert = { a = { fg = p.bg1, bg = p.green, gui = "bold" } },
-  visual = { a = { fg = p.bg1, bg = p.purple, gui = "bold" } },
-  replace = { a = { fg = p.bg1, bg = p.red, gui = "bold" } },
-  command = { a = { fg = p.bg1, bg = p.yellow, gui = "bold" } },
-  inactive = { a = { fg = p.grey, bg = p.bg1 }, b = { fg = p.grey, bg = p.bg1 }, c = { fg = p.grey, bg = p.bg1 } },
-}
