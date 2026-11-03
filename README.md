@@ -69,6 +69,13 @@ ln -s ~/workspace/nvim-config ~/.config/nvim
 nvim
 ```
 
+On Windows the config directory is `%LOCALAPPDATA%\nvim` and the data directory `%LOCALAPPDATA%\nvim-data`:
+
+```powershell
+git clone https://github.com/yugeun-song/nvim-config.git $env:LOCALAPPDATA\nvim
+nvim
+```
+
 To try it beside your own config, give it a separate `NVIM_APPNAME` (Neovim then uses `~/.config/test-nvim`, `~/.local/share/test-nvim`, …):
 
 ```zsh
@@ -76,7 +83,7 @@ git clone https://github.com/yugeun-song/nvim-config.git ~/.config/test-nvim
 NVIM_APPNAME=test-nvim nvim
 ```
 
-The first start installs lazy.nvim, the plugins, the parsers and the Mason packages from `lua/plugins/mason.lua` (into `~/.local/share/nvim/mason/`). Check with `:Lazy` and `:LazyHealth`, then restart once. Update plugins with `:Lazy update` (commits are recorded in `lazy-lock.json`) and the config with `git pull`.
+The first start installs lazy.nvim, the plugins, the parsers and the Mason packages from `lua/plugins/mason.lua` (into the data directory's `mason/`, `~/.local/share/nvim/mason/` on Linux and macOS). Check with `:Lazy` and `:LazyHealth`, then restart once. Update plugins with `:Lazy update` (commits are recorded in `lazy-lock.json`) and the config with `git pull`.
 
 Neovide reads its own settings from `~/.config/neovide`; link the ones here:
 

@@ -19,7 +19,7 @@ local function yamllint_config()
   local path = vim.fs.find({ ".yamllint", ".yamllint.yaml", ".yamllint.yml" }, { upward = true, path = dir })[1]
     or vim.env.YAMLLINT_CONFIG_FILE
   local user =
-    vim.fs.joinpath(vim.env.XDG_CONFIG_HOME or vim.fs.joinpath(vim.env.HOME, ".config"), "yamllint", "config")
+    vim.fs.joinpath(vim.env.XDG_CONFIG_HOME or vim.fs.joinpath(vim.uv.os_homedir(), ".config"), "yamllint", "config")
   if not path and vim.uv.fs_stat(user) then
     path = user
   end

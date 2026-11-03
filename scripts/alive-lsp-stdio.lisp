@@ -13,7 +13,7 @@
 (defvar *lsp-out* (sb-posix:dup 1))
 
 (sb-posix:dup2 2 1)
-(let ((null-fd (sb-posix:open "/dev/null" sb-posix:o-rdonly)))
+(let ((null-fd (sb-posix:open #+win32 "NUL" #-win32 "/dev/null" sb-posix:o-rdonly)))
   (sb-posix:dup2 null-fd 0)
   (sb-posix:close null-fd))
 

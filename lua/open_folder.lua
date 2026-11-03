@@ -24,10 +24,17 @@ function M.recent()
   end, ok and dirs or {})
 end
 
+-- macOS and Windows file systems ignore case by default.
+local fold = vim.fn.has("win32") == 1 or vim.fn.has("mac") == 1
+
+local function key(dir)
+  return fold and dir:lower() or dir
+end
+
 local function remember(dir)
   local dirs = { vim.fs.normalize(dir) }
   for _, old in ipairs(M.recent()) do
-    if old ~= dirs[1] and #dirs < 50 then
+    if key(old) ~= key(dirs[1]) and #dirs < 50 then
       dirs[#dirs + 1] = old
     end
   end

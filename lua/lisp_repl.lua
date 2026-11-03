@@ -27,14 +27,14 @@ local sbcl_init = {
 
 -- `,ld` loads in any namespace; this load handler deletes the temp files it loads.
 local racket_init = [[
-(let ([load (current-load)] [dir "%s/"])
+(let ([load (current-load)] [dir (path->string (simplify-path "%s/"))])
   (current-load
    (lambda (path name)
      (dynamic-wind
       void
       (lambda () (load path name))
       (lambda ()
-        (when (and (not name) (string-prefix? (path->string path) dir))
+        (when (and (not name) (string-prefix? (path->string (simplify-path path)) dir))
           (delete-file path)))))))]]
 
 local profiles = {
@@ -64,7 +64,7 @@ local profiles = {
       return name == "info.rkt" or name == ".git"
     end,
     cmd = function()
-      return { "racket", "-e", racket_init:format(quote(vim.fs.dirname(vim.fn.tempname()))), "-i" }
+      return { "racket", "-e", racket_init:format(quote(vim.fs.dirname(vim.fs.normalize(vim.fn.tempname())))), "-i" }
     end,
     eval = function(path)
       return (',ld "%s"\n'):format(quote(path))
@@ -166,7 +166,7 @@ local function send(text)
     return
   end
   local profile = current()
-  local path = vim.fn.tempname() .. profile.ext
+  local path = vim.fs.normalize(vim.fn.tempname()) .. profile.ext
   vim.fn.writefile(vim.split(text, "\n", { plain = true }), path)
   local label = vim.fn.strcharpart((vim.trim(text:match("[^\n]*")):gsub("%c", " ")), 0, 60)
   deliver(win, profile.eval(path, label))
