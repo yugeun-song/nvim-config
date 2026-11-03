@@ -295,7 +295,7 @@ heaptrack_gui, Settings → Code Navigation → Custom...: `nvim -l <home>/.conf
 
 ### External change detection & refresh (`lua/plugins/fs_refresh.lua`)
 
-`:checktime` runs every 2 s and on `BufEnter`/`CursorHold`, so files rewritten while Neovim keeps focus are caught: unmodified buffers reload with a notification, modified ones still raise W12, and an open mini.files re-reads unless it holds pending edits. `:FsRefresh` (`<leader>uR`) also re-scans every snacks explorer.
+`:checktime` runs every 2 s while Neovim has focus and on `BufEnter`/`CursorHold`, so files rewritten meanwhile are caught: unmodified buffers reload with a notification, modified ones still raise W12. An open mini.files re-reads when a directory it shows changes on disk, unless it holds pending edits. `:FsRefresh` (`<leader>uR`) also re-scans every snacks explorer.
 
 ### ChKeys (`lua/chkeys.lua`)
 

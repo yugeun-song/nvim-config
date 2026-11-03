@@ -15,10 +15,6 @@ local function override_lens(render, pos_list, nearest, idx, rel_idx)
   local text, chunks
   if nearest then
     local cur, total = idx, #pos_list
-    local ok, sc = pcall(vim.fn.searchcount, { recompute = true, maxcount = 0, timeout = 500 })
-    if ok and type(sc) == "table" and sc.incomplete == 0 and (sc.total or 0) > 0 then
-      cur, total = sc.current, sc.total
-    end
     if indicator ~= "" then
       text = ("[%s %d/%d]"):format(indicator, cur, total)
     else

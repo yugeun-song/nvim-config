@@ -111,31 +111,81 @@ return {
       desc = "Drop pending-edit marks of wiped mini.files buffers",
     })
 
-    local timer = assert((vim.uv or vim.loop).new_timer())
-    timer:start(
-      POLL_INTERVAL_MS,
-      POLL_INTERVAL_MS,
-      vim.schedule_wrap(function()
-        checktime()
-        if vim.fn.mode() ~= "n" or next(minifiles_dirty) ~= nil then
-          return
-        end
+    local watchers, pending = {}, false
+    local function refresh_soon()
+      if pending then
+        return
+      end
+      pending = true
+      vim.defer_fn(function()
+        pending = false
         local mf = minifiles_if_open()
-        if mf then
+        if mf and vim.fn.mode() == "n" and next(minifiles_dirty) == nil then
           minifiles_refresh(mf)
         end
-      end)
-    )
+      end, 100)
+    end
+    local function sync_watchers()
+      local mf = minifiles_if_open()
+      local wanted = {}
+      if mf then
+        local ok, state = pcall(mf.get_explorer_state)
+        for _, path in ipairs(ok and state and state.branch or {}) do
+          if vim.fn.isdirectory(path) == 1 then
+            wanted[path] = true
+          end
+        end
+      end
+      for path, handle in pairs(watchers) do
+        if not wanted[path] then
+          handle:close()
+          watchers[path] = nil
+        end
+      end
+      for path in pairs(wanted) do
+        if not watchers[path] then
+          local handle = vim.uv.new_fs_event()
+          if handle and handle:start(path, {}, vim.schedule_wrap(refresh_soon)) == 0 then
+            watchers[path] = handle
+          elseif handle then
+            handle:close()
+          end
+        end
+      end
+    end
+    vim.api.nvim_create_autocmd("User", {
+      group = group,
+      pattern = { "MiniFilesExplorerOpen", "MiniFilesBufferUpdate", "MiniFilesExplorerClose" },
+      callback = vim.schedule_wrap(sync_watchers),
+      desc = "Watch the directories an open mini.files shows",
+    })
+
+    local timer = assert(vim.uv.new_timer())
+    local function poll()
+      timer:start(POLL_INTERVAL_MS, POLL_INTERVAL_MS, vim.schedule_wrap(checktime))
+    end
+    poll()
+    vim.api.nvim_create_autocmd("FocusLost", {
+      group = group,
+      callback = function()
+        timer:stop()
+      end,
+      desc = "Pause the checktime poll while unfocused",
+    })
+    vim.api.nvim_create_autocmd("FocusGained", { group = group, callback = poll, desc = "Resume the checktime poll" })
 
     vim.api.nvim_create_autocmd("VimLeavePre", {
       group = group,
       callback = function()
-        timer:stop()
         if not timer:is_closing() then
           timer:close()
         end
+        for _, handle in pairs(watchers) do
+          handle:close()
+        end
+        watchers = {}
       end,
-      desc = "Stop the fs refresh poll timer",
+      desc = "Stop the fs refresh timer and watchers",
     })
 
     vim.api.nvim_create_user_command("FsRefresh", function()

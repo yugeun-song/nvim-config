@@ -104,19 +104,27 @@ function M.close_calls(buf)
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   local extended = 0
 
-  for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(buf, -1, 0, -1, { details = true })) do
-    local d = mark[4]
-    if d and d.hl_group == "manBold" and d.end_row == mark[2] and d.end_col then
-      local line = lines[mark[2] + 1]
-      if line and line:sub(d.end_col + 1, d.end_col + 2) == "()" then
-        extended = extended + 1
-        pcall(vim.api.nvim_buf_set_extmark, buf, ns, mark[2], d.end_col, {
-          end_row = mark[2],
-          end_col = d.end_col + 2,
-          hl_group = "manBold",
-          priority = CALL_PRIORITY,
-          strict = false,
-        })
+  for row, line in ipairs(lines) do
+    local init = 1
+    while true do
+      local s = line:find("()", init, true)
+      if not s then
+        break
+      end
+      init = s + 2
+      local col = s - 1
+      for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(buf, -1, { row - 1, 0 }, { row - 1, col }, { details = true })) do
+        local d = mark[4]
+        if d and d.hl_group == "manBold" and d.end_row == row - 1 and d.end_col == col then
+          extended = extended + 1
+          pcall(vim.api.nvim_buf_set_extmark, buf, ns, row - 1, col, {
+            end_row = row - 1,
+            end_col = col + 2,
+            hl_group = "manBold",
+            priority = CALL_PRIORITY,
+            strict = false,
+          })
+        end
       end
     end
   end

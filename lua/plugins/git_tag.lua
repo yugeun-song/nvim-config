@@ -2,18 +2,16 @@ if vim.fn.executable("git") ~= 1 then
   return {}
 end
 
-local uv = vim.uv or vim.loop
-if not uv then
-  return {}
-end
+local uv = vim.uv
 
 local ICON = ""
-local TTL_MS = 10000
+local TTL_MS = 60000
 local FALLBACK_FG = "#5ccc96"
 
 local roots = {}
 local tags = {}
 local fg
+local focused = true
 
 local function repo_root(dir)
   if dir == nil or dir == "" then
@@ -113,7 +111,7 @@ local function git_tag()
       tags[root] = entry
     end
 
-    if not entry.running and (entry.stamp == nil or uv.now() - entry.stamp > TTL_MS) then
+    if focused and not entry.running and (entry.stamp == nil or uv.now() - entry.stamp > TTL_MS) then
       refresh(root)
     end
 
@@ -136,21 +134,30 @@ local function tag_color()
   return { fg = fg }
 end
 
-local group = vim.api.nvim_create_augroup("LualineGitTag", { clear = true })
-vim.api.nvim_create_autocmd({ "FocusGained", "DirChanged" }, {
-  group = group,
-  callback = function()
-    for _, entry in pairs(tags) do
-      entry.stamp = nil
-    end
-  end,
-})
-vim.api.nvim_create_autocmd("ColorScheme", {
-  group = group,
-  callback = function()
-    fg = nil
-  end,
-})
+local function watch()
+  local group = vim.api.nvim_create_augroup("LualineGitTag", { clear = true })
+  vim.api.nvim_create_autocmd({ "FocusGained", "DirChanged" }, {
+    group = group,
+    callback = function()
+      focused = true
+      for _, entry in pairs(tags) do
+        entry.stamp = nil
+      end
+    end,
+  })
+  vim.api.nvim_create_autocmd("FocusLost", {
+    group = group,
+    callback = function()
+      focused = false
+    end,
+  })
+  vim.api.nvim_create_autocmd("ColorScheme", {
+    group = group,
+    callback = function()
+      fg = nil
+    end,
+  })
+end
 
 return {
   {
@@ -161,6 +168,7 @@ return {
         return
       end
 
+      watch()
       table.insert(section, math.min(2, #section + 1), {
         git_tag,
         color = tag_color,
