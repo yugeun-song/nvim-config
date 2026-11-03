@@ -92,9 +92,23 @@ vim.api.nvim_create_autocmd("FileType", {
   desc = "Indent C/C++ per .clang-format, else 8-col tabs if the file uses tabs, else 4 spaces; .editorconfig still wins",
 })
 
+local function project_compile_db(file)
+  for dir in vim.fs.parents(file) do
+    for _, name in ipairs({ "compile_commands.json", "compile_flags.txt" }) do
+      if vim.uv.fs_stat(dir .. "/" .. name) or vim.uv.fs_stat(dir .. "/build/" .. name) then
+        return true
+      end
+    end
+  end
+  return false
+end
+
 local function lsp_include(buf)
   local method = "textDocument/definition"
-  if #vim.lsp.get_clients({ bufnr = buf, method = method }) == 0 then
+  if
+    not project_compile_db(vim.api.nvim_buf_get_name(buf))
+    or #vim.lsp.get_clients({ bufnr = buf, method = method }) == 0
+  then
     return nil
   end
   local results = vim.lsp.buf_request_sync(buf, method, function(client)
@@ -111,9 +125,13 @@ local function lsp_include(buf)
 end
 
 local function indexed_includes(buf, spelled)
+  local dir = vim.fs.dirname(vim.api.nvim_buf_get_name(buf))
   local suffix = "/" .. spelled
   local found, seen = {}, {}
-  local function add(path)
+  local function add(path, base)
+    if base and path:sub(1, 1) ~= "/" then
+      path = base .. "/" .. path
+    end
     path = vim.fs.normalize(vim.fn.fnamemodify(path, ":p"))
     if not seen[path] and vim.endswith(path, suffix) and vim.uv.fs_stat(path) then
       seen[path] = true
@@ -129,14 +147,25 @@ local function indexed_includes(buf, spelled)
       add(tag.filename)
     end
   end
-  local list = #found == 0
-    and vim.fs.find("cscope.files", { upward = true, path = vim.fs.dirname(vim.api.nvim_buf_get_name(buf)) })[1]
+  if #found > 0 then
+    return found
+  end
+  local db = vim.fs.find("cscope.out", { upward = true, path = dir })[1]
+  if db and vim.fn.executable("cscope") == 1 then
+    local base = vim.fs.dirname(db)
+    local pattern = spelled:gsub("[^%w/_-]", ".")
+    local res = vim.system({ "cscope", "-d", "-L", "-f", db, "-7", pattern }, { cwd = base, text = true }):wait(3000)
+    for line in vim.gsplit(res.stdout or "", "\n", { trimempty = true }) do
+      add(line:match("^%S+"), base)
+    end
+    return found
+  end
+  local list = vim.fs.find("cscope.files", { upward = true, path = dir })[1]
   if list then
-    local dir = vim.fs.dirname(list)
     for line in io.lines(list) do
       line = line:gsub('^"(.*)"$', "%1")
       if line:sub(1, 1) ~= "-" and vim.endswith("/" .. line, suffix) then
-        add(line:sub(1, 1) == "/" and line or dir .. "/" .. line)
+        add(line, vim.fs.dirname(list))
       end
     end
   end
@@ -212,9 +241,9 @@ vim.api.nvim_create_autocmd("FileType", {
           vim.api.nvim_echo({ { tostring(err):match("E%d+:.*") or tostring(err), "ErrorMsg" } }, true, {})
         end
       end
-    end, { buffer = args.buf, desc = "Go to file; #include through clangd, tags or cscope.files" })
+    end, { buffer = args.buf, desc = "Go to file; #include through clangd, tags or cscope" })
   end,
-  desc = "gf on #include opens the header that clangd, tags or cscope.files place inside the project",
+  desc = "gf on #include opens the header the project's compile database, tags or cscope place in the project",
 })
 
 local cscope_loaded = {}

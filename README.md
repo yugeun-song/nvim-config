@@ -180,7 +180,7 @@ lazy.nvim (stable) is cloned on first run and imports LazyVim plus `lua/plugins/
 - **clangd**: `--background-index --clang-tidy --completion-style=detailed --header-insertion=never --pch-storage=disk --background-index-priority=background --limit-results=200 --limit-references=2000 --log=error -j=<half the CPUs>`, inlay hints off.
 - **cscope**: `cscope_maps.nvim` with Telescope under `<leader>i`; reading a `*.c`/`*.h`/`*.S` file adds the nearest `cscope.out` above it, once per session.
 - **`<C-]>`**: the LSP `tagfunc` is cleared in C/C++ buffers, so it jumps through `tags` (`make tags`).
-- **`gf`** on an `#include` line follows the project's own tools: clangd's header when it is in the project or a system one, else a matching `tags` file entry or `cscope.files` line (a picker when several match), else the built-in `gf`.
+- **`gf`** on an `#include` line follows the project's own tools: with a project `compile_commands.json` or `compile_flags.txt`, clangd's header when it is in the project or a system one; else a matching `tags` file entry, `cscope.out` file or `cscope.files` line (a picker when several match); else the built-in `gf`.
 - **All `#if` branches**: `<leader>uB` (off by default; the choice is saved and followed at once by every running nvim) colours every preprocessor branch and answers hover, definition and completion in the inactive ones, through an extra clangd per inactive branch that parses the shown file with that branch forced on (its diagnostics are dropped).
 
 ### Low-level highlighting (`lua/plugins/asm.lua`, `after/queries/`)
