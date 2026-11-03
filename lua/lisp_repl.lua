@@ -225,4 +225,16 @@ function M.stop()
   end
 end
 
+function M.map_keys(exe, buffer_desc)
+  local function map(mode, lhs, rhs, desc)
+    vim.keymap.set(mode, lhs, rhs, { buffer = true, desc = desc })
+  end
+  map("n", "<localleader>r", M.toggle, "REPL: toggle " .. exe)
+  map("n", "<localleader>e", M.eval_toplevel, "REPL: evaluate top-level form")
+  map("x", "<localleader>e", M.eval_selection, "REPL: evaluate selection")
+  map("n", "<localleader>b", M.eval_buffer, buffer_desc)
+  map("n", "<localleader>i", M.interrupt, "REPL: interrupt")
+  map("n", "<localleader>q", M.stop, "REPL: quit " .. exe)
+end
+
 return M
