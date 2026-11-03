@@ -246,13 +246,11 @@ function M.show_log()
   for _, e in ipairs(M.history) do
     lines[#lines + 1] = ("  %s  %-5s %s"):format(e.at, e.level, e.text)
   end
-  local log = vim.fn.stdpath("state") .. "/dap.log"
-  local fd = io.open(log, "r")
+  local log = vim.fs.joinpath(vim.fn.stdpath("log"), "dap.log")
+  local fd = io.open(log, "rb")
   if fd then
-    local all = {}
-    for line in fd:lines() do
-      all[#all + 1] = line
-    end
+    fd:seek("set", math.max(0, fd:seek("end") - 65536))
+    local all = vim.split(fd:read("*a"), "\n", { plain = true, trimempty = true })
     fd:close()
     lines[#lines + 1] = ""
     lines[#lines + 1] = "  " .. log .. " (last 60 lines)"

@@ -136,8 +136,8 @@ end
 local function multi_target(bin)
   local key = identity("targets", bin)
   if probed[key] == nil then
-    local conf = vim.fn.system({ bin, "--configuration" })
-    probed[key] = vim.v.shell_error == 0 and conf:find("--enable-targets=all", 1, true) ~= nil
+    local probe = vim.system({ bin, "--configuration" }, { text = true }):wait(5000)
+    probed[key] = probe.code == 0 and (probe.stdout or ""):find("--enable-targets=all", 1, true) ~= nil
   end
   return probed[key]
 end
@@ -148,7 +148,7 @@ local function python_starts(bin)
     return probed[key]
   end
   local ok, proc = pcall(vim.system, { bin, "-nx", "-batch", "-ex", "python gdb.VERSION" }, { text = true })
-  local res = ok and proc:wait() or { code = -1, signal = 0, stderr = (tostring(proc):gsub("^[^\n]-:%d+: ", "")) }
+  local res = ok and proc:wait(5000) or { code = -1, signal = 0, stderr = (tostring(proc):gsub("^[^\n]-:%d+: ", "")) }
   probed[key] = res.code == 0 and (res.signal or 0) == 0
   if probed[key] then
     return true
@@ -215,8 +215,8 @@ function M.gdb_supports_dap(bin)
   end
   local key = identity("dap", bin)
   if probed[key] == nil then
-    local ver = vim.fn.system({ bin, "--version" })
-    local major = vim.v.shell_error == 0 and tonumber((ver:match("GNU gdb%D*(%d+)"))) or nil
+    local res = vim.system({ bin, "--version" }, { text = true }):wait(5000)
+    local major = res.code == 0 and tonumber(((res.stdout or ""):match("GNU gdb%D*(%d+)"))) or nil
     probed[key] = (major or 0) >= 14
   end
   if not probed[key] then
