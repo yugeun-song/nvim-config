@@ -7,6 +7,7 @@ local MASON = vim.fs.joinpath(vim.fn.stdpath("data"), "mason")
 -- finds Mason's Windows .cmd shims only by full name, which exepath gives.
 local function mason_bin(name)
   local path = vim.fn.exepath(vim.fs.joinpath(MASON, "bin", name))
+
   return path ~= "" and path or name
 end
 
@@ -27,6 +28,7 @@ return {
           local venv = vim.fs.joinpath(MASON, "packages", "debugpy", "venv")
           local python =
             vim.fn.exepath(vim.fs.joinpath(venv, vim.fn.has("win32") == 1 and "Scripts" or "bin", "python"))
+
           require("dap-python").setup(python ~= "" and python or nil)
         end,
       },
@@ -44,6 +46,7 @@ return {
 
       for _, kind in ipairs({ "node", "chrome", "msedge" }) do
         local pwa = "pwa-" .. kind
+
         if not dap.adapters[pwa] then
           dap.adapters[pwa] = {
             type = "server",
@@ -52,10 +55,12 @@ return {
             executable = { command = command, args = { "${port}" } },
           }
         end
+
         -- A launch.json written for VS Code names the adapter without the prefix.
         if not dap.adapters[kind] then
           dap.adapters[kind] = function(cb, config)
             local native = dap.adapters[pwa]
+
             config.type = pwa
             if type(native) == "function" then
               native(cb, config)
@@ -68,6 +73,7 @@ return {
 
       local filetypes = { "javascript", "typescript", "javascriptreact", "typescriptreact" }
       local vscode = require("dap.ext.vscode")
+
       vscode.type_to_filetypes["node"] = filetypes
       vscode.type_to_filetypes["pwa-node"] = filetypes
 
@@ -75,6 +81,7 @@ return {
         if not dap.configurations[ft] then
           -- node strips TypeScript types itself; enums and namespaces need tsx or ts-node.
           local runtimeExecutable = nil
+
           if ft:find("typescript") then
             for _, runner in ipairs({ "tsx", "ts-node" }) do
               if vim.fn.executable(runner) == 1 then
@@ -83,6 +90,7 @@ return {
               end
             end
           end
+
           dap.configurations[ft] = {
             {
               type = "pwa-node",
@@ -119,6 +127,7 @@ return {
     -- ElixirLS ships the adapter (a mason package); nvim-dap drives it as a mix task.
     opts = function()
       local dap = require("dap")
+
       if not dap.adapters.mix_task then
         dap.adapters.mix_task = {
           type = "executable",
@@ -126,6 +135,7 @@ return {
           args = {},
         }
       end
+
       if not dap.configurations.elixir then
         dap.configurations.elixir = {
           {
@@ -167,19 +177,24 @@ return {
             local settings = require("rustaceanvim.config.server").load_rust_analyzer_settings(project_root, {
               default_settings = default_settings,
             })
+
             local detached = not project_root
               or not vim.fs.find({ "Cargo.toml", "rust-project.json" }, { path = project_root, upward = true })[1]
+
             if detached then
               local ra = settings["rust-analyzer"]
+
               ra.cargo = vim.tbl_deep_extend("force", ra.cargo or {}, {
                 extraEnv = { RUSTC_BOOTSTRAP = "1" },
                 autoreload = false,
               })
             end
+
             return settings
           end,
         },
       }
+
       vim.g.rustaceanvim = vim.tbl_deep_extend("keep", vim.g.rustaceanvim or {}, opts)
     end,
   },

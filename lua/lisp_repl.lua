@@ -46,9 +46,11 @@ local profiles = {
     end,
     cmd = function()
       local cmd = { "sbcl", "--noinform" }
+
       for _, form in ipairs(sbcl_init) do
         vim.list_extend(cmd, { "--eval", form })
       end
+
       return cmd
     end,
     eval = function(path, label)
@@ -77,7 +79,9 @@ local profiles = {
 
 local function current()
   local ft = vim.bo.filetype
+
   states[ft] = states[ft] or {}
+
   return profiles[ft], states[ft]
 end
 
@@ -95,36 +99,48 @@ end
 
 local function split(buf)
   local cur = vim.api.nvim_get_current_win()
+
   vim.cmd(buf and "botright 12split" or "botright 12new")
   local win = vim.api.nvim_get_current_win()
+
   if buf then
     vim.api.nvim_win_set_buf(win, buf)
   end
+
   return win, cur
 end
 
 ---@return integer? win the REPL window, opened if needed
 function M.start()
   local profile, state = current()
+
   if running(state) then
     local win = window(state)
+
     if not win then
       local cur
+
       win, cur = split(state.buf)
       vim.api.nvim_set_current_win(cur)
     end
+
     return win
   end
+
   if vim.fn.executable(profile.exe) ~= 1 then
     vim.notify(profile.exe .. " is not on PATH", vim.log.levels.ERROR)
+
     return
   end
+
   if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
     vim.api.nvim_buf_delete(state.buf, { force = true })
   end
+
   local root = vim.fs.root(0, profile.root)
   local cmd = profile.cmd()
   local win, cur = split()
+
   state.buf = vim.api.nvim_get_current_buf()
   state.job = vim.fn.jobstart(cmd, {
     term = true,
@@ -134,14 +150,17 @@ function M.start()
       state.job = nil
     end,
   })
+
   vim.bo[state.buf].buflisted = false
   vim.api.nvim_set_current_win(cur)
+
   return win
 end
 
 function M.toggle()
   local _, state = current()
   local win = running(state) and window(state)
+
   if win then
     pcall(vim.api.nvim_win_close, win, false)
   else
@@ -151,6 +170,7 @@ end
 
 local function deliver(win, line)
   local _, state = current()
+
   -- A terminal window follows new output only while its cursor is on the last line.
   vim.api.nvim_win_set_cursor(win, { vim.api.nvim_buf_line_count(state.buf), 0 })
   vim.fn.chansend(state.job, line)
@@ -159,53 +179,70 @@ end
 local function send(text)
   if not text or not text:find("%S") then
     vim.notify("Nothing to evaluate", vim.log.levels.WARN)
+
     return
   end
+
   local win = M.start()
+
   if not win then
     return
   end
+
   local profile = current()
   local path = vim.fs.normalize(vim.fn.tempname()) .. profile.ext
+
   vim.fn.writefile(vim.split(text, "\n", { plain = true }), path)
   local label = vim.fn.strcharpart((vim.trim(text:match("[^\n]*")):gsub("%c", " ")), 0, 60)
+
   deliver(win, profile.eval(path, label))
 end
 
 function M.eval_toplevel()
   local ok, node = pcall(vim.treesitter.get_node, { ignore_injections = true })
+
   if ok and node then
     local root_id = node:tree():root():id()
     local parent = node:parent()
+
     while parent and parent:id() ~= root_id do
       node = parent
       parent = node:parent()
     end
+
     if node:id() ~= root_id then
       return send(vim.treesitter.get_node_text(node, 0))
     end
   end
+
   vim.notify("No form under the cursor", vim.log.levels.WARN)
 end
 
 function M.eval_selection()
   local lines = vim.fn.getregion(vim.fn.getpos("v"), vim.fn.getpos("."), { type = vim.fn.mode() })
+
   vim.api.nvim_feedkeys(vim.keycode("<Esc>"), "nx", false)
   send(table.concat(lines, "\n"))
 end
 
 function M.eval_buffer()
   local profile = current()
+
   if not profile.run then
     return send(table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n"))
   end
+
   local file = vim.api.nvim_buf_get_name(0)
+
   if file == "" then
     vim.notify("Write the buffer to a file first", vim.log.levels.WARN)
+
     return
   end
+
   vim.cmd("update")
   local win = M.start()
+
   if win then
     deliver(win, profile.run(vim.fn.fnamemodify(file, ":p")))
   end
@@ -213,6 +250,7 @@ end
 
 function M.interrupt()
   local _, state = current()
+
   if running(state) then
     vim.fn.chansend(state.job, "\3")
   end
@@ -220,6 +258,7 @@ end
 
 function M.stop()
   local _, state = current()
+
   if running(state) then
     vim.fn.jobstop(state.job)
   end
@@ -229,6 +268,7 @@ function M.map_keys(exe, buffer_desc)
   local function map(mode, lhs, rhs, desc)
     vim.keymap.set(mode, lhs, rhs, { buffer = true, desc = desc })
   end
+
   map("n", "<localleader>r", M.toggle, "REPL: toggle " .. exe)
   map("n", "<localleader>e", M.eval_toplevel, "REPL: evaluate top-level form")
   map("x", "<localleader>e", M.eval_selection, "REPL: evaluate selection")

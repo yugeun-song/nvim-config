@@ -26,12 +26,15 @@ local function read_caps()
   if caps_busy then
     return
   end
+
   caps_busy = true
   uv.fs_open(caps_path, "r", 438, function(err, fd)
     if err or not fd then
       caps_busy = false
+
       return
     end
+
     uv.fs_read(fd, 8, 0, function(rerr, data)
       uv.fs_close(fd)
       caps_busy = false
@@ -51,6 +54,7 @@ local function read_fcitx()
   if fcitx_busy then
     return
   end
+
   fcitx_busy = true
   local ok = pcall(vim.system, { "fcitx5-remote", "-n" }, { text = true }, function(res)
     fcitx_busy = false
@@ -60,6 +64,7 @@ local function read_fcitx()
       end)
     end
   end)
+
   if not ok then
     fcitx_busy = false
   end
@@ -68,18 +73,23 @@ end
 local function start()
   vim.g.im_state, vim.g.caps_state = state.im, state.caps
   local timers = {}
+
   if caps_path then
     timers[#timers + 1] = { assert(uv.new_timer()), 200, read_caps }
   end
+
   if has_fcitx5 then
     timers[#timers + 1] = { assert(uv.new_timer()), 1000, vim.schedule_wrap(read_fcitx) }
   end
+
   local function run()
     for _, t in ipairs(timers) do
       t[1]:start(0, t[2], t[3])
     end
   end
+
   local group = vim.api.nvim_create_augroup("IMState", { clear = true })
+
   vim.api.nvim_create_autocmd("FocusLost", {
     group = group,
     callback = function()
@@ -88,6 +98,7 @@ local function start()
       end
     end,
   })
+
   vim.api.nvim_create_autocmd("FocusGained", { group = group, callback = run })
   if has_fcitx5 then
     vim.api.nvim_create_autocmd({ "InsertEnter", "InsertLeave", "CursorHold", "CursorHoldI" }, {
@@ -95,6 +106,7 @@ local function start()
       callback = read_fcitx,
     })
   end
+
   vim.api.nvim_create_autocmd("VimLeavePre", {
     group = group,
     callback = function()
@@ -103,6 +115,7 @@ local function start()
       end
     end,
   })
+
   run()
 end
 
@@ -132,6 +145,7 @@ return {
           padding = { left = 1, right = 1 },
         })
       end
+
       if has_fcitx5 then
         table.insert(opts.sections.lualine_x, caps_path and 2 or 1, {
           function()

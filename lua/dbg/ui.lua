@@ -25,10 +25,12 @@ M.groups = {
 local function pc_background()
   for _, source in ipairs({ "DiffAdd", "Visual", "CursorLine" }) do
     local ok, hl = pcall(vim.api.nvim_get_hl, 0, { name = source, link = false })
+
     if ok and hl and hl.bg then
       return hl.bg
     end
   end
+
   return nil
 end
 
@@ -38,7 +40,9 @@ function M.setup_highlights()
       vim.api.nvim_set_hl(0, name, spec)
     end
   end
+
   local bg = pc_background()
+
   vim.api.nvim_set_hl(0, "DbgPcLine", bg and { bg = bg } or { link = "Visual" })
   vim.api.nvim_set_hl(0, "DbgBranchTaken", { link = "DiagnosticOk" })
   vim.api.nvim_set_hl(0, "DbgBranchUnknown", { link = "Comment" })
@@ -50,6 +54,7 @@ function M.unstyle_window(win)
   if not (win and vim.api.nvim_win_is_valid(win)) then
     return
   end
+
   for opt, value in pairs({
     winbar = "",
     winhighlight = "",
@@ -74,15 +79,18 @@ function M.banner(title, width, right)
   local room = width - vim.fn.strdisplaywidth(label) - vim.fn.strdisplaywidth(tail) - 2
   local left = math.max(2, math.floor(room / 2))
   local rest = math.max(2, room - left)
+
   return ("%s%s%s%s"):format(string.rep("─", left), label, string.rep("─", rest), tail)
 end
 
 function M.banner_hl(lnum, line, title)
   local s, e = line:find("%[ " .. vim.pesc(title) .. " %]")
   local hls = { { lnum, 0, #line, "DbgPanelRule" } }
+
   if s then
     hls[#hls + 1] = { lnum, s - 1, e, "DbgPanelTitle" }
   end
+
   return hls
 end
 
@@ -90,6 +98,7 @@ function M.style_window(win, name)
   if not (win and vim.api.nvim_win_is_valid(win)) then
     return
   end
+
   vim.wo[win].list = false
   vim.wo[win].number = false
   vim.wo[win].relativenumber = false
@@ -107,11 +116,13 @@ end
 function M.pad(text, width)
   text = tostring(text or "")
   local short = width - vim.fn.strdisplaywidth(text)
+
   return short > 0 and (text .. string.rep(" ", short)) or text
 end
 
 function M.report(lines, title, max_width, min_height)
   local buf = vim.api.nvim_create_buf(false, true)
+
   vim.bo[buf].bufhidden = "wipe"
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].modifiable = false
@@ -127,7 +138,9 @@ function M.report(lines, title, max_width, min_height)
     border = "rounded",
     title = " " .. title .. " ",
   })
+
   vim.keymap.set("n", "q", "<cmd>close<cr>", { buffer = buf, nowait = true })
+
   return win
 end
 

@@ -32,27 +32,33 @@ end
 
 function M.default_sysroot(arch)
   local m = M.meta(arch)
+
   for _, dir in ipairs(m and m.sysroot or {}) do
     if vim.fn.isdirectory(dir) == 1 then
       return dir
     end
   end
+
   return nil
 end
 
 function M.arches()
   local out = vim.tbl_keys(ARCH)
+
   table.sort(out)
+
   return out
 end
 
 function M.binary(arch)
   local m = M.meta(arch)
+
   for _, name in ipairs(m and m.qemu or {}) do
     if vim.fn.executable(name) == 1 then
       return name
     end
   end
+
   return nil
 end
 
@@ -61,6 +67,7 @@ local serial = 0
 
 function M.socket_path()
   serial = serial + 1
+
   return vim.fs.joinpath(vim.fn.stdpath("run"), ("qemu-gdb-%d-%d.sock"):format(vim.fn.getpid(), serial))
 end
 
@@ -68,6 +75,7 @@ end
 -- on_ready / on_fail(reason) fires.
 function M.spawn(cfg, on_ready, on_fail)
   local settled = false
+
   local function settle(fn, ...)
     if not settled then
       settled = true
@@ -76,20 +84,27 @@ function M.spawn(cfg, on_ready, on_fail)
   end
 
   local m = M.meta(cfg.arch)
+
   if not m then
     return settle(on_fail, "no usermode QEMU known for arch " .. tostring(cfg.arch))
   end
+
   local qemu = M.binary(cfg.arch)
+
   if not qemu then
     return settle(on_fail, m.qemu[1] .. " is not installed")
   end
+
   local sock = cfg.qemu_socket
+
   vim.uv.fs_unlink(sock)
 
   local cmd = { qemu, "-g", sock }
+
   if cfg.sysroot and cfg.sysroot ~= "" then
     vim.list_extend(cmd, { "-L", cfg.sysroot })
   end
+
   cmd[#cmd + 1] = cfg.program
   vim.list_extend(cmd, cfg.qemu_args or {})
 
@@ -106,16 +121,20 @@ function M.spawn(cfg, on_ready, on_fail)
       jobs[sock] = nil
       vim.uv.fs_unlink(sock)
       local tail = last_err ~= "" and (": " .. last_err) or ""
+
       settle(on_fail, qemu .. " exited (" .. code .. ") before the gdbstub was ready" .. tail)
     end,
   })
+
   if jid <= 0 then
     return settle(on_fail, "could not start " .. qemu)
   end
+
   jobs[sock] = jid
 
   local deadline = vim.uv.now() + 8000
   local timer = assert(vim.uv.new_timer())
+
   timer:start(
     50,
     50,
@@ -124,6 +143,7 @@ function M.spawn(cfg, on_ready, on_fail)
         if not timer:is_closing() then
           timer:close()
         end
+
         if not settled and vim.uv.fs_stat(sock) then
           settle(on_ready)
         elseif not settled then
@@ -137,10 +157,12 @@ end
 
 function M.stop(sock)
   local jid = jobs[sock]
+
   if jid then
     jobs[sock] = nil
     pcall(vim.fn.jobstop, jid)
   end
+
   vim.uv.fs_unlink(sock)
 end
 
@@ -149,6 +171,7 @@ function M.stop_all()
     pcall(vim.fn.jobstop, jid)
     vim.uv.fs_unlink(sock)
   end
+
   jobs = {}
 end
 

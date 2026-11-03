@@ -15,9 +15,11 @@ function M.candidates(cb)
     if not rows then
       return cb(nil, why)
     end
+
     for _, c in ipairs(rows) do
       c.busy = c.dbg and c.dbg:match("^attached") ~= nil
     end
+
     cb(rows)
   end)
 end
@@ -41,11 +43,13 @@ end
 function M.report(cb)
   M.candidates(function(cands, why)
     local lines = {}
+
     if not cands then
       lines[#lines + 1] = why
     elseif #cands == 0 then
       lines[#lines + 1] = "No guest is running.  Start one: kbuildlab run TREE"
     end
+
     for i, c in ipairs(cands or {}) do
       lines[#lines + 1] = ("[%d] %s  %s  pid %d"):format(i, c.label or "?", c.qbin or "qemu", c.pid or 0)
       local rows = {
@@ -57,11 +61,14 @@ function M.report(cb)
         { "ssh", c.ssh and ("localhost:" .. c.ssh) or "-" },
         { "debugger", c.dbg or "-" },
       }
+
       for _, r in ipairs(rows) do
         lines[#lines + 1] = ("    %s%s"):format(ui.pad(r[1], 12), tostring(r[2] or "-"))
       end
+
       lines[#lines + 1] = ""
     end
+
     cb(lines)
   end)
 end
@@ -92,9 +99,11 @@ function M.manual(cb, port)
     if not trees then
       return notify.error(why)
     end
+
     if #trees == 0 then
       return notify.error("No tree is registered: kbuildlab add DIR, or kbuildlab init DIR --arch ARCH")
     end
+
     vim.ui.select(trees, {
       prompt = "Which tree does the guest run?",
       format_item = function(t)
@@ -109,11 +118,13 @@ function M.manual(cb, port)
       if not t then
         return
       end
+
       vim.ui.input({ prompt = "gdbstub port: ", default = tostring(port or t.gdb_port or "") }, function(p)
         p = tonumber(p)
         if not p then
           return
         end
+
         cb(build({ label = t.label, id = t.id, tree = t.id, port = p, target = "localhost:" .. p }))
       end)
     end)
@@ -125,9 +136,11 @@ end
 function M.load_firmware_symbols(session, done)
   done = done or function() end
   local cfg = session and session.config or {}
+
   if not (cfg.boot == "uboot" and cfg.fwsym and vim.uv.fs_stat(cfg.fwsym)) then
     return done()
   end
+
   require("dbg.gdbq").run("add-symbol-file " .. cfg.fwsym .. " -o 0", function()
     session.dbg_firmware_symbols = cfg.fwsym
     done()
@@ -138,23 +151,29 @@ end
 -- auto` in the console runs on. A breakpoint set before the slide is known arms its own catcher on the crossing.
 function M.arm_kaslr(session)
   local cfg = session and session.config or {}
+
   if not cfg.kgdb_auto then
     return
   end
+
   local gdbq = require("dbg.gdbq")
   local caps = require("dbg.caps")
 
   caps.detect(session, function(c)
     if not (c and c.commands and c.commands.kearly) then
       notify.warn("This target has no `kearly`; early-boot symbols are not available")
+
       return
     end
+
     local on = { session = session }
+
     local function status()
       gdbq.run("kearly status", function(out)
         local text = vim.trim(tostring(out or ""))
         local offset = text:match("offset%(PA%-VA%)=(%S+)")
         local enabled = text:match("enabled=(%S+)")
+
         notify.info(("kearly: enabled=%s offset=%s"):format(tostring(enabled), tostring(offset)))
       end, on)
     end
@@ -165,9 +184,11 @@ function M.arm_kaslr(session)
     local steps = { "kearly on", count, "kearly bootbreak arm", count }
     local outs = {}
     local index = 0
+
     local function next_step()
       index = index + 1
       local cmd = steps[index]
+
       if not cmd then
         if (tonumber(outs[4]) or 0) <= (tonumber(outs[2]) or 0) then
           status()
@@ -175,10 +196,13 @@ function M.arm_kaslr(session)
             require("dbg.registers").render()
             require("dbg.session").probe()
           end)
+
           return
         end
+
         local dap = require("dap")
         local key = "dbg_kearly_" .. tostring(session.id)
+
         dap.listeners.after.event_stopped[key] = function(s)
           if s == session then
             dap.listeners.after.event_stopped[key] = nil
@@ -192,19 +216,25 @@ function M.arm_kaslr(session)
             end
           end
         end
+
         dap.set_session(session)
         require("dbg.session").cont()
+
         return
       end
+
       gdbq.run(cmd, function(out)
         local text = vim.trim(tostring(out or ""))
+
         outs[index] = text
         if text:find("[Ee]rror") or text:find("Undefined") then
           notify.warn(cmd .. ": " .. (text:match("[^\n]+") or text))
         end
+
         vim.schedule(next_step)
       end, on)
     end
+
     notify.info("Arming the early-boot symbolizer")
     next_step()
   end)
@@ -219,6 +249,7 @@ function M.stop_watchdog()
       watchdog:stop()
       watchdog:close()
     end)
+
     watchdog = nil
   end
 end
@@ -228,11 +259,13 @@ end
 function M.after_attach(session)
   local dap = require("dap")
   local key = "dbg_kernel_" .. tostring(session.id)
+
   local function forget()
     dap.listeners.after.event_stopped[key] = nil
     dap.listeners.after.event_terminated[key] = nil
     dap.listeners.after.disconnect[key] = nil
   end
+
   dap.listeners.after.event_stopped[key] = function(s)
     if s == session then
       forget()
@@ -241,11 +274,13 @@ function M.after_attach(session)
       end)
     end
   end
+
   dap.listeners.after.event_terminated[key] = function(s)
     if s == session then
       forget()
     end
   end
+
   dap.listeners.after.disconnect[key] = dap.listeners.after.event_terminated[key]
   M.watch_target(session)
 end
@@ -254,28 +289,36 @@ function M.watch_target(session)
   M.stop_watchdog()
   local cfg = session and session.config or {}
   local pid = cfg.qemu_pid
+
   if not pid then
     return
   end
+
   local timer = assert(vim.uv.new_timer())
+
   watchdog = timer
   timer:start(
     2000,
     2000,
     vim.schedule_wrap(function()
       local dap = require("dap")
+
       if dap.session() ~= session then
         M.stop_watchdog()
+
         return
       end
+
       if vim.uv.kill(pid, 0) == 0 then
         return
       end
+
       M.stop_watchdog()
       notify.error(("The QEMU process (pid %s) is gone; the gdbstub died with it"):format(pid))
       pcall(function()
         dap.disconnect({ terminateDebuggee = false })
       end)
+
       -- Close the session, not the windows: what the guest printed stays readable.
       vim.defer_fn(function()
         if require("dap").session() then
@@ -293,12 +336,16 @@ function M.start(opts)
   M.candidates(function(cands, why)
     if not cands then
       notify.error(why)
+
       return
     end
+
     local items = {}
+
     for _, c in ipairs(cands) do
       items[#items + 1] = c
     end
+
     items[#items + 1] = "manual"
 
     vim.ui.select(items, {
@@ -307,17 +354,20 @@ function M.start(opts)
         if item == "manual" then
           return "a guest kbuildlab did not start: name its tree and port"
         end
+
         return M.describe(item)
       end,
     }, function(choice)
       if not choice then
         return
       end
+
       -- Attach where the kernel is, or arm early boot; the gdb, the trust for the kernel's scripts and what
       -- gdbtools is told come from kbuildlab when the adapter starts.
       local function launch(cfg, early)
         cfg.kgdb_auto = early and true or false
         local kaslr = cfg.kaslr_state
+
         if not early and kaslr == "unknown" then
           notify.warn("KASLR state is unknown here; if symbols do not line up, attach in early-boot mode")
         elseif not early and kaslr == "on" then
@@ -327,14 +377,17 @@ function M.start(opts)
               .. "is measured: run `kearly on` then `kearly calibrate <symbol>` in the gdb console, or attach in early-boot mode."
           )
         end
+
         require("dap").run(cfg)
       end
 
       local function run(cfg)
         if opts.kgdb_auto ~= nil then
           launch(cfg, opts.kgdb_auto)
+
           return
         end
+
         local kaslr = cfg.kaslr_state or "unknown"
         local modes = {
           { early = false, label = "Attach now — wherever the kernel has got to" },
@@ -344,6 +397,7 @@ function M.start(opts)
               .. (kaslr ~= "off" and (", KASLR " .. kaslr) or ""),
           },
         }
+
         vim.ui.select(modes, {
           prompt = "How to attach",
           format_item = function(m)
@@ -355,18 +409,25 @@ function M.start(opts)
           end
         end)
       end
+
       if choice == "manual" then
         M.manual(run)
+
         return
       end
+
       if choice.busy then
         notify.error("This gdbstub already has a client attached; detach it first.")
+
         return
       end
+
       if not choice.tree then
         M.manual(run, choice.port)
+
         return
       end
+
       run(build(choice))
     end)
   end)

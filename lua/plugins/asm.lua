@@ -6,23 +6,30 @@ return {
     -- fires only on a '#' that leads its line, never on a trailing asm comment.
     vim.treesitter.query.add_predicate("at-line-start?", function(match, _, source, predicate)
       local nodes = match[predicate[2]]
+
       if not nodes or #nodes == 0 then
         return true
       end
+
       for _, node in ipairs(nodes) do
         local srow, scol = node:range()
+
         if scol > 0 then
           if type(source) ~= "number" then
             return false
           end
+
           local line = vim.api.nvim_buf_get_lines(source, srow, srow + 1, false)[1] or ""
+
           if line:sub(1, scol):find("%S") then
             return false
           end
         end
       end
+
       return true
     end, { force = true })
+
     require("asm_highlight").setup()
   end,
 }

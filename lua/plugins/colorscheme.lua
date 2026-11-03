@@ -13,6 +13,7 @@ return {
       overrides = function(colors)
         local ui = colors.theme.ui
         local dark = { bg = ui.bg_m3, fg = ui.fg_dim }
+
         return {
           NormalFloat = { bg = "none" },
           FloatBorder = { bg = "none" },
@@ -32,15 +33,19 @@ return {
     opts = {
       colorscheme = function()
         local ok, lines = pcall(vim.fn.readfile, record)
+
         -- The default was "spaceduck" before its rename.
         if ok and lines[2] == "spaceduck" then
           lines[2] = "spaceduck-remix"
           pcall(vim.fn.writefile, lines, record)
         end
+
         local chosen = ok and lines[2] == default and (lines[1] or ""):match("%S+")
+
         if ok and not chosen then
           os.remove(record)
         end
+
         if not (chosen and pcall(vim.cmd.colorscheme, chosen)) then
           vim.cmd.colorscheme(default)
         end
@@ -58,6 +63,7 @@ return {
               if not item then
                 return
               end
+
               if item.text == default then
                 os.remove(record)
               else

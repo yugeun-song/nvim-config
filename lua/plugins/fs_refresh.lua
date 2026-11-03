@@ -6,18 +6,23 @@ local function checktime()
   if vim.fn.getcmdwintype() ~= "" or vim.bo.buftype == "nofile" then
     return
   end
+
   pcall(vim.cmd.checktime)
 end
 
 local function minifiles_if_open()
   local mf = package.loaded["mini.files"]
+
   if mf == nil then
     return nil
   end
+
   local ok, state = pcall(mf.get_explorer_state)
+
   if not ok or state == nil then
     return nil
   end
+
   return mf
 end
 
@@ -29,19 +34,24 @@ local function snacks_explorer_refresh()
   if package.loaded["snacks"] == nil then
     return 0
   end
+
   local ok, count = pcall(function()
     local pickers = Snacks.picker.get({ source = "explorer", tab = false })
     local Tree = require("snacks.explorer.tree")
     local Actions = require("snacks.explorer.actions")
+
     for _, picker in ipairs(pickers) do
       Tree:refresh(picker:cwd())
       Actions.update(picker, { refresh = true })
     end
+
     return #pickers
   end)
+
   if ok then
     return count
   end
+
   return 0
 end
 
@@ -59,20 +69,24 @@ return {
 
     local reloaded = {}
     local flush_scheduled = false
+
     vim.api.nvim_create_autocmd("FileChangedShellPost", {
       group = group,
       callback = function(args)
         if vim.bo[args.buf].modified then
           return
         end
+
         table.insert(reloaded, vim.fn.fnamemodify(args.file, ":~:."))
         if flush_scheduled then
           return
         end
+
         flush_scheduled = true
         vim.defer_fn(function()
           local msg = #reloaded == 1 and "Reloaded from disk: " .. reloaded[1]
             or ("Reloaded %d buffers from disk"):format(#reloaded)
+
           reloaded = {}
           flush_scheduled = false
           vim.notify(msg, vim.log.levels.INFO)
@@ -95,6 +109,7 @@ return {
       pattern = "MiniFilesBufferUpdate",
       callback = function(args)
         local buf = args.data.buf_id
+
         vim.defer_fn(function()
           minifiles_dirty[buf] = nil
         end, 100)
@@ -112,39 +127,48 @@ return {
     })
 
     local watchers, pending = {}, false
+
     local function refresh_soon()
       if pending then
         return
       end
+
       pending = true
       vim.defer_fn(function()
         pending = false
         local mf = minifiles_if_open()
+
         if mf and vim.fn.mode() == "n" and next(minifiles_dirty) == nil then
           minifiles_refresh(mf)
         end
       end, 100)
     end
+
     local function sync_watchers()
       local mf = minifiles_if_open()
       local wanted = {}
+
       if mf then
         local ok, state = pcall(mf.get_explorer_state)
+
         for _, path in ipairs(ok and state and state.branch or {}) do
           if vim.fn.isdirectory(path) == 1 then
             wanted[path] = true
           end
         end
       end
+
       for path, handle in pairs(watchers) do
         if not wanted[path] then
           handle:close()
           watchers[path] = nil
         end
       end
+
       for path in pairs(wanted) do
         if not watchers[path] then
           local handle = vim.uv.new_fs_event()
+
           if handle and handle:start(path, {}, vim.schedule_wrap(refresh_soon)) == 0 then
             watchers[path] = handle
           elseif handle then
@@ -153,6 +177,7 @@ return {
         end
       end
     end
+
     vim.api.nvim_create_autocmd("User", {
       group = group,
       pattern = { "MiniFilesExplorerOpen", "MiniFilesBufferUpdate", "MiniFilesExplorerClose" },
@@ -161,9 +186,11 @@ return {
     })
 
     local timer = assert(vim.uv.new_timer())
+
     local function poll()
       timer:start(POLL_INTERVAL_MS, POLL_INTERVAL_MS, vim.schedule_wrap(checktime))
     end
+
     poll()
     vim.api.nvim_create_autocmd("FocusLost", {
       group = group,
@@ -172,6 +199,7 @@ return {
       end,
       desc = "Pause the checktime poll while unfocused",
     })
+
     vim.api.nvim_create_autocmd("FocusGained", { group = group, callback = poll, desc = "Resume the checktime poll" })
 
     vim.api.nvim_create_autocmd("VimLeavePre", {
@@ -180,9 +208,11 @@ return {
         if not timer:is_closing() then
           timer:close()
         end
+
         for _, handle in pairs(watchers) do
           handle:close()
         end
+
         watchers = {}
       end,
       desc = "Stop the fs refresh timer and watchers",
@@ -191,14 +221,18 @@ return {
     vim.api.nvim_create_user_command("FsRefresh", function()
       pcall(vim.cmd.checktime)
       local refreshed = { "buffers" }
+
       if snacks_explorer_refresh() > 0 then
         table.insert(refreshed, "explorer")
       end
+
       local mf = minifiles_if_open()
+
       if mf then
         minifiles_refresh(mf)
         table.insert(refreshed, "mini.files")
       end
+
       vim.notify("Refreshed " .. table.concat(refreshed, ", "), vim.log.levels.INFO)
     end, { desc = "Reload buffers and refresh open file explorers from disk" })
 

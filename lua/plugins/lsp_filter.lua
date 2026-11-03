@@ -2,6 +2,7 @@ return {
   "neovim/nvim-lspconfig",
   opts = function(_, opts)
     require("lsp_filter").setup()
+
     return opts
   end,
   keys = {

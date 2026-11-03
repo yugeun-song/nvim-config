@@ -90,22 +90,29 @@ local color_count = 0
 local function parse_key(seq)
   local mods = {}
   local main = seq
+
   if seq:sub(1, 1) == "<" and seq:sub(-1) == ">" then
     local inner = seq:sub(2, -2)
+
     while true do
       local m, rest = inner:match("^([CASMD])%-(.+)$")
+
       if not m then
         break
       end
+
       table.insert(mods, m)
       inner = rest
     end
+
     main = inner
   end
+
   main = SPECIAL_LABEL[main] or main
   if #main == 1 then
     main = main:upper()
   end
+
   return mods, main
 end
 
@@ -113,10 +120,13 @@ local function build_label(mods, main)
   if #mods == 0 then
     return main
   end
+
   local parts = {}
+
   for _, m in ipairs(mods) do
     table.insert(parts, MOD_NAME[m] or m)
   end
+
   return table.concat(parts, " + ") .. " + " .. main
 end
 
@@ -135,6 +145,7 @@ local function standalone_modifier(main)
       return pair[2]
     end
   end
+
   return nil
 end
 
@@ -142,12 +153,15 @@ local function is_internal_keycode(s)
   if #s <= 1 then
     return false
   end
+
   for i = 1, #s do
     local b = s:byte(i)
+
     if b < 0x61 or b > 0x7A then
       return false
     end
   end
+
   return true
 end
 
@@ -155,11 +169,15 @@ local function pick_color()
   if color_count <= 1 then
     return 1
   end
+
   local idx = math.random(color_count)
+
   if idx == state.last_color then
     idx = (idx % color_count) + 1
   end
+
   state.last_color = idx
+
   return idx
 end
 
@@ -187,11 +205,13 @@ local function close_per_key_windows()
       pcall(vim.api.nvim_win_close, w, true)
     end
   end
+
   for _, b in ipairs(state.per_bufs) do
     if vim.api.nvim_buf_is_valid(b) then
       pcall(vim.api.nvim_buf_delete, b, { force = true })
     end
   end
+
   state.per_wins = {}
   state.per_bufs = {}
 end
@@ -200,9 +220,11 @@ local function close_window()
   if state.win and vim.api.nvim_win_is_valid(state.win) then
     pcall(vim.api.nvim_win_close, state.win, true)
   end
+
   if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
     pcall(vim.api.nvim_buf_delete, state.buf, { force = true })
   end
+
   state.win = nil
   state.buf = nil
   close_per_key_windows()
@@ -226,6 +248,7 @@ local function ensure_buf()
   if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
     return
   end
+
   state.buf = vim.api.nvim_create_buf(false, true)
   vim.bo[state.buf].bufhidden = "wipe"
 end
@@ -236,6 +259,7 @@ local function place_window(inner_w)
   local outer_h = inner_h + 2
   local col = math.max(0, vim.o.columns - config.margin_right - outer_w)
   local row = math.max(0, vim.o.lines - config.margin_bottom - outer_h)
+
   if state.win and vim.api.nvim_win_is_valid(state.win) then
     pcall(vim.api.nvim_win_set_config, state.win, {
       relative = "editor",
@@ -258,6 +282,7 @@ local function place_window(inner_w)
       noautocmd = true,
       zindex = config.zindex,
     })
+
     pcall(
       vim.api.nvim_set_option_value,
       "winhighlight",
@@ -269,8 +294,10 @@ end
 
 local function render_per_key()
   local n = #state.keys
+
   if n == 0 then
     close_per_key_windows()
+
     return
   end
 
@@ -284,17 +311,20 @@ local function render_per_key()
     local k = state.keys[i]
     local label = k.label
     local has_indicator = i == n and config.im_indicator and vim.g.im_state == "한"
+
     if has_indicator then
       label = label .. " 한"
     end
 
     local text = pad .. label .. pad
     local inner_w = vim.fn.strdisplaywidth(text)
+
     if inner_w < 3 then
       inner_w = 3
     end
 
     local outer_w = inner_w + 2
+
     col_cursor = col_cursor - outer_w
     if col_cursor < 0 then
       break
@@ -338,9 +368,11 @@ local function render_per_key()
         noautocmd = true,
         zindex = config.zindex,
       })
+
       if not ok then
         break
       end
+
       win = w
       state.per_wins[slot] = win
       pcall(
@@ -360,6 +392,7 @@ local function render_per_key()
 
     if has_indicator then
       local ind_start = config.pad_x + #k.label
+
       pcall(vim.api.nvim_buf_set_extmark, buf, state.ns, 0, ind_start, {
         end_row = 0,
         end_col = ind_start + #" 한",
@@ -373,13 +406,17 @@ local function render_per_key()
 
   for j = slot + 1, #state.per_wins do
     local w = state.per_wins[j]
+
     if w and vim.api.nvim_win_is_valid(w) then
       pcall(vim.api.nvim_win_close, w, true)
     end
+
     local b = state.per_bufs[j]
+
     if b and vim.api.nvim_buf_is_valid(b) then
       pcall(vim.api.nvim_buf_delete, b, { force = true })
     end
+
     state.per_wins[j] = nil
     state.per_bufs[j] = nil
   end
@@ -392,33 +429,42 @@ local function render()
     else
       render_per_key()
     end
+
     return
   end
 
   if #state.keys == 0 then
     close_window()
+
     return
   end
+
   ensure_buf()
 
   local labels, spans = {}, {}
   local pos = 0
+
   for i, k in ipairs(state.keys) do
     if i > 1 then
       pos = pos + #config.separator
     end
+
     local s = pos
+
     pos = pos + #k.label
     table.insert(labels, k.label)
     table.insert(spans, { s = s, e = pos, color = k.color })
   end
+
   local text = table.concat(labels, config.separator)
   local pad = string.rep(" ", config.pad_x)
 
   local indicator = ""
+
   if config.im_indicator and vim.g.im_state == "한" then
     indicator = " 한"
   end
+
   local indicator_bytes = #indicator
 
   local line = pad .. text .. indicator .. pad
@@ -430,6 +476,7 @@ local function render()
   vim.api.nvim_buf_clear_namespace(state.buf, state.ns, 0, -1)
 
   local off = config.pad_x
+
   for _, sp in ipairs(spans) do
     pcall(vim.api.nvim_buf_set_extmark, state.buf, state.ns, 0, off + sp.s, {
       end_row = 0,
@@ -441,6 +488,7 @@ local function render()
 
   if indicator_bytes > 0 then
     local ind_start = config.pad_x + #text
+
     pcall(vim.api.nvim_buf_set_extmark, state.buf, state.ns, 0, ind_start, {
       end_row = 0,
       end_col = ind_start + indicator_bytes,
@@ -450,9 +498,11 @@ local function render()
   end
 
   local inner_w = vim.fn.strdisplaywidth(line)
+
   if inner_w < 3 then
     inner_w = 3
   end
+
   place_window(inner_w)
 end
 
@@ -461,17 +511,20 @@ local function push_key(label)
   while #state.keys > config.maxkeys do
     table.remove(state.keys, 1)
   end
+
   render()
   arm_timer()
 end
 
 local function mode_excluded()
   local m = vim.api.nvim_get_mode().mode:sub(1, 1)
+
   for _, x in ipairs(config.excluded_modes) do
     if m == x then
       return true
     end
   end
+
   return false
 end
 
@@ -479,21 +532,27 @@ local function should_skip(seq)
   if seq == "" then
     return true
   end
+
   if seq:match("Mouse") then
     return true
   end
+
   if seq:match("^<Scroll") then
     return true
   end
+
   if seq:match("^<Cursor") then
     return true
   end
+
   if seq:match("^<Drag") then
     return true
   end
+
   if seq:match("^<Focus") then
     return true
   end
+
   return false
 end
 
@@ -503,13 +562,17 @@ local function on_key(_, typed)
   if not config.enabled then
     return
   end
+
   if not typed or typed == "" then
     return
   end
+
   if mode_excluded() or vim.list_contains(config.hide_cmdtypes, vim.fn.getcmdtype()) then
     return
   end
+
   local seq = vim.fn.keytrans(typed)
+
   if should_skip(seq) then
     return
   end
@@ -521,6 +584,7 @@ local function on_key(_, typed)
         push_key("Esc")
       end)
     end
+
     state.esc_pending = true
     state.esc_timer = state.esc_timer or assert(uv.new_timer())
     state.esc_timer:stop()
@@ -532,10 +596,12 @@ local function on_key(_, typed)
         push_key("Esc")
       end)
     )
+
     return
   end
 
   local alt_prefix = state.esc_pending
+
   if alt_prefix then
     state.esc_pending = false
     cancel_esc_timer()
@@ -545,11 +611,14 @@ local function on_key(_, typed)
     if not config.enabled then
       return
     end
+
     local mods, main = parse_key(seq)
 
     local mod_label = standalone_modifier(main)
+
     if mod_label then
       push_key(mod_label)
+
       return
     end
 
@@ -560,11 +629,14 @@ local function on_key(_, typed)
     if is_internal_keycode(main) then
       if #mods > 0 then
         local parts = {}
+
         for _, m in ipairs(mods) do
           table.insert(parts, MOD_NAME[m] or m)
         end
+
         push_key(table.concat(parts, " + "))
       end
+
       return
     end
 
@@ -574,9 +646,11 @@ end
 
 local function get_fg(name)
   local ok, hl = pcall(vim.api.nvim_get_hl, 0, { name = name, link = false })
+
   if ok and hl and hl.fg then
     return hl.fg
   end
+
   return nil
 end
 
@@ -587,14 +661,17 @@ local function setup_highlights()
 
   color_count = 0
   local seen = {}
+
   for _, src in ipairs(config.color_sources) do
     local fg = get_fg(src)
+
     if fg and not seen[fg] then
       seen[fg] = true
       color_count = color_count + 1
       vim.api.nvim_set_hl(0, "ChKeysColor" .. color_count, { fg = fg, bold = config.bold })
     end
   end
+
   if color_count == 0 then
     vim.api.nvim_set_hl(0, "ChKeysColor1", { bold = config.bold, default = true })
     color_count = 1
@@ -618,6 +695,7 @@ function M.toggle()
   else
     M.enable()
   end
+
   vim.notify("ChKeys: " .. (config.enabled and "on" or "off"))
 end
 
@@ -626,18 +704,21 @@ function M.setup(opts)
   if state.ns then
     return
   end
+
   math.randomseed(os.time())
   state.ns = vim.api.nvim_create_namespace("user_chkeys")
   setup_highlights()
   if config.enabled then
     vim.on_key(on_key, state.ns)
   end
+
   vim.api.nvim_create_autocmd("ColorScheme", {
     callback = function()
       setup_highlights()
     end,
     desc = "ChKeys: re-link highlights after colorscheme change",
   })
+
   vim.api.nvim_create_user_command("ChKeysToggle", function()
     M.toggle()
   end, {})

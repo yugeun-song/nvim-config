@@ -5,6 +5,7 @@ return {
   cmd = "BaleiaColorize",
   config = function()
     local baleia = require("baleia").setup({})
+
     vim.api.nvim_create_user_command("BaleiaColorize", function()
       baleia.once(vim.api.nvim_get_current_buf())
     end, { desc = "Interpret ANSI SGR escape codes in this buffer as colors" })

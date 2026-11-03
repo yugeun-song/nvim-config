@@ -1,12 +1,16 @@
 local function private_tmp()
   local base = vim.fs.joinpath(vim.fn.stdpath("cache"), "clangd-tmp")
+
   for name in vim.fs.dir(base) do
     local pid = tonumber(name)
+
     if pid and pid ~= vim.fn.getpid() and vim.uv.kill(pid, 0) ~= 0 then
       pcall(vim.fs.rm, vim.fs.joinpath(base, name), { recursive = true, force = true })
     end
   end
+
   local dir = vim.fs.joinpath(base, tostring(vim.fn.getpid()))
+
   ---@diagnostic disable-next-line: param-type-mismatch
   vim.fn.mkdir(dir, "p", tonumber("700", 8))
   vim.api.nvim_create_autocmd("VimLeavePre", {
@@ -15,6 +19,7 @@ local function private_tmp()
       pcall(vim.fs.rm, dir, { recursive = true, force = true })
     end,
   })
+
   return dir
 end
 
@@ -26,6 +31,7 @@ return {
     local half_cpus = math.max(1, math.floor(cpu_count / 2))
 
     local tmp = private_tmp()
+
     opts.servers = opts.servers or {}
     opts.servers.clangd = {
       cmd = {

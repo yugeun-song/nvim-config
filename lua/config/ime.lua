@@ -2,6 +2,7 @@ local M = {}
 
 function M.english_command()
   local candidates
+
   if vim.fn.has("mac") == 1 then
     candidates = {
       { "macism", "com.apple.keylayout.ABC" },
@@ -13,17 +14,20 @@ function M.english_command()
   else
     local fcitx = { { "fcitx5-remote", "-c" }, { "fcitx-remote", "-c" } }
     local ibus = { { "ibus", "engine", vim.g.ibus_english_engine or "xkb:us::eng" } }
+
     if (vim.env.XMODIFIERS or ""):find("ibus") then
       candidates = vim.list_extend(ibus, fcitx)
     else
       candidates = vim.list_extend(fcitx, ibus)
     end
   end
+
   for _, cmd in ipairs(candidates) do
     if vim.fn.executable(cmd[1]) == 1 then
       return cmd
     end
   end
+
   return nil
 end
 

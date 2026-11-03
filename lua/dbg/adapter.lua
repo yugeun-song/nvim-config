@@ -14,12 +14,16 @@ function M.attach(session)
   if session.dbg_adapter then
     return
   end
+
   local st = { held = {} }
+
   session.dbg_adapter = st
   local original = session.request
+
   session.request = function(self, command, args, cb)
     if st.starting and not PASS_WHILE_STARTING[command] then
       local co, main = coroutine.running()
+
       if not cb and co and not main then
         st.held[#st.held + 1] = {
           command,
@@ -28,27 +32,36 @@ function M.attach(session)
             coroutine.resume(co, err, resp)
           end,
         }
+
         return coroutine.yield()
       end
+
       st.held[#st.held + 1] = { command, args, cb }
+
       return
     end
+
     if command == "configurationDone" and not st.started then
       st.starting = true
     end
+
     return original(self, command, args, cb)
   end
+
   st.release = function()
     st.starting, st.started = false, true
     local held = st.held
+
     st.held = {}
     if session.closed then
       return
     end
+
     for _, item in ipairs(held) do
       original(session, item[1], item[2], item[3])
     end
   end
+
   session:request(
     "evaluate",
     { expression = "python print(__import__('os').getpid())", context = "repl" },
@@ -56,14 +69,18 @@ function M.attach(session)
       st.pid = not err and tonumber(((resp or {}).result or ""):match("%d+")) or nil
     end
   )
+
   local class_close = session.close
+
   session.close = function(self)
     if st.waiting or not st.exiting or not alive(st.pid) then
       return class_close(self)
     end
+
     st.waiting = true
     local deadline = vim.uv.now() + EXIT_GRACE_MS
     local timer = assert(vim.uv.new_timer())
+
     timer:start(
       50,
       50,
@@ -71,6 +88,7 @@ function M.attach(session)
         if alive(st.pid) and vim.uv.now() < deadline then
           return
         end
+
         timer:stop()
         timer:close()
         if not self.closed then
@@ -87,40 +105,50 @@ local function is_dap_gdb(argv)
       return true
     end
   end
+
   return false
 end
 
 local function gdb_children()
   local out = {}
+
   for _, pid in ipairs(vim.api.nvim_get_proc_children(vim.fn.getpid())) do
     local f = io.open("/proc/" .. pid .. "/cmdline", "rb")
+
     if f then
       if is_dap_gdb(vim.split(f:read("*a"), "\0", { plain = true, trimempty = true })) then
         out[#out + 1] = pid
       end
+
       f:close()
     else
       local proc = vim.api.nvim_get_proc(pid)
+
       if proc and (proc.name or ""):find("gdb") then
         out[#out + 1] = pid
       end
     end
   end
+
   return out
 end
 
 -- A hung gdb ignores SIGTERM as well, hence the SIGKILL after it.
 function M.kill_leftovers()
   local left = gdb_children()
+
   if #left == 0 then
     return
   end
+
   for _, pid in ipairs(left) do
     vim.uv.kill(pid, "sigterm")
   end
+
   vim.wait(500, function()
     return #gdb_children() == 0
   end, 20)
+
   for _, pid in ipairs(gdb_children()) do
     vim.uv.kill(pid, "sigkill")
   end
@@ -132,6 +160,7 @@ function M.setup(dap)
       M.attach(session)
     end
   end
+
   for _, command in ipairs({ "launch", "attach" }) do
     dap.listeners.after[command]["dbg_adapter"] = function(session)
       if session.dbg_adapter then
@@ -139,6 +168,7 @@ function M.setup(dap)
       end
     end
   end
+
   -- Runs before nvim-dap's own handler of the answer, which closes the session.
   dap.listeners.before.disconnect["dbg_adapter"] = function(session, err)
     if session.dbg_adapter and not err then

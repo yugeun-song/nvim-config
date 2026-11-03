@@ -17,6 +17,7 @@ local function projects()
 end
 
 local keys = { { "<leader>fp", projects, desc = "Projects" } }
+
 if yazi then
   table.insert(keys, { "<leader>fo", pick, desc = "Open Folder" })
 end
@@ -25,11 +26,13 @@ return {
   "folke/snacks.nvim",
   opts = function(_, opts)
     local items = opts.dashboard.preset.keys
+
     for _, item in ipairs(items) do
       if item.key == "p" then
         item.action = projects
       end
     end
+
     if yazi then
       table.insert(items, 1, { icon = "\u{f07c} ", key = "o", desc = "Open Folder", action = pick })
     end

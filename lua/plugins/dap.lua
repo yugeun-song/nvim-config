@@ -5,19 +5,25 @@ local last_answer = {}
 local function input_path(prompt, default)
   return function()
     local seed = last_answer[prompt] or default()
+
     while true do
       local answer = vim.fn.input(prompt, seed, "file")
+
       if vim.trim(answer) == "" then
         return nil
       end
+
       answer = vim.fn.expand(answer)
       if vim.fn.filereadable(answer) == 1 and vim.fn.executable(answer) == 1 then
         last_answer[prompt] = answer
+
         return answer
       end
+
       local why = vim.fn.isdirectory(answer) == 1 and "is a directory"
         or vim.fn.filereadable(answer) == 0 and "no such file"
         or "not executable"
+
       vim.api.nvim_echo({ { ("%s %s"):format(answer, why), "WarningMsg" } }, false, {})
       seed = answer
     end
@@ -28,11 +34,14 @@ local function split_args(line)
   local out, cur, started = {}, {}, false
   local i, n = 1, #line
   local win = vim.fn.has("win32") == 1
+
   local function escape_at(at)
     return line:sub(at, at) == "\\" and at < n and (not win or line:sub(at + 1, at + 1) == '"')
   end
+
   while i <= n do
     local c = line:sub(i, i)
+
     if c == " " or c == "\t" then
       if started then
         out[#out + 1] = table.concat(cur)
@@ -41,6 +50,7 @@ local function split_args(line)
     elseif c == "'" then
       started = true
       local close = line:find("'", i + 1, true) or (n + 1)
+
       cur[#cur + 1] = line:sub(i + 1, close - 1)
       i = close
     elseif c == '"' then
@@ -50,6 +60,7 @@ local function split_args(line)
         if escape_at(i) then
           i = i + 1
         end
+
         cur[#cur + 1] = line:sub(i, i)
         i = i + 1
       end
@@ -61,22 +72,28 @@ local function split_args(line)
       started = true
       cur[#cur + 1] = c
     end
+
     i = i + 1
   end
+
   if started then
     out[#out + 1] = table.concat(cur)
   end
+
   return out
 end
 
 local function input_args(prompt)
   return function()
     local line = vim.fn.input(prompt, last_answer[prompt] or "", "file")
+
     last_answer[prompt] = line
     local list = split_args(line)
+
     if #list == 0 then
       return nil
     end
+
     return list
   end
 end
@@ -195,13 +212,17 @@ return {
         "<leader>db",
         function()
           local dap = require("dap")
+
           if require("dbg.context").is_low_level() then
             local ok, reason = require("dbg.caps").supports("line_breakpoints")
+
             if not ok then
               require("dbg.notify").warn(reason .. " (<leader>dF)")
+
               return
             end
           end
+
           dap.toggle_breakpoint()
         end,
         desc = "Debug: toggle breakpoint",
@@ -257,25 +278,35 @@ return {
         function()
           local dap = require("dap")
           local session = dap.session()
+
           if not (session and require("dbg.context").is_low_level(session)) then
             dap.run_to_cursor()
+
             return
           end
+
           if not session.stopped_thread_id then
             require("dbg.notify").info("Run to cursor needs the target stopped")
+
             return
           end
+
           local where
+
           if vim.bo.buftype == "" then
             where = { source = vim.api.nvim_buf_get_name(0), line = vim.api.nvim_win_get_cursor(0)[1] }
           elseif vim.bo.filetype == "dap-disassembly" then
             local addr = vim.api.nvim_get_current_line():match("^%s*(0x%x+)")
+
             where = addr and { address = addr }
           end
+
           if not where then
             require("dbg.notify").warn("Run to cursor needs a source line or a disassembly address")
+
             return
           end
+
           require("dbg.breakpoints").run_to(session, where)
         end,
         desc = "Debug: run to cursor",
@@ -341,10 +372,13 @@ return {
         function()
           local dap = require("dap")
           local session = dap.session()
+
           if not session then
             dap.terminate()
+
             return
           end
+
           require("dbg.allstop").halt(session, function()
             dap.terminate()
           end)
@@ -379,14 +413,17 @@ return {
           -- A panel has no expression under the cursor; ask for one there.
           local in_panel = require("dbg.panel").is_debug_ft(vim.bo.filetype) or vim.bo.buftype ~= ""
           local word = vim.fn.expand("<cexpr>")
+
           if in_panel or vim.trim(word) == "" then
             vim.ui.input({ prompt = "Watch expression: ", default = vim.trim(word) }, function(answer)
               if answer and vim.trim(answer) ~= "" then
                 require("dap-view").add_expr(vim.trim(answer))
               end
             end)
+
             return
           end
+
           require("dap-view").add_expr()
         end,
         mode = { "n", "x" },
@@ -412,6 +449,7 @@ return {
           if require("dbg.context").block_if_managed("The disassembly view") then
             return
           end
+
           vim.cmd("DapDisasm")
         end,
         desc = "Debug: disassembly",
@@ -472,12 +510,15 @@ return {
       -- one. Wrap the commands rather than rebinding keys.
       pcall(function()
         local commands = require("bufferline.commands")
+
         for _, name in ipairs({ "go_to", "cycle", "pick", "move", "exec" }) do
           local original = commands[name]
+
           if type(original) == "function" and not commands["dbg_wrapped_" .. name] then
             commands["dbg_wrapped_" .. name] = true
             commands[name] = function(...)
               require("dbg.layout").unfix_for_buffer_switch()
+
               return original(...)
             end
           end
@@ -494,14 +535,18 @@ return {
       -- nvim-dap warns "Source missing" on every stop without a line table, which
       -- is most of early boot. The session says so once and shows disassembly.
       local dap_utils = require("dap.utils")
+
       if not dap_utils.dbg_quiet_source_missing then
         local report = dap_utils.notify
+
         rawset(dap_utils, "notify", function(msg, ...)
           if type(msg) == "string" and msg:find("^Source missing, cannot jump to frame") and context.is_low_level() then
             return
           end
+
           return report(msg, ...)
         end)
+
         dap_utils.dbg_quiet_source_missing = true
       end
 
@@ -509,6 +554,7 @@ return {
       -- and the kernel-only commands stay inert without a vmlinux.
       dap.adapters.gdb = function(callback, config)
         local notify = require("dbg.notify")
+
         -- Cross-arch usermode (dbg_qemuser or an external target): the ELF gives the arch, which picks gdb,
         -- sysroot and QEMU. Host-arch configs set neither.
         if config.program and (config.dbg_qemuser or config.target) then
@@ -517,12 +563,15 @@ return {
             config.qemu_socket = require("dbg.qemuser").socket_path()
             config.target = config.qemu_socket
           end
+
           if config.sysroot == nil then
             config.sysroot = require("dbg.qemuser").default_sysroot(config.arch)
           end
         end
+
         -- The host's own gdb debugs host programs; another arch needs one built for it.
         local bin, why = config.gdb_bin, nil
+
         if not bin then
           if config.arch then
             bin, why = discover.gdb_for(config.arch)
@@ -530,32 +579,45 @@ return {
             bin = "gdb"
           end
         end
+
         if not bin then
           notify.error(why)
+
           return
         end
+
         local dap_ok, dap_why = discover.gdb_supports_dap(bin)
+
         if not dap_ok then
           notify.error(dap_why)
+
           return
         end
+
         local args = { "-q", "-i", "dap", "-iex", "set pagination off" }
+
         -- Without the sysroot gdb resolves nothing past the main binary; QEMU
         -- gets the same root by -L.
         if config.sysroot and config.sysroot ~= "" then
           table.insert(args, "-iex")
           table.insert(args, "set sysroot " .. config.sysroot)
         end
+
         local tool, terr = discover.gdbtools_loader()
+
         if terr then
           notify.error(terr)
+
           return
         end
+
         if tool then
           table.insert(args, "-ex")
           table.insert(args, "source " .. tool)
         end
+
         local spec = { type = "executable", command = bin, args = args }
+
         if config.dbg_qemuser and config.qemu_socket then
           -- A gdb attached to a QEMU that never started would wait forever; say why and start nothing.
           require("dbg.qemuser").spawn(config, function()
@@ -573,23 +635,32 @@ return {
       dap.adapters.gdb_kernel = function(callback, config)
         local notify = require("dbg.notify")
         local kbl = config.kbl or {}
+
         if not (type(kbl.tree) == "string" and kbl.tree ~= "" and tonumber(kbl.port)) then
           notify.error("This kernel configuration names no kbuildlab tree and port; start it with :DbgKernel")
+
           return
         end
+
         local args = { "attach", kbl.tree, "--port", tostring(kbl.port), "--json" }
         -- "Attach now" leaves gdbtools inert until `kearly on`.
         local env = { GDBTOOLS_AUTO = config.kgdb_auto and "1" or "0" }
+
         discover.kbuildlab_json(args, env, function(spec, why)
           if not spec then
             notify.error(why)
+
             return
           end
+
           local dap_ok, dap_why = discover.gdb_supports_dap(spec.gdb or "gdb")
+
           if not dap_ok then
             notify.error(dap_why)
+
             return
           end
+
           config.program = spec.vmlinux
           config.target = spec.target
           config.kernel_root = spec.src
@@ -601,22 +672,29 @@ return {
           config.gdb_bin = spec.gdb
           config.kaslr_state = spec.kaslr == true and "on" or (spec.kaslr == false and "off" or "unknown")
           local gargs = { "-q", "-i", "dap" }
+
           for _, x in ipairs(spec.iex or {}) do
             vim.list_extend(gargs, { "-iex", x })
           end
+
           if spec.gdbtools then
             vim.list_extend(gargs, { "-ex", "source " .. spec.gdbtools })
           end
+
           local genv = vim.fn.environ()
+
           for k, v in pairs(spec.env or {}) do
             genv[k] = v
           end
+
           local env_list = {}
+
           for k, v in pairs(genv) do
             if k:find("^[^=]*$") then
               env_list[#env_list + 1] = k .. "=" .. tostring(v)
             end
           end
+
           callback({
             type = "executable",
             command = spec.gdb,
@@ -674,13 +752,16 @@ return {
           qemu_user = true,
           target = function()
             local t = vim.trim(vim.fn.input("gdbstub (socket path, host:port or :port): ", ":1234"))
+
             if t:match("^%d+$") then
               t = ":" .. t
             end
+
             return t
           end,
         },
       }
+
       if vim.fn.has("linux") == 0 then
         c_configs = vim.tbl_filter(function(c)
           return not (c.dbg_qemuser or c.qemu_user)
@@ -695,10 +776,12 @@ return {
       -- terminates it on nvim exit.
       local function stop_qemuser(session)
         local sock = session and session.config and session.config.qemu_socket
+
         if sock then
           require("dbg.qemuser").stop(sock)
         end
       end
+
       dap.listeners.after.event_terminated["dbg_qemuser"] = stop_qemuser
       dap.listeners.after.event_exited["dbg_qemuser"] = stop_qemuser
       dap.listeners.after.disconnect["dbg_qemuser"] = stop_qemuser
@@ -722,39 +805,52 @@ return {
           if not context.is_low_level() then
             return
           end
+
           local buf = ev.buf
+
           -- blink.cmp completes dap-repl from buffer words; a command line wants
           -- no popup. GDB's own completion is still <C-x><C-o> via omnifunc.
           vim.b[buf].completion = false
           local function prompt()
             return vim.fn.prompt_getprompt(buf)
           end
+
           local function to_prompt()
             local win = vim.fn.bufwinid(buf)
+
             if win == -1 then
               return
             end
+
             local last = vim.api.nvim_buf_line_count(buf)
             local text = vim.api.nvim_buf_get_lines(buf, last - 1, last, false)[1] or ""
+
             pcall(vim.api.nvim_win_set_cursor, win, { last, #text })
           end
+
           vim.keymap.set("n", "<CR>", function()
             local pre = prompt()
             local lnum = vim.api.nvim_win_get_cursor(0)[1]
             local line = vim.api.nvim_buf_get_lines(buf, lnum - 1, lnum, false)[1] or ""
+
             if pre == "" or line:sub(1, #pre) ~= pre then
               require("dap.ui").trigger_actions({ mode = "first" })
+
               return
             end
+
             local command = line:sub(#pre + 1)
             local last = vim.api.nvim_buf_line_count(buf)
+
             if lnum ~= last then
               vim.bo[buf].modifiable = true
               pcall(vim.api.nvim_buf_set_lines, buf, last - 1, last, false, { pre .. command })
             end
+
             to_prompt()
             vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("A<CR>", true, false, true), "n", false)
           end, { buffer = buf, desc = "gdb console: run this line in gdb" })
+
           for _, key in ipairs({ "i", "I", "a", "A" }) do
             vim.keymap.set("n", key, function()
               to_prompt()
@@ -766,8 +862,10 @@ return {
       })
 
       local ok_baleia, baleia = pcall(require, "baleia")
+
       if ok_baleia then
         local colorizer = baleia.setup({})
+
         vim.api.nvim_create_autocmd("FileType", {
           group = group,
           pattern = { "dap-repl", "dap-view-term" },
@@ -793,6 +891,7 @@ return {
             return true
           end
         end
+
         return false
       end
 
@@ -820,9 +919,12 @@ return {
           require("dbg.cfg").probe()
         end,
       }
+
       local dirty = {}
+
       local function refresh_panels()
         local panel = require("dbg.panel")
+
         for key, refresh in pairs(PANELS) do
           if panel.visible(key) then
             dirty[key] = nil
@@ -832,11 +934,13 @@ return {
           end
         end
       end
+
       vim.api.nvim_create_autocmd("BufWinEnter", {
         group = group,
         pattern = "dbg://*",
         callback = function(ev)
           local key = ev.file:match("^dbg://(.+)$")
+
           if key and dirty[key] and dap.session() then
             dirty[key] = nil
             vim.schedule(function()
@@ -851,9 +955,11 @@ return {
         if dap.session() ~= session then
           return
         end
+
         if not context.is_low_level(session) then
           return
         end
+
         refresh_panels()
         pcall(function()
           require("dbg.layout").resize()
@@ -862,12 +968,14 @@ return {
             require("dbg.layout").show_disassembly()
           end
         end)
+
         -- nvim-dap-disasm only redraws on the scopes response while on screen;
         -- ask it directly once the window is settled.
         vim.schedule(function()
           pcall(function()
             require("dap-disasm").refresh()
           end)
+
           vim.defer_fn(function()
             pcall(function()
               require("dbg.disasm").mark(session)
@@ -890,13 +998,16 @@ return {
         if not context.is_low_level(session) then
           return
         end
+
         pcall(function()
           require("dbg.registers").mark_stop()
         end)
+
         -- dbg.session.focus continues this thread.
         if body and body.threadId then
           session["dbg_stopped_thread"] = body.threadId
         end
+
         awaiting[session.id] = true
       end
 
@@ -904,12 +1015,15 @@ return {
         if not context.is_low_level(session) then
           return
         end
+
         if not awaiting[session.id] then
           return
         end
+
         if payload and payload.startFrame and payload.startFrame > 0 then
           return
         end
+
         awaiting[session.id] = nil
         if not err then
           -- Back to frame 0 before anything reads it, or the panels describe the caller.
@@ -917,6 +1031,7 @@ return {
             require("dbg.console").realign(session)
           end)
         end
+
         vim.schedule(function()
           paint(session)
         end)
@@ -926,6 +1041,7 @@ return {
         if not context.is_low_level(session) then
           return
         end
+
         pcall(function()
           require("dbg.layout").snapshot()
         end)
@@ -944,10 +1060,13 @@ return {
             if not low_level_session_running() then
               require("dbg.layout").drop_panels()
             end
+
             return
           end
+
           require("dbg.layout").enter()
           local kernel = require("dbg.kernel")
+
           kernel.after_attach(session)
         end)
       end
@@ -966,20 +1085,24 @@ return {
         if not context.is_kernel(session) then
           return
         end
+
         pcall(function()
           require("dbg.watchdog").start(session)
         end)
       end
+
       dap.listeners.after.event_output["dbg_watchdog"] = function(_, body)
         pcall(function()
           require("dbg.watchdog").saw_text(body and body.output)
         end)
       end
+
       dap.listeners.after.event_terminated["dbg_watchdog"] = function()
         pcall(function()
           require("dbg.watchdog").stop()
         end)
       end
+
       dap.listeners.after.disconnect["dbg_watchdog"] = function()
         pcall(function()
           require("dbg.watchdog").stop()
@@ -1014,7 +1137,9 @@ return {
         if context.block_if_managed_session("Inline values") then
           return
         end
+
         local mode = o.args
+
         require("dbg.inline").toggle(mode == "" and nil or mode == "on")
       end, {
         nargs = "?",
@@ -1028,6 +1153,7 @@ return {
         if context.block_if_managed_session("The debugger layout") then
           return
         end
+
         require("dbg.layout").leave()
       end, { desc = "Close every debugger window and restore the previous layout" })
 
@@ -1039,12 +1165,17 @@ return {
         if context.block_if_managed_session("This report") then
           return
         end
+
         local state = require("dbg.caps").state()
+
         if not state then
           require("dbg.notify").info("No debug session is running")
+
           return
         end
+
         local lines = {}
+
         for _, feature in ipairs({
           "line_breakpoints",
           "source_stepping",
@@ -1054,8 +1185,10 @@ return {
           "qemu_monitor",
         }) do
           local ok, reason = require("dbg.caps").supports(feature)
+
           lines[#lines + 1] = ("%-24s %s%s"):format(feature, ok and "yes" or "no", reason and ("  " .. reason) or "")
         end
+
         require("dbg.notify").info(
           ("%s / %s / %s / debug info: %s\n%s"):format(
             state.backend,
@@ -1083,6 +1216,7 @@ return {
           if not context.is_low_level() then
             return
           end
+
           vim.schedule(function()
             pcall(function()
               require("dbg.layout").apply()
@@ -1098,6 +1232,7 @@ return {
           if not context.is_low_level() then
             return
           end
+
           vim.schedule(function()
             pcall(function()
               require("dbg.layout").resize()
@@ -1127,6 +1262,7 @@ return {
         if context.block_if_managed_session("The debugger layout") then
           return
         end
+
         require("dbg.layout").rebuild()
       end, { desc = "Rebuild the debugger windows, leaving the session and breakpoints alone" })
 
@@ -1142,13 +1278,17 @@ return {
         group = group,
         callback = function(ev)
           local ft = vim.bo[ev.buf].filetype
+
           if not require("dbg.panel").is_debug_ft(ft) then
             return
           end
+
           local win = vim.fn.bufwinid(ev.buf)
+
           if win == -1 then
             return
           end
+
           vim.wo[win].list = false
           vim.wo[win].number = false
           vim.wo[win].relativenumber = false
@@ -1169,11 +1309,15 @@ return {
         if context.block_if_managed_session("The memory read guard") then
           return
         end
+
         local mode = o.args ~= "" and o.args or "auto"
+
         if mode ~= "on" and mode ~= "off" and mode ~= "auto" then
           require("dbg.notify").error("DbgSafeMem takes on, off or auto")
+
           return
         end
+
         require("dbg.qemumon").mode = mode
         require("dbg.qemumon").invalidate()
         require("dbg.notify").info("Memory read guard: " .. mode)
@@ -1193,10 +1337,13 @@ return {
         if context.block_if_managed_session("The debugger layout") then
           return
         end
+
         local layout = require("dbg.layout")
+
         if o.args ~= "" then
           layout.preset = o.args
         end
+
         layout.apply()
         require("dbg.notify").info("Layout " .. layout.preset .. ": " .. layout.describe())
       end, {

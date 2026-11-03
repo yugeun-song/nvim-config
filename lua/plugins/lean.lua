@@ -43,6 +43,7 @@ return {
       local function link_accomplished()
         vim.api.nvim_set_hl(0, "leanGoalsAccomplishedSign", { link = "DiagnosticOk" })
       end
+
       link_accomplished()
       vim.api.nvim_create_autocmd("ColorScheme", {
         desc = "lean.nvim: keep the accomplished sign green across colorscheme changes",

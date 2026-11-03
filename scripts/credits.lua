@@ -46,17 +46,22 @@ local ADAPTED = {
 
 local function read(path)
   local fd = io.open(path, "rb")
+
   if not fd then
     return nil
   end
+
   local text = fd:read("*a")
+
   fd:close()
+
   return text
 end
 
 local function license_of(dir)
   for name, kind in vim.fs.dir(dir) do
     local lower = name:lower()
+
     if kind == "file" and (lower:find("^licen[cs]e") or lower:find("^copying") or lower:find("^unlicense")) then
       local text = read(vim.fs.joinpath(dir, name)) or ""
       local spdx = text:find("Apache License", 1, true) and "Apache-2.0"
@@ -68,9 +73,12 @@ local function license_of(dir)
         or text:find("Permission is hereby granted, free of charge", 1, true) and "MIT"
         or text:find("free and unencumbered software", 1, true) and "Unlicense"
         or "see " .. name
+
       local holder
+
       for line in text:gmatch("[^\n]+") do
         local rest = line:match("^%s*Copyright%s+(.*)")
+
         if
           rest
           and not rest:find("Free Software Foundation", 1, true)
@@ -85,15 +93,18 @@ local function license_of(dir)
           end
         end
       end
+
       return spdx, holder
     end
   end
+
   return "unknown", nil
 end
 
 local function origin(dir)
   local res = vim.system({ "git", "-C", dir, "remote", "get-url", "origin" }, { text = true }):wait(5000)
   local url = vim.trim(res.stdout or ""):gsub("%.git$", ""):gsub("^git@github%.com:", "https://github.com/")
+
   return url ~= "" and url or nil, url:match("github%.com/([^/]+)/")
 end
 
@@ -101,22 +112,28 @@ local function sorted(list)
   table.sort(list, function(a, b)
     return a:lower() < b:lower()
   end)
+
   return list
 end
 
 local function plugin_rows()
   local lock = vim.json.decode(assert(read(vim.fs.joinpath(root, "lazy-lock.json"))))
   local rows = {}
+
   for _, name in ipairs(sorted(vim.tbl_keys(lock))) do
     local dir = vim.fs.joinpath(data, "lazy", name)
+
     if vim.fn.isdirectory(dir) == 0 then
       return nil, name .. " is not installed"
     end
+
     local url, owner = origin(dir)
     local spdx, holder = license_of(dir)
     local title = url and ("[%s](%s)"):format(name, url) or name
+
     rows[#rows + 1] = ("| %s | %s | %s |"):format(title, holder or owner or "", spdx)
   end
+
   return rows
 end
 
@@ -126,51 +143,66 @@ local function mason_names()
   local lazyvim = read(vim.fs.joinpath(data, "lazy", "LazyVim", "lua", "lazyvim", "plugins", "lsp", "init.lua")) or ""
   local at = lazyvim:find('"mason-org/mason.nvim"', 1, true)
   local list = at and lazyvim:match("ensure_installed%s*=%s*(%b{})", at)
+
   for name in (list or ""):gmatch('"([^"]+)"') do
     if not vim.list_contains(names, name) then
       names[#names + 1] = name
     end
   end
+
   return sorted(names)
 end
 
 local function mason_rows()
   local path = vim.fs.joinpath(data, "mason", "registries", "github", "mason-org", "mason-registry", "registry.json")
   local text = read(path)
+
   if not text then
     return nil, "the Mason registry is not downloaded"
   end
+
   local registry = {}
+
   for _, entry in ipairs(vim.json.decode(text)) do
     registry[entry.name] = entry
   end
+
   local rows = {}
+
   for _, name in ipairs(mason_names()) do
     local entry = registry[name] or {}
     local title = entry.homepage and ("[%s](%s)"):format(name, entry.homepage) or name
+
     rows[#rows + 1] = ("| %s | %s |"):format(title, table.concat(entry.licenses or { "unknown" }, " / "))
   end
+
   return rows
 end
 
 local function section()
   local plugins, why = plugin_rows()
+
   if not plugins then
     return nil, why
   end
+
   local mason, mwhy = mason_rows()
+
   if not mason then
     return nil, mwhy
   end
+
   local out = {
     START,
     "",
     "Code and assets taken into this repository (notices in `THIRD-PARTY-NOTICES`):",
     "",
   }
+
   for _, line in ipairs(ADAPTED) do
     out[#out + 1] = "- " .. line
   end
+
   vim.list_extend(out, { "", "Plugins (`lazy-lock.json`; author from the LICENSE, else the repository owner):", "" })
   vim.list_extend(out, { "| Plugin | Author | License |", "|---|---|---|" })
   vim.list_extend(out, plugins)
@@ -181,26 +213,35 @@ local function section()
   for _, p in ipairs(PROGRAMS) do
     out[#out + 1] = ("| [%s](%s) | %s | %s |"):format(p[1], p[2], p[3], p[4])
   end
+
   vim.list_extend(out, { "", STOP })
+
   return table.concat(out, "\n")
 end
 
 local readme_path = vim.fs.joinpath(root, "README.md")
 local readme = assert(read(readme_path))
 local s, e = readme:find(START, 1, true), select(2, readme:find(STOP, 1, true))
+
 if not (s and e) then
   io.stderr:write("README.md has no " .. START .. " ... " .. STOP .. " block\n")
   vim.cmd.cquit(1)
 end
+
 local block, why = section()
+
 if not block then
   io.stdout:write("skipped: " .. why .. "\n")
+
   return
 end
+
 local updated = readme:sub(1, s - 1) .. block .. readme:sub(e + 1)
+
 if arg[1] == "--write" then
   if updated ~= readme then
     local fd = assert(io.open(readme_path, "wb"))
+
     fd:write(updated)
     fd:close()
   end

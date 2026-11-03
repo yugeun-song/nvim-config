@@ -88,36 +88,46 @@ local function apply_edits(old, edits)
   table.sort(edits, function(a, b)
     return a.start < b.start
   end)
+
   local out, pos = {}, 0
+
   for _, e in ipairs(edits) do
     for i = pos + 1, e.start do
       out[#out + 1] = old[i]
     end
+
     for _, v in ipairs(e.data or {}) do
       out[#out + 1] = v
     end
+
     pos = e.start + (e.deleteCount or 0)
   end
+
   for i = pos + 1, #old do
     out[#out + 1] = old[i]
   end
+
   return out
 end
 
 local function strip(data, cidx, keep_line)
   local out, dropped = {}, {}
   local line, col, last_line, last_col = 0, 0, 0, 0
+
   for i = 1, #data, 5 do
     if data[i] > 0 then
       line, col = line + data[i], data[i + 1]
     else
       col = col + data[i + 1]
     end
+
     local ty = data[i + 3]
+
     if ty == cidx then
       dropped[line] = true
     elseif not keep_line or keep_line(line) then
       local dl = line - last_line
+
       out[#out + 1] = dl
       out[#out + 1] = dl == 0 and col - last_col or col
       out[#out + 1] = data[i + 2]
@@ -126,34 +136,45 @@ local function strip(data, cidx, keep_line)
       last_line, last_col = line, col
     end
   end
+
   return out, dropped
 end
 
 local function token_tracker()
   local docs = {}
+
   return function(cidx, method, params, result, keep_line)
     if type(result) ~= "table" or not cidx then
       return result
     end
+
     local uri = params.textDocument.uri
     local data
+
     if result.data then
       data = result.data
     elseif result.edits then
       local doc = docs[uri]
+
       if not doc or doc.id ~= params.previousResultId then
         docs[uri] = nil
+
         return result
       end
+
       data = apply_edits(doc.data, result.edits)
     else
       return result
     end
+
     local whole = method ~= "textDocument/semanticTokens/range"
+
     if whole then
       docs[uri] = { id = result.resultId, data = data }
     end
+
     local kept, dropped = strip(data, cidx, keep_line)
+
     return { resultId = result.resultId, data = kept }, whole and dropped or nil
   end, function(uri)
     docs[uri] = nil
@@ -161,20 +182,25 @@ local function token_tracker()
 end
 
 local fake_id = 0
+
 local function empty_reply(callback, notify_reply)
   fake_id = fake_id - 1
   local id = fake_id
+
   vim.schedule(function()
     if notify_reply then
       notify_reply(id)
     end
+
     callback(nil, nil, id)
   end)
+
   return true, id
 end
 
 local function owner_of(uri, line)
   local st = by_uri[uri]
+
   return st and st.owners[line] or 0
 end
 
@@ -182,14 +208,19 @@ local function owner_at_cursor(bufnr)
   if bufnr == nil or vim.in_fast_event() then
     return nil
   end
+
   local cur = vim.api.nvim_get_current_buf()
+
   if bufnr == 0 then
     bufnr = cur
   end
+
   local st = bufnr == cur and by_buf[bufnr]
+
   if not st then
     return nil
   end
+
   return st.owners[vim.api.nvim_win_get_cursor(0)[1] - 1] or 0
 end
 
@@ -199,19 +230,25 @@ local function gate(client, who)
   if gated[client] then
     return
   end
+
   gated[client] = { orig = rawget(client, "supports_method") }
   local base = getmetatable(client).supports_method
+
   client.supports_method = function(self, method, bufnr)
     if self ~= client then
       self, method, bufnr = client, self, method
     end
+
     local ok = base(self, method, bufnr)
+
     if ok and M.enabled and POSITION[method] then
       local owner = owner_at_cursor(bufnr)
+
       if owner ~= nil then
         return owner == who
       end
     end
+
     return ok
   end
 end
@@ -220,44 +257,56 @@ local function hook_main(client)
   if hooked[client.id] then
     return
   end
+
   local rpc = client.rpc
   local request = rpc.request
   local cidx = comment_index(vim.tbl_get(client.server_capabilities or {}, "semanticTokensProvider", "legend"))
   local track, forget = token_tracker()
+
   hooked[client.id] = { rpc = rpc, request = request, forget = forget }
   rpc.request = function(method, params, callback, notify_reply)
     local td = M.enabled and type(params) == "table" and params.textDocument
+
     if td then
       if POSITION[method] and params.position and owner_of(td.uri, params.position.line) > 0 then
         return empty_reply(callback, notify_reply)
       end
+
       if TOKENS[method] then
         local cb = callback
+
         callback = function(err, result, id)
           if not err then
             local dropped
+
             result, dropped = track(cidx, method, params, result)
             if dropped then
               M._on_inactive(td.uri, dropped)
             end
           end
+
           return cb(err, result, id)
         end
       end
     end
+
     return request(method, params, callback, notify_reply)
   end
+
   gate(client, 0)
 end
 
 local function unhook_main(id)
   local h = hooked[id]
+
   if not h then
     return
   end
+
   h.rpc.request = h.request
   hooked[id] = nil
   local client = vim.lsp.get_client_by_id(id)
+
   if client and gated[client] then
     client.supports_method = gated[client].orig
     gated[client] = nil
@@ -267,21 +316,25 @@ end
 function M._rewrite(uri, k, text)
   local st = by_uri[uri]
   local assign = st and st.assigns[k]
+
   if not assign or type(text) ~= "string" then
     return text
   end
+
   return scan.rewrite_text(text, assign)
 end
 
 local function proxy(rpc, k)
   local cidx
   local track, forget = token_tracker()
+
   return {
     is_closing = rpc.is_closing,
     terminate = rpc.terminate,
     notify = function(method, params)
       if method == "textDocument/didOpen" then
         local td = params.textDocument
+
         params = {
           textDocument = {
             uri = td.uri,
@@ -292,6 +345,7 @@ local function proxy(rpc, k)
         }
       elseif method == "textDocument/didChange" then
         local ch = params.contentChanges
+
         if #ch == 1 and not ch[1].range then
           params = {
             textDocument = params.textDocument,
@@ -303,32 +357,39 @@ local function proxy(rpc, k)
       elseif method == "$/cancelRequest" and type(params.id) == "number" and params.id < 0 then
         return true
       end
+
       return rpc.notify(method, params)
     end,
     request = function(method, params, callback, notify_reply)
       if method == "initialize" then
         local cb = callback
+
         callback = function(err, result, id)
           cidx = comment_index(vim.tbl_get(result or {}, "capabilities", "semanticTokensProvider", "legend"))
+
           return cb(err, result, id)
         end
       elseif TOKENS[method] then
         local cb, uri = callback, params.textDocument.uri
+
         callback = function(err, result, id)
           if not err then
             result = track(cidx, method, params, result, function(line)
               return owner_of(uri, line) == k
             end)
           end
+
           return cb(err, result, id)
         end
       elseif not PASS[method] then
         local td = type(params) == "table" and params.textDocument
         local pos = type(params) == "table" and params.position
+
         if not (POSITION[method] and td and pos and owner_of(td.uri, pos.line) == k) then
           return empty_reply(callback, notify_reply)
         end
       end
+
       return rpc.request(method, params, callback, notify_reply)
     end,
   }
@@ -337,6 +398,7 @@ end
 local function variant_cmd(main)
   local cmd = main.config.cmd
   local out = {}
+
   if type(cmd) == "table" then
     for i, a in ipairs(cmd) do
       if i == 1 or not (a:find("^%-%-background%-index") or a:find("^%-%-clang%-tidy") or a:find("^%-j=")) then
@@ -346,15 +408,19 @@ local function variant_cmd(main)
   else
     out = { NAME, "--log=error" }
   end
+
   vim.list_extend(out, { "--background-index=false", "--clang-tidy=false", "-j=2" })
+
   return out
 end
 
 local function variant_config(main, k)
   local mc = main.config
   local init_options = vim.deepcopy(mc.init_options or {})
+
   init_options.clangdFileStatus = false
   local function noop() end
+
   return {
     name = NAME .. "~" .. k,
     cmd = function(dispatchers)
@@ -377,9 +443,11 @@ local function variant_config(main, k)
       if result and result.offsetEncoding then
         client.offset_encoding = result.offsetEncoding
       end
+
       for _, key in ipairs(STRIP) do
         client.server_capabilities[key] = nil
       end
+
       gate(client, k)
     end,
   }
@@ -391,34 +459,43 @@ end
 
 local function live(id)
   local c = id and vim.lsp.get_client_by_id(id)
+
   return c and not c:is_stopped() and c or nil
 end
 
 local function attach_variant(st, k)
   local key = variant_key(st, k)
   local c = live(variants[key])
+
   if c then
     if not c.attached_buffers[st.buf] then
       vim.lsp.buf_attach_client(st.buf, c.id)
     end
+
     return c.id, false
   end
+
   local main = vim.lsp.get_client_by_id(st.main)
+
   if not main then
     return nil
   end
+
   local id = vim.lsp.start(variant_config(main, k), {
     bufnr = st.buf,
     reuse_client = function()
       return false
     end,
   })
+
   variants[key] = id
+
   return id, true
 end
 
 local function detach_variant(st, k)
   local c = live(variants[variant_key(st, k)])
+
   if c and c.attached_buffers[st.buf] then
     vim.lsp.buf_detach_client(st.buf, c.id)
   end
@@ -428,6 +505,7 @@ local function stop_idle()
   vim.defer_fn(function()
     for key, id in pairs(variants) do
       local c = live(id)
+
       if not c then
         variants[key] = nil
       elseif vim.tbl_isempty(c.attached_buffers) then
@@ -440,10 +518,13 @@ end
 
 local function signature(map)
   local t = {}
+
   for key, v in pairs(map) do
     t[#t + 1] = key .. "=" .. v
   end
+
   table.sort(t)
+
   return table.concat(t, "\29")
 end
 
@@ -451,24 +532,30 @@ local function recompute(st)
   if not (M.enabled and by_buf[st.buf] == st and st.inactive and vim.api.nvim_buf_is_loaded(st.buf)) then
     return
   end
+
   local lines = vim.api.nvim_buf_get_lines(st.buf, 0, -1, false)
   local tree = scan.parse(lines)
+
   scan.classify(tree, lines, st.inactive)
   local list = vim.list_slice(scan.cover(tree), 1, MAX_VARIANTS)
   local shown = #vim.fn.win_findbuf(st.buf) > 0
   local assigns, keys = {}, {}
+
   for k, a in ipairs(list) do
     assigns[k] = scan.by_sig(tree, a)
     keys[k] = signature(assigns[k])
   end
+
   local owners = scan.owners(tree, st.inactive, list)
   local owners_key = signature(owners)
   local old_keys = st.keys
   local refresh = owners_key ~= st.owners_key
+
   st.assigns, st.keys, st.owners, st.owners_key = assigns, keys, owners, owners_key
   for k = 1, math.max(#assigns, st.n) do
     if k <= #assigns and shown then
       local id, fresh = attach_variant(st, k)
+
       if id and not fresh and old_keys[k] and old_keys[k] ~= keys[k] then
         vim.lsp.buf_detach_client(st.buf, id)
         vim.lsp.buf_attach_client(st.buf, id)
@@ -477,9 +564,11 @@ local function recompute(st)
       detach_variant(st, k)
     end
   end
+
   if #assigns < st.n or not shown then
     stop_idle()
   end
+
   st.n = #assigns
   if refresh and shown and #assigns > 0 then
     vim.lsp.semantic_tokens.force_refresh(st.buf)
@@ -489,6 +578,7 @@ end
 local function schedule(st, delay)
   st.tick = st.tick + 1
   local tick = st.tick
+
   vim.defer_fn(function()
     if st.tick == tick then
       recompute(st)
@@ -498,6 +588,7 @@ end
 
 function M._on_inactive(uri, dropped)
   local st = by_uri[uri]
+
   if st then
     st.inactive = dropped
     schedule(st, 120)
@@ -508,6 +599,7 @@ local function track(buf, client)
   if by_buf[buf] or not vim.api.nvim_buf_is_loaded(buf) or not FILETYPES[vim.bo[buf].filetype] then
     return
   end
+
   local uri = vim.uri_from_bufnr(buf)
   local st = {
     buf = buf,
@@ -520,6 +612,7 @@ local function track(buf, client)
     n = 0,
     tick = 0,
   }
+
   by_buf[buf], by_uri[uri] = st, st
   hook_main(client)
   vim.lsp.semantic_tokens.force_refresh(buf)
@@ -527,20 +620,26 @@ end
 
 local function untrack(buf)
   local st = by_buf[buf]
+
   if not st then
     return
   end
+
   by_buf[buf] = nil
   if by_uri[st.uri] == st then
     by_uri[st.uri] = nil
   end
+
   local main = hooked[st.main]
+
   if main then
     main.forget(st.uri)
   end
+
   for k = 1, st.n do
     detach_variant(st, k)
   end
+
   stop_idle()
 end
 
@@ -548,50 +647,60 @@ function M.enable()
   if M.enabled then
     return
   end
+
   M.enabled = true
   group = vim.api.nvim_create_augroup("ifdef_all", { clear = true })
   vim.api.nvim_create_autocmd("LspAttach", {
     group = group,
     callback = function(args)
       local client = vim.lsp.get_client_by_id(args.data.client_id)
+
       if client and client.name == NAME then
         track(args.buf, client)
       end
     end,
   })
+
   vim.api.nvim_create_autocmd("LspDetach", {
     group = group,
     callback = function(args)
       local st = by_buf[args.buf]
+
       if st and st.main == args.data.client_id then
         untrack(args.buf)
       end
     end,
   })
+
   vim.api.nvim_create_autocmd("BufUnload", {
     group = group,
     callback = function(args)
       untrack(args.buf)
     end,
   })
+
   vim.api.nvim_create_autocmd("BufWinEnter", {
     group = group,
     callback = function(args)
       local st = by_buf[args.buf]
+
       if st and st.inactive then
         schedule(st, 50)
       end
     end,
   })
+
   vim.api.nvim_create_autocmd("BufWinLeave", {
     group = group,
     callback = function(args)
       local st = by_buf[args.buf]
+
       if st then
         schedule(st, 5000)
       end
     end,
   })
+
   for _, client in ipairs(vim.lsp.get_clients({ name = NAME })) do
     for buf in pairs(client.attached_buffers) do
       track(buf, client)
@@ -603,25 +712,33 @@ function M.disable()
   if not M.enabled then
     return
   end
+
   M.enabled = false
   if group then
     vim.api.nvim_del_augroup_by_id(group)
     group = nil
   end
+
   local bufs = vim.tbl_keys(by_buf)
+
   for _, buf in ipairs(bufs) do
     untrack(buf)
   end
+
   for key, id in pairs(variants) do
     local c = live(id)
+
     if c then
       c:stop()
     end
+
     variants[key] = nil
   end
+
   for id in pairs(hooked) do
     unhook_main(id)
   end
+
   for _, buf in ipairs(bufs) do
     if vim.api.nvim_buf_is_loaded(buf) then
       vim.lsp.semantic_tokens.force_refresh(buf)
@@ -635,7 +752,9 @@ function M.set(on)
   else
     M.disable()
   end
+
   local path = state_file()
+
   if on then
     vim.fn.mkdir(vim.fs.dirname(path), "p")
     vim.fn.writefile({ "on" }, path)
@@ -652,6 +771,7 @@ local watcher
 
 local function follow_state()
   local on = vim.uv.fs_stat(state_file()) ~= nil
+
   if on ~= M.enabled then
     if on then
       M.enable()
@@ -664,6 +784,7 @@ end
 function M.setup()
   local path = state_file()
   local dir, name = vim.fs.dirname(path), vim.fs.basename(path)
+
   vim.fn.mkdir(dir, "p")
   if not watcher then
     watcher = vim.uv.new_fs_event()
@@ -675,15 +796,18 @@ function M.setup()
       end)
     end
   end
+
   follow_state()
 end
 
 function M._debug(buf)
   local st = by_buf[buf or vim.api.nvim_get_current_buf()]
   local ids = {}
+
   for key, id in pairs(variants) do
     ids[key:gsub("%z", "#")] = id
   end
+
   return { tracked = st ~= nil, n = st and st.n, owners = st and vim.tbl_count(st.owners), variants = ids }
 end
 

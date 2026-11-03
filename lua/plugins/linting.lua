@@ -1,8 +1,10 @@
 local function detekt_config()
   local root =
     vim.fs.root(0, { "settings.gradle.kts", "settings.gradle", "build.gradle.kts", "build.gradle", "pom.xml", ".git" })
+
   for _, rel in ipairs(root and { "config/detekt/detekt.yml", "detekt.yml" } or {}) do
     local path = vim.fs.joinpath(root, rel)
+
     if vim.uv.fs_stat(path) then
       return path
     end
@@ -18,14 +20,18 @@ local function yamllint_config()
   local dir = vim.fs.dirname(vim.api.nvim_buf_get_name(0))
   local path = vim.fs.find({ ".yamllint", ".yamllint.yaml", ".yamllint.yml" }, { upward = true, path = dir })[1]
     or vim.env.YAMLLINT_CONFIG_FILE
+
   local user =
     vim.fs.joinpath(vim.env.XDG_CONFIG_HOME or vim.fs.joinpath(vim.uv.os_homedir(), ".config"), "yamllint", "config")
+
   if not path and vim.uv.fs_stat(user) then
     path = user
   end
+
   if path then
     return "-c", path
   end
+
   return "-d", yamllint_fallback
 end
 

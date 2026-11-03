@@ -4,6 +4,7 @@ return {
   event = "VeryLazy",
   config = function()
     local ifdef_all = require("ifdef_all")
+
     ifdef_all.setup()
     Snacks.toggle({
       name = "All #if Branches",

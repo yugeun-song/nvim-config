@@ -2,6 +2,7 @@ local win = vim.fn.has("win32") == 1
 local sep = win and ";" or ":"
 local ghcup_bin = win and "C:/ghcup/bin" or vim.fs.joinpath(vim.uv.os_homedir(), ".ghcup", "bin")
 local on_path = vim.tbl_map(vim.fs.normalize, vim.split(vim.env.PATH or "", sep, { plain = true }))
+
 if vim.uv.fs_stat(ghcup_bin) and not vim.list_contains(on_path, vim.fs.normalize(ghcup_bin)) then
   vim.env.PATH = (vim.env.PATH or "") .. sep .. ghcup_bin
 end

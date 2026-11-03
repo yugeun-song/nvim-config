@@ -15,12 +15,14 @@ local function find(list, value)
       return i
     end
   end
+
   return nil
 end
 
 local function record(kind, list, response)
   for i, bp in ipairs((response or {}).breakpoints or {}) do
     local name = list[i]
+
     if name then
       status[kind .. ":" .. name] = {
         verified = bp.verified,
@@ -37,29 +39,38 @@ function M.sync(session)
   if not session then
     return
   end
+
   if not require("dbg.context").is_low_level(session) then
     return
   end
+
   local caps = session.capabilities or {}
+
   if #functions > 0 and caps.supportsFunctionBreakpoints == false then
     notify().warn("This adapter cannot set breakpoints on a function name")
   end
+
   if caps.supportsFunctionBreakpoints ~= false then
     local list = {}
+
     for _, name in ipairs(functions) do
       list[#list + 1] = { name = name }
     end
+
     session:request("setFunctionBreakpoints", { breakpoints = list }, function(err, resp)
       if not err then
         record("function", functions, resp)
       end
     end)
   end
+
   if caps.supportsInstructionBreakpoints ~= false then
     local list = {}
+
     for _, addr in ipairs(addresses) do
       list[#list + 1] = { instructionReference = addr }
     end
+
     session:request("setInstructionBreakpoints", { breakpoints = list }, function(err, resp)
       if not err then
         record("address", addresses, resp)
@@ -73,14 +84,17 @@ function M.toggle(spec)
   if spec == "" then
     return
   end
+
   if require("dbg.context").block_if_managed_session("Breaking on a function name or address") then
     return
   end
+
   spec = spec:gsub("^%*", "")
   local is_address = spec:match("^0[xX]%x+$") ~= nil
   local list = is_address and addresses or functions
   local kind = is_address and "address" or "function"
   local at = find(list, spec)
+
   if at then
     table.remove(list, at)
     status[kind .. ":" .. spec] = nil
@@ -89,6 +103,7 @@ function M.toggle(spec)
     list[#list + 1] = spec
     notify().info("Breakpoint on " .. spec)
   end
+
   M.sync()
 end
 
@@ -102,7 +117,9 @@ function M.prompt()
   if require("dbg.context").block_if_managed_session("Breaking on a function name or address") then
     return
   end
+
   local default = vim.fn.expand("<cword>")
+
   vim.ui.input({ prompt = "Break on function or 0xADDRESS: ", default = default }, function(answer)
     if answer then
       M.toggle(answer)
@@ -115,9 +132,11 @@ function M.entries()
   local ok, bps = pcall(function()
     return require("dap.breakpoints").get()
   end)
+
   if ok then
     for buf, list in pairs(bps or {}) do
       local name = vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_buf_get_name(buf) or "?"
+
       for _, bp in ipairs(list) do
         out[#out + 1] = {
           kind = "line",
@@ -129,8 +148,10 @@ function M.entries()
       end
     end
   end
+
   for _, name in ipairs(functions) do
     local s = status["function:" .. name] or {}
+
     out[#out + 1] = {
       kind = "function",
       name = name,
@@ -139,8 +160,10 @@ function M.entries()
         or (s.verified == false and "unresolved" or "pending"),
     }
   end
+
   for _, addr in ipairs(addresses) do
     local s = status["address:" .. addr] or {}
+
     out[#out + 1] = {
       kind = "address",
       name = addr,
@@ -148,31 +171,39 @@ function M.entries()
       detail = s.verified == false and "unresolved" or "instruction",
     }
   end
+
   table.sort(out, function(a, b)
     if a.kind ~= b.kind then
       return a.kind < b.kind
     end
+
     return a.label < b.label
   end)
+
   return out
 end
 
 function M.pick()
   local items = M.entries()
+
   if #items == 0 then
     notify().info("No breakpoints are set")
+
     return
   end
+
   vim.ui.select(items, {
     prompt = "Breakpoints",
     format_item = function(item)
       local kind = ({ line = "line", ["function"] = "func", address = "addr" })[item.kind] or item.kind
+
       return ("%-5s %-40s %s"):format(kind, item.label, item.detail or "")
     end,
   }, function(item)
     if not item then
       return
     end
+
     if item.kind == "line" and item.buf and vim.api.nvim_buf_is_valid(item.buf) then
       vim.api.nvim_set_current_buf(item.buf)
       pcall(vim.api.nvim_win_set_cursor, 0, { item.line, 0 })
@@ -191,13 +222,17 @@ end
 -- holds, nvim-dap would replace the user's and drop it when the tbreak goes.
 local function guard_events(session)
   local class_event = session.event_breakpoint
+
   session.event_breakpoint = function(self, body)
     local bp = body and body.breakpoint
+
     -- gdb numbers its internal breakpoints below zero; none of them is the user's.
     if bp and type(bp.id) == "number" and bp.id < 0 then
       return
     end
+
     local path = bp and bp.source and bp.source.path
+
     if body and body.reason == "new" and path and bp.line then
       for buf, list in pairs(require("dap.breakpoints").get()) do
         if same_file(vim.api.nvim_buf_get_name(buf), path) then
@@ -209,6 +244,7 @@ local function guard_events(session)
         end
       end
     end
+
     return class_event(self, body)
   end
 end
@@ -226,15 +262,20 @@ function M.run_to(session, where)
   local on = { session = session }
   local loc = where.address and ("'*%s'"):format(where.address)
     or ("source=bytes.fromhex('%s').decode(), line=%d"):format(hex(where.source), where.line)
+
   local make = ("python b = gdb.Breakpoint(%s, internal=True, temporary=True); p = b.pending; "):format(loc)
     .. "gdb._dbg_runto = None if p else b; p and b.delete(); print('pending' if p else 'armed')"
+
   gdbq.run(make, function(out, err)
     if err or vim.trim(out or "") ~= "armed" then
       notify().warn("Run to cursor: " .. (err or "no code there in the loaded program"))
+
       return
     end
+
     local dap = require("dap")
     local key = "dbg_runto_" .. tostring(session.id)
+
     dap.listeners.after.event_stopped[key] = function(s)
       if s == session then
         dap.listeners.after.event_stopped[key] = nil
@@ -245,6 +286,7 @@ function M.run_to(session, where)
         )
       end
     end
+
     vim.schedule(function()
       dap.set_session(session)
       require("dbg.session").cont()
@@ -259,17 +301,21 @@ function M.setup(dap)
     if not require("dbg.context").is_low_level(session) then
       return
     end
+
     status = {}
     guard_events(session)
     M.sync(session)
   end
+
   -- gdb answers a breakpoint it cannot place yet with no line, and nvim-dap stamps that on the whole file;
   -- answers follow the request's order, so the line comes from the request.
   dap.listeners.before.setBreakpoints["dbg_breakpoints"] = function(session, err, response, request)
     if err or not require("dbg.context").is_low_level(session) then
       return
     end
+
     local asked = (request or {}).breakpoints or {}
+
     for i, bp in ipairs((response or {}).breakpoints or {}) do
       if bp.line == nil and asked[i] then
         bp.line = asked[i].line

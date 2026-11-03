@@ -18,6 +18,7 @@ function M.highlight(buf)
   if not buf or buf == 0 then
     buf = vim.api.nvim_get_current_buf()
   end
+
   vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
 
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
@@ -26,6 +27,7 @@ function M.highlight(buf)
 
   for i, line in ipairs(lines) do
     local group
+
     if i == 1 then
       group = "manHeader"
     elseif i == last then
@@ -50,15 +52,19 @@ function M.highlight(buf)
       -- Option name plus comma-separated aliases, not the description after them.
       -- [^%s,] keeps the comma in "-a, --all" for the continuation match.
       local from, e = line:find("^%s+[-+][^%s,]*")
+
       if e then
         from = line:find("%S")
         while true do
           local _, more = line:find("^,%s*[-+][^%s,]*", e + 1)
+
           if not more then
             break
           end
+
           e = more
         end
+
         if from and e >= from then
           painted = painted + 1
           pcall(vim.api.nvim_buf_set_extmark, buf, ns, i - 1, from - 1, {
@@ -89,6 +95,7 @@ function M.highlight(buf)
       end
     end
   end
+
   return painted
 end
 
@@ -100,22 +107,28 @@ function M.close_calls(buf)
   if not buf or buf == 0 then
     buf = vim.api.nvim_get_current_buf()
   end
+
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   local extended = 0
 
   for row, line in ipairs(lines) do
     local init = 1
+
     while true do
       local s = line:find("()", init, true)
+
       if not s then
         break
       end
+
       init = s + 2
       local col = s - 1
+
       for _, mark in
         ipairs(vim.api.nvim_buf_get_extmarks(buf, -1, { row - 1, 0 }, { row - 1, col }, { details = true }))
       do
         local d = mark[4]
+
         if d and d.hl_group == "manBold" and d.end_row == row - 1 and d.end_col == col then
           extended = extended + 1
           pcall(vim.api.nvim_buf_set_extmark, buf, ns, row - 1, col, {
@@ -129,6 +142,7 @@ function M.close_calls(buf)
       end
     end
   end
+
   return extended
 end
 

@@ -19,13 +19,16 @@ local function repo_root(dir)
   end
 
   local hit = roots[dir]
+
   if hit ~= nil then
     return hit or nil
   end
 
   local marker = vim.fs.find(".git", { path = dir, upward = true, limit = 1 })[1]
   local root = marker and vim.fs.dirname(marker) or false
+
   roots[dir] = root
+
   return root or nil
 end
 
@@ -35,20 +38,25 @@ local function parse(raw)
   end
 
   local tag, ahead = raw:match("^(.*)%-(%d+)%-g%x+$")
+
   if not tag then
     return raw
   end
+
   if ahead == "0" then
     return tag
   end
+
   return tag .. "+" .. ahead
 end
 
 local function refresh(root)
   local entry = tags[root]
+
   if entry.running then
     return
   end
+
   entry.running = true
 
   local lines = {}
@@ -64,8 +72,10 @@ local function refresh(root)
       entry.stamp = uv.now()
 
       local label = false
+
       if code == 0 then
         local raw = table.concat(lines, ""):gsub("%s", "")
+
         label = parse(raw)
       end
 
@@ -86,11 +96,13 @@ end
 
 local function buffer_dir()
   local buf = vim.api.nvim_get_current_buf()
+
   if vim.bo[buf].buftype ~= "" then
     return uv.cwd()
   end
 
   local name = vim.api.nvim_buf_get_name(buf)
+
   if name == "" or name:find("://") then
     return uv.cwd()
   end
@@ -101,11 +113,13 @@ end
 local function git_tag()
   local ok, result = pcall(function()
     local root = repo_root(buffer_dir())
+
     if not root then
       return ""
     end
 
     local entry = tags[root]
+
     if not entry then
       entry = { running = false, label = false }
       tags[root] = entry
@@ -121,6 +135,7 @@ local function git_tag()
   if not ok or type(result) ~= "string" then
     return ""
   end
+
   return result
 end
 
@@ -129,13 +144,16 @@ local function tag_color()
     local ok, color = pcall(function()
       return Snacks.util.color("String")
     end)
+
     fg = (ok and color) or FALLBACK_FG
   end
+
   return { fg = fg }
 end
 
 local function watch()
   local group = vim.api.nvim_create_augroup("LualineGitTag", { clear = true })
+
   vim.api.nvim_create_autocmd({ "FocusGained", "DirChanged" }, {
     group = group,
     callback = function()
@@ -145,12 +163,14 @@ local function watch()
       end
     end,
   })
+
   vim.api.nvim_create_autocmd("FocusLost", {
     group = group,
     callback = function()
       focused = false
     end,
   })
+
   vim.api.nvim_create_autocmd("ColorScheme", {
     group = group,
     callback = function()
@@ -164,6 +184,7 @@ return {
     "nvim-lualine/lualine.nvim",
     opts = function(_, opts)
       local section = opts.sections and opts.sections.lualine_b
+
       if not section then
         return
       end

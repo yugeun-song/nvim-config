@@ -3,6 +3,7 @@ local function override_lens(render, pos_list, nearest, idx, rel_idx)
   local sfw = vim.v.searchforward == 1
   local abs_rel_idx = math.abs(rel_idx)
   local indicator
+
   if abs_rel_idx > 1 then
     indicator = ("%d%s"):format(abs_rel_idx, sfw ~= (rel_idx > 1) and "N" or "n")
   elseif abs_rel_idx == 1 then
@@ -14,18 +15,22 @@ local function override_lens(render, pos_list, nearest, idx, rel_idx)
   local entry = pos_list[idx]
   local lnum, col = entry[1], entry[2]
   local text, chunks
+
   if nearest then
     local cur, total = idx, #pos_list
+
     if indicator ~= "" then
       text = ("[%s %d/%d]"):format(indicator, cur, total)
     else
       text = ("[%d/%d]"):format(cur, total)
     end
+
     chunks = { { " " }, { text, "HlSearchLensNear" } }
   else
     text = ("[%s %d]"):format(indicator, idx)
     chunks = { { " " }, { text, "HlSearchLens" } }
   end
+
   render.setVirt(0, lnum - 1, col - 1, chunks, nearest)
 end
 
@@ -33,6 +38,7 @@ local function hlslens_search(forward_key, backward_key)
   return function()
     local key = vim.v.searchforward == 1 and forward_key or backward_key
     local ok, err = pcall(vim.api.nvim_command, ("normal! %d%szv"):format(vim.v.count1, key))
+
     if ok then
       pcall(function()
         require("hlslens").start()

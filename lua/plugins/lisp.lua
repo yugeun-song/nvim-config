@@ -27,6 +27,7 @@ return {
             if vim.api.nvim_buf_get_name(bufnr):match("%.el$") then
               return
             end
+
             on_dir(vim.fs.root(bufnr, function(name)
               return name == "ocicl.csv" or name == ".git" or name:match("%.asd$") ~= nil
             end))

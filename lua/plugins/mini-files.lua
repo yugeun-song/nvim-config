@@ -10,6 +10,7 @@ return {
         end, { buffer = args.data.buf_id, desc = "Open entry (file/dir)" })
       end,
     })
+
     return opts
   end,
 }

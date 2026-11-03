@@ -2,6 +2,7 @@ local M = {}
 
 function M.focus_dir()
   local base = vim.env.XDG_RUNTIME_DIR and vim.fn.stdpath("run") or vim.fn.stdpath("state")
+
   return vim.fs.joinpath(base, "nvim-focus")
 end
 
@@ -11,13 +12,16 @@ end
 
 local function record()
   local addr = vim.v.servername
+
   if addr == "" or #vim.api.nvim_list_uis() == 0 then
     return
   end
+
   ---@diagnostic disable-next-line: param-type-mismatch
   vim.fn.mkdir(M.focus_dir(), "p", tonumber("700", 8))
   local path = own_file()
   local tmp = path .. ".tmp"
+
   if pcall(vim.fn.writefile, { addr }, tmp) then
     vim.uv.fs_rename(tmp, path)
   end
@@ -25,12 +29,15 @@ end
 
 function M.targets()
   local dir, found = M.focus_dir(), {}
+
   for name in vim.fs.dir(dir) do
     local pid = tonumber(name)
     local path = vim.fs.joinpath(dir, name)
+
     if pid and vim.uv.kill(pid, 0) == 0 then
       local stat = vim.uv.fs_stat(path)
       local ok, lines = pcall(vim.fn.readfile, path)
+
       if stat and ok and lines[1] and lines[1] ~= "" then
         found[#found + 1] = { addr = lines[1], pid = pid, mtime = stat.mtime.sec * 1e9 + stat.mtime.nsec }
       end
@@ -38,38 +45,49 @@ function M.targets()
       vim.uv.fs_unlink(path)
     end
   end
+
   table.sort(found, function(a, b)
     return a.mtime > b.mtime
   end)
+
   return found
 end
 
 local function parent(pid)
   if vim.fn.has("win32") == 1 then
     local query = ("(Get-CimInstance Win32_Process -Filter 'ProcessId=%d').ParentProcessId"):format(pid)
+
     return tonumber(vim.trim(vim.fn.system({ "powershell", "-NoProfile", "-Command", query })))
   end
+
   local f = io.open("/proc/" .. pid .. "/stat")
+
   if f then
     local stat = f:read("*a")
+
     f:close()
+
     return tonumber(stat:match("%) %S+ (%d+)"))
   end
+
   return tonumber(vim.trim(vim.fn.system({ "ps", "-o", "ppid=", "-p", tostring(pid) })))
 end
 
 local function lineage(pid)
   local depth = vim.fn.has("win32") == 1 and 4 or 16
   local pids = {}
+
   while pid and pid > 1 and #pids < depth do
     pids[#pids + 1] = pid
     pid = parent(pid)
   end
+
   return pids
 end
 
 local function decode(cmd)
   local ok, obj = pcall(vim.json.decode, vim.fn.system(cmd))
+
   return ok and type(obj) == "table" and obj or {}
 end
 
@@ -77,14 +95,17 @@ local function focus_first(pids, windows, focus)
   for _, pid in ipairs(pids) do
     if windows[pid] then
       focus(windows[pid])
+
       return true
     end
   end
+
   return false
 end
 
 local function succeeds(cmd)
   vim.fn.system(cmd)
+
   return vim.v.shell_error == 0
 end
 
@@ -96,11 +117,13 @@ local RAISE = {
     end,
     raise = function(pids)
       local windows = {}
+
       for _, c in ipairs(decode({ "hyprctl", "-j", "clients" })) do
         if type(c) == "table" and c.pid and c.address then
           windows[c.pid] = c.address
         end
       end
+
       return focus_first(pids, windows, function(address)
         vim.fn.system({ "hyprctl", "dispatch", "focuswindow", "address:" .. address })
       end)
@@ -113,10 +136,12 @@ local RAISE = {
     end,
     raise = function(pids)
       local windows = {}
+
       local function walk(node)
         if node.pid and node.id and not windows[node.pid] then
           windows[node.pid] = node.id
         end
+
         for _, key in ipairs({ "nodes", "floating_nodes" }) do
           for _, child in ipairs(type(node[key]) == "table" and node[key] or {}) do
             if type(child) == "table" then
@@ -125,7 +150,9 @@ local RAISE = {
           end
         end
       end
+
       walk(decode({ "swaymsg", "-t", "get_tree" }))
+
       return focus_first(pids, windows, function(id)
         vim.fn.system({ "swaymsg", ("[con_id=%d] focus"):format(id) })
       end)
@@ -138,11 +165,13 @@ local RAISE = {
     end,
     raise = function(pids)
       local windows = {}
+
       for _, w in ipairs(decode({ "niri", "msg", "--json", "windows" })) do
         if type(w) == "table" and w.pid and w.id then
           windows[w.pid] = w.id
         end
       end
+
       return focus_first(pids, windows, function(id)
         vim.fn.system({ "niri", "msg", "action", "focus-window", "--id", tostring(id) })
       end)
@@ -156,6 +185,7 @@ local RAISE = {
     raise = function(pids)
       local script = ("const pids = [%s]; for (const w of workspace.windowList()) "):format(table.concat(pids, ","))
         .. "{ if (pids.includes(w.pid)) { workspace.activeWindow = w; break; } }"
+
       return succeeds({ "kdotool", "kwinscript", "--inline", script })
     end,
   },
@@ -167,10 +197,12 @@ local RAISE = {
     raise = function(pids)
       for _, pid in ipairs(pids) do
         local id = vim.fn.system({ "xdotool", "search", "--pid", tostring(pid) }):match("%d+")
+
         if id then
           return succeeds({ "xdotool", "windowactivate", id })
         end
       end
+
       return false
     end,
   },
@@ -183,10 +215,12 @@ local RAISE = {
       for _, pid in ipairs(pids) do
         local script =
           'tell application "System Events" to set frontmost of (first process whose unix id is %d) to true'
+
         if succeeds({ "osascript", "-e", script:format(pid) }) then
           return true
         end
       end
+
       return false
     end,
   },
@@ -198,10 +232,12 @@ local RAISE = {
     raise = function(pids)
       for _, pid in ipairs(pids) do
         local activate = ("(New-Object -ComObject WScript.Shell).AppActivate(%d)"):format(pid)
+
         if vim.fn.system({ "powershell", "-NoProfile", "-Command", activate }):find("True") then
           return true
         end
       end
+
       return false
     end,
   },
@@ -213,25 +249,30 @@ function M.raise_backend()
       return backend
     end
   end
+
   if vim.env.WAYLAND_DISPLAY and (vim.env.XDG_CURRENT_DESKTOP or ""):find("GNOME") then
     return nil, "GNOME on Wayland lets no program raise a window"
   end
+
   return nil, "no window tool for this desktop (hyprctl, swaymsg, niri, kdotool or xdotool)"
 end
 
 -- Raises the window of the nearest ancestor of pid that owns one.
 function M.raise(pid)
   local backend = M.raise_backend()
+
   return backend ~= nil and backend.raise(lineage(pid))
 end
 
 function M.setup()
   local group = vim.api.nvim_create_augroup("remote_open", { clear = true })
+
   vim.api.nvim_create_autocmd({ "UIEnter", "FocusGained" }, {
     group = group,
     callback = record,
     desc = "Make this instance the one scripts/open-at.lua opens files in",
   })
+
   vim.api.nvim_create_autocmd("VimLeavePre", {
     group = group,
     callback = function()

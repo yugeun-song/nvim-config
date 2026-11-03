@@ -28,22 +28,28 @@ local BY_KIND = {
 
 function M.buffer()
   local buf, created = panel.buffer("session", "dbg-session")
+
   if created then
     vim.keymap.set("n", "r", function()
       M.probe(true)
     end, { buffer = buf, nowait = true, desc = "Target: refresh" })
   end
+
   return buf
 end
 
 function M.stop()
   local dap = require("dap")
   local session = dap.session()
+
   if not session then
     require("dbg.notify").info("No debug session is running")
+
     return
   end
+
   local cfg = session.config or {}
+
   if cfg.request == "attach" then
     require("dbg.allstop").halt(session, function()
       session:disconnect({ terminateDebuggee = false })
@@ -60,12 +66,15 @@ function M.remember(config)
   if type(config) ~= "table" then
     return
   end
+
   local copy = {}
+
   for k, v in pairs(config) do
     if type(k) ~= "string" or not k:match("^__") then
       copy[k] = v
     end
   end
+
   last_config = copy
 end
 
@@ -79,27 +88,36 @@ function M.focus(session)
   if not session then
     return nil
   end
+
   if session.stopped_thread_id then
     return session.stopped_thread_id
   end
+
   local remembered = session.dbg_stopped_thread
   local threads = session.threads or {}
+
   if remembered and threads[remembered] and threads[remembered].stopped then
     session.stopped_thread_id = remembered
+
     return remembered
   end
+
   for id, thread in pairs(threads) do
     if thread.stopped and thread.frames and #thread.frames > 0 then
       session.stopped_thread_id = id
+
       return id
     end
   end
+
   for id, thread in pairs(threads) do
     if thread.stopped then
       session.stopped_thread_id = id
+
       return id
     end
   end
+
   return nil
 end
 
@@ -107,13 +125,17 @@ end
 -- debugger panel launches the panel. Stand in a file window first.
 local function leave_panel()
   local buf = vim.api.nvim_get_current_buf()
+
   if vim.bo[buf].buftype == "" and vim.api.nvim_buf_get_name(buf) ~= "" then
     return
   end
+
   for _, win in ipairs(vim.api.nvim_list_wins()) do
     local b = vim.api.nvim_win_get_buf(win)
+
     if vim.bo[b].buftype == "" and vim.api.nvim_buf_get_name(b) ~= "" then
       pcall(vim.api.nvim_set_current_win, win)
+
       return
     end
   end
@@ -122,29 +144,37 @@ end
 function M.cont()
   local dap = require("dap")
   local session = dap.session()
+
   if session then
     M.focus(session)
     dap.continue()
+
     return
   end
+
   leave_panel()
   -- A configuration that cannot start is not replayed. Only a native launch needs
   -- the exec bit: a managed adapter runs a script, an attach launches nothing.
   if last_config then
     local program = last_config.program
+
     if program and last_config.request ~= "attach" then
       local native = require("dbg.context").profile_of_config(last_config) == "native"
       local broken = vim.fn.filereadable(program) ~= 1 or (native and vim.fn.executable(program) ~= 1)
+
       if broken then
         require("dbg.notify").warn(vim.fs.basename(program) .. " is gone; choose a configuration again")
         last_config = nil
       end
     end
   end
+
   if last_config then
     dap.run(vim.deepcopy(last_config))
+
     return
   end
+
   dap.continue()
 end
 
@@ -154,16 +184,21 @@ local warned_instruction = false
 function M.step(kind)
   local dap = require("dap")
   local session = dap.session()
+
   if not session then
     require("dbg.notify").info("No debug session is running")
+
     return
   end
+
   M.focus(session)
   local frame = session.current_frame
   -- Only gdb steps by instruction; a managed adapter's frames are never sourceless.
   local sourceless = require("dbg.context").is_low_level(session)
     and not (frame and frame.source and (frame.source.path or frame.source.sourceReference))
+
   local opts = nil
+
   if sourceless then
     opts = { granularity = "instruction" }
     if not warned_instruction then
@@ -171,6 +206,7 @@ function M.step(kind)
       require("dbg.notify").info("No line table here, stepping one instruction at a time")
     end
   end
+
   if kind == "over" then
     dap.step_over(opts)
   elseif kind == "into" then
@@ -184,21 +220,27 @@ end
 -- running and holds the gdbstub's single client slot.
 function M.shutdown()
   local ok, dap = pcall(require, "dap")
+
   if not ok then
     return
   end
+
   local sessions = dap.sessions and dap.sessions() or {}
   local any = false
+
   for _, session in pairs(sessions) do
     any = true
     local attached = (session.config or {}).request == "attach"
     local halted = false
+
     require("dbg.allstop").halt(session, function()
       halted = true
     end)
+
     vim.wait(2500, function()
       return halted
     end, 20)
+
     pcall(function()
       if attached then
         session:disconnect({ terminateDebuggee = false })
@@ -207,25 +249,31 @@ function M.shutdown()
       end
     end)
   end
+
   if not any and dap.session() then
     pcall(function()
       dap.disconnect({ terminateDebuggee = (dap.session().config or {}).request ~= "attach" })
     end)
+
     any = true
   end
+
   if any then
     -- let the adapter act on the disconnect before the event loop dies
     vim.wait(3500, function()
       return next(dap.sessions and dap.sessions() or {}) == nil and dap.session() == nil
     end, 50)
+
     pcall(function()
       dap.close()
     end)
   end
+
   -- Only the usermode QEMUs this editor launched are in the table.
   pcall(function()
     require("dbg.qemuser").stop_all()
   end)
+
   pcall(function()
     require("dbg.adapter").kill_leftovers()
   end)
@@ -233,9 +281,11 @@ end
 
 function M.pick()
   local dap = require("dap")
+
   if dap.session() then
     M.stop()
   end
+
   last_config = nil
   leave_panel()
   dap.continue({ new = true })
@@ -246,14 +296,19 @@ function M.render()
   local width = panel.width(buf, 100)
   local dap = require("dap")
   local session = dap.session()
+
   if not session then
     local banner = ui.banner("TARGET", width)
+
     panel.render(buf, { banner, "", "  No debug session is running." }, ui.banner_hl(0, banner, "TARGET"))
+
     return
   end
+
   local cfg = session.config or {}
   local lines, hls = {}, {}
   local banner = ui.banner("TARGET", width, caps.describe(caps_cache))
+
   lines[1] = banner
   vim.list_extend(hls, ui.banner_hl(0, banner, "TARGET"))
 
@@ -261,6 +316,7 @@ function M.render()
     lines[#lines + 1] = ("  %-14s%s"):format(k, tostring(v or "-"))
     hls[#hls + 1] = { #lines - 1, 2, 16, "DbgKey" }
   end
+
   row("name", cfg.name)
   row("adapter", cfg.type)
   row("request", cfg.request)
@@ -271,74 +327,93 @@ function M.render()
   if cfg.kernel_root then
     row("kernel root", cfg.kernel_root)
   end
+
   if cfg.type == "gdb_kernel" then
     row("early boot", cfg.kgdb_auto and "GDBTOOLS_AUTO=1, kearly armed" or "inert, commands registered only")
   end
+
   row("stopped", session.stopped_thread_id and ("thread " .. session.stopped_thread_id) or "running")
   local frame = session.current_frame
+
   if frame then
     row("frame", ("%s  %s:%s"):format(frame.name, (frame.source or {}).name or "?", frame.line or "?"))
     row("pc", frame["instructionPointerReference"])
   end
 
   local queries = {}
+
   for cmd, _ in pairs(probes) do
     queries[#queries + 1] = cmd
   end
+
   table.sort(queries)
   if #queries > 0 then
     lines[#lines + 1] = ""
     local sub = ui.banner("TARGET QUERIES", width, "r to refresh")
+
     lines[#lines + 1] = sub
     vim.list_extend(hls, ui.banner_hl(#lines - 1, sub, "TARGET QUERIES"))
     for _, cmd in ipairs(queries) do
       local value = tostring(probes[cmd] or "")
       local first = true
+
       for piece in value:gmatch("[^\n]+") do
         lines[#lines + 1] = ("  %-18s%s"):format(first and cmd or "", piece:sub(1, math.max(20, width - 22)))
         if first then
           hls[#hls + 1] = { #lines - 1, 2, 20, "DbgKey" }
         end
+
         first = false
       end
+
       if first then
         lines[#lines + 1] = ("  %-18s%s"):format(cmd, "-")
         hls[#hls + 1] = { #lines - 1, 2, 20, "DbgKey" }
       end
     end
   end
+
   panel.render(buf, lines, hls)
 end
 
 function M.probe(force)
   local session = gdbq.session()
+
   if not session then
     probes = {}
     M.render()
+
     return
   end
+
   if force or fixed.session ~= session then
     fixed = { session = session, out = {} }
   end
+
   caps.detect(session, function(c)
     caps_cache = c
     local wanted = vim.list_extend({}, ALWAYS)
+
     if c then
       for _, query in ipairs(BY_KIND[c.kind] or {}) do
         local head = query:match("^(%S+)")
+
         if c.commands[head] or not head:match("^%a[%w%-]*$") or head == "info" then
           wanted[#wanted + 1] = query
         end
       end
     end
+
     local queries = vim.tbl_filter(function(q)
       return fixed.out[q] == nil
     end, wanted)
+
     for _, q in ipairs(queries) do
       if FIXED[q] then
         fixed.out[q] = false
       end
     end
+
     gdbq.run_all(queries, function(out)
       probes = {}
       for cmd, text in pairs(fixed.out) do
@@ -346,15 +421,18 @@ function M.probe(force)
           probes[cmd] = text
         end
       end
+
       for cmd, text in pairs(out) do
         probes[cmd] = vim.trim(tostring(text))
         if FIXED[cmd] then
           fixed.out[cmd] = probes[cmd]
         end
       end
+
       vim.schedule(M.render)
     end)
   end)
+
   M.render()
 end
 
@@ -364,7 +442,9 @@ function M.open()
   if require("dbg.context").block_if_managed("The target panel") then
     return
   end
+
   local buf = M.buffer()
+
   M.probe()
   panel.show(buf, 16, "Target")
 end

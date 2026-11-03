@@ -33,16 +33,21 @@ if vim.g.neovide then
   local function scale(delta)
     vim.g.neovide_scale_factor = vim.g.neovide_scale_factor * delta
   end
+
   local zoom_modes = { "n", "i", "v", "c" }
+
   vim.keymap.set(zoom_modes, "<C-=>", function()
     scale(1.1)
   end)
+
   vim.keymap.set(zoom_modes, "<C-+>", function()
     scale(1.1)
   end)
+
   vim.keymap.set(zoom_modes, "<C-->", function()
     scale(1 / 1.1)
   end)
+
   vim.keymap.set(zoom_modes, "<C-0>", function()
     vim.g.neovide_scale_factor = 1.0
   end)
@@ -50,6 +55,7 @@ if vim.g.neovide then
   local function paste()
     vim.api.nvim_paste(vim.fn.getreg("+"), true, -1)
   end
+
   vim.keymap.set({ "n", "i", "v", "c", "t" }, "<C-S-v>", paste, { silent = true, desc = "Paste from clipboard" })
 end
 
