@@ -3,7 +3,7 @@ local M = {}
 local changed = false
 
 local function nested(ttys)
-  if vim.env.TMUX or vim.env.STY or vim.env.NVIM then
+  if vim.env.TMUX or vim.env.STY or vim.env.ZELLIJ or vim.env.NVIM then
     return true
   end
   for _, ui in ipairs(ttys) do
