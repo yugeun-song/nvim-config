@@ -175,11 +175,13 @@ end
 function M.eval_toplevel()
   local ok, node = pcall(vim.treesitter.get_node, { ignore_injections = true })
   if ok and node then
-    local root = node:tree():root()
-    while node:parent() and node:parent():id() ~= root:id() do
-      node = node:parent()
+    local root_id = node:tree():root():id()
+    local parent = node:parent()
+    while parent and parent:id() ~= root_id do
+      node = parent
+      parent = node:parent()
     end
-    if node:id() ~= root:id() then
+    if node:id() ~= root_id then
       return send(vim.treesitter.get_node_text(node, 0))
     end
   end

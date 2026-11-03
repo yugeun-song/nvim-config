@@ -70,7 +70,7 @@ function M.attach(session)
     end
     st.waiting = true
     local deadline = vim.uv.now() + EXIT_GRACE_MS
-    local timer = vim.uv.new_timer()
+    local timer = assert(vim.uv.new_timer())
     timer:start(
       50,
       50,
