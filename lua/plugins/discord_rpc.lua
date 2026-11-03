@@ -23,7 +23,7 @@ local config = {
   reconnect_backoff = 15000,
   poll_interval = 30000,
   connect_timeout = 5000,
-  os_enabled = { linux = true, mac = false, windows = false },
+  os_enabled = { linux = true, mac = true, windows = true },
 }
 
 local S = {
@@ -93,11 +93,15 @@ local function socket_paths()
     "%s/discord-ipc-%d",
     "%s/snap.discord/discord-ipc-%d",
     "%s/app/com.discordapp.Discord/discord-ipc-%d",
+    "%s/app/dev.vencord.Vesktop/discord-ipc-%d",
   }
   local paths = {}
   for n = 0, 9 do
     for _, t in ipairs(templates) do
-      paths[#paths + 1] = string.format(t, base, n)
+      local path = string.format(t, base, n)
+      if uv.fs_stat(path) then
+        paths[#paths + 1] = path
+      end
     end
   end
   return paths

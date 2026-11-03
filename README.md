@@ -50,7 +50,7 @@ Linux is the primary target. The IME reset has Windows and macOS branches, but t
 | **Caps Lock indicator (optional)** | Linux sysfs LED node | `/sys/class/leds/input*::capslock/brightness`. |
 | **GUI (optional)** | [Neovide](https://neovide.dev/), `CaskaydiaCove Nerd Font Mono` | The GUI profile. |
 | | `wl-clipboard` or `xclip` | `+` register for the GUI paste key. |
-| **Discord presence (optional)** | Discord desktop client | Linux only. |
+| **Discord presence (optional)** | Discord desktop client (or Vesktop) | Linux, macOS and Windows. |
 | **Editing the config (optional)** | `lua-language-server`, `stylua` | From Mason. |
 | **Terminal (optional)** | kitty / WezTerm / foot / ghostty / rio | kitty keyboard protocol for ChKeys. |
 
@@ -269,7 +269,7 @@ heaptrack_gui, Settings → Code Navigation → Custom...: `nvim -l <home>/.conf
 - **Snacks**: `bigfile` from 5 MiB; explorer, files and grep include hidden and gitignored files (noisy in a kernel tree); the explorer watches the disk.
 - **Diagnostics**: on `CursorHold` the line's diagnostics open in a float with their source.
 - **Trouble**: `<leader>cs` (symbols) and `<leader>cS` (LSP references, definitions, ...) open at the bottom like `<leader>xx`, not in a 30-column right split.
-- **Discord presence**: Rich Presence over Discord's IPC socket, on by default on Linux, showing "Editing in Neovim" and the elapsed time, no file names.
+- **Discord presence**: Rich Presence over Discord's IPC socket or pipe, on by default, showing "Editing in Neovim" and the elapsed time, no file names. It borrows the public application ID and `neovim` art of andweeb/presence.nvim.
 - **markview** renders Markdown; **baleia.nvim** colours ANSI escapes in the gdb console (`:BaleiaColorize` elsewhere); **lean.nvim** keeps its infoview at the bottom.
 
 ### Common Lisp, Racket and Haskell (`lua/plugins/lisp.lua`, `lua/plugins/haskell.lua`, `after/ftplugin/racket.lua`)
