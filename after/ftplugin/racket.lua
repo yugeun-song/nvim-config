@@ -1,3 +1,4 @@
+-- A Racket quote is a prefix: ' and ` type one character, not an autopair.
 vim.keymap.set("i", "'", "'", { buffer = true })
 vim.keymap.set("i", "`", "`", { buffer = true })
 

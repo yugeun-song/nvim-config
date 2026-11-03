@@ -72,9 +72,8 @@ local function monitor(session, cmd, cb)
   )
 end
 
--- The monitor translates on whichever core it is pointed at, shared state on this
--- gdbstub; a parked secondary answers Unmapped for every kernel VA. `idx` names a
--- core, nil is the core gdb stopped on.
+-- The monitor translates on the core it points at (shared gdbstub state); a parked secondary answers Unmapped
+-- for every kernel VA. `idx` names a core, nil the one gdb stopped on.
 local function pin_cpu(session, idx, cb)
   local expr = idx and ("monitor cpu " .. idx) or 'eval "monitor cpu %d", $_thread > 0 ? $_thread - 1 : 0'
   local frame = session.current_frame
@@ -130,9 +129,8 @@ function M.qemu_check(session, addr, cb)
     end)
   end
 
-  -- gpa2hva decides: RAM reads normally, a device is never touched, and "No memory
-  -- is mapped" means the gpa was no translation, the one answer worth putting to
-  -- another core (`undecided`).
+  -- gpa2hva decides: RAM reads normally, a device is never touched, and "No memory is mapped" (no translation)
+  -- is the one answer worth asking another core (`undecided`).
   local function check_gpa(gpa, via, undecided)
     monitor(session, "gpa2hva " .. gpa, function(out)
       if not out or out == "" then
@@ -169,15 +167,14 @@ function M.qemu_check(session, addr, cb)
     end)
   end
 
-  -- The core gdb stopped on first, then cpu 0..n-1. One core's page tables are not
-  -- the guest's: a secondary still MMU-off in head.S (arm64 v4.6 after
+  -- The stopped core first, then cpu 0..n-1: a secondary still MMU-off in head.S (arm64 v4.6 after
   -- `__enable_mmu`) answers Unmapped for a VA the primary translates.
   local function sweep(i, n)
     if i > n then
       as_physical("no core translates " .. page)
       return
     end
-    -- `(i == 0) and nil or i - 1` is never nil in Lua; it pinned cpu -1.
+    -- i == 0 keeps the core gdb stopped on.
     local idx
     if i > 0 then
       idx = i - 1

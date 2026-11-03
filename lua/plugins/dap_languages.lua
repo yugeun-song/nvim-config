@@ -1,6 +1,5 @@
 -- Parts adapted from https://github.com/LazyVim/LazyVim (Apache-2.0). See THIRD-PARTY-NOTICES.
--- Debug support for the languages that are not gdb targets. Nothing here goes
--- through lua/dbg.
+-- Debug support for languages that are not gdb targets; nothing here goes through lua/dbg.
 
 local MASON = vim.fs.joinpath(vim.fn.stdpath("data"), "mason")
 

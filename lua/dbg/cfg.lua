@@ -4,10 +4,8 @@ local ui = require("dbg.ui")
 
 local M = {}
 
--- The control-flow view. Structure comes from `cfgjson`, which works before the
--- MMU is on; whether the branch at the pc is taken is decided here with the
--- disassembly panel's evaluator. Every other branch is drawn muted: its
--- registers do not yet hold the values they will when control arrives.
+-- The control-flow view: structure from `cfgjson` (works before the MMU is on), the taken branch at the pc from
+-- the disassembly evaluator. Other branches are muted: their registers do not hold the values yet.
 
 local state = { data = nil, error = nil, generation = 0, mode = "graph", detail = 2, boxes = {} }
 
@@ -643,8 +641,7 @@ function M.open_in_editor()
   return win
 end
 
--- Switch the host window between its file and the graph; the first call makes
--- the host. Whole window, not a split: the graph is the widest thing drawn.
+-- Switches the host window (made on first call) between its file and the graph, which needs the whole width.
 -- The window remembers its file so the Source tab returns to it.
 function M.toggle_in_editor()
   if require("dbg.context").block_if_managed("The control-flow graph") then

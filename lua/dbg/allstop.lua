@@ -1,9 +1,5 @@
--- An all-stop remote target (`target remote`: a QEMU gdbstub, gdbserver) takes no
--- command while it runs. GDB's DAP then refuses breakpoint changes, and a
--- disconnect leaves gdb alive holding the gdbstub. Breakpoint changes are held,
--- the target is interrupted, the held requests are sent and the target resumes;
--- a disconnect halts it first. The interrupt's stop never reaches nvim-dap or
--- its listeners.
+-- An all-stop remote (QEMU gdbstub, gdbserver) takes no command while running, so breakpoint changes interrupt,
+-- apply and resume, and a disconnect halts first (else gdb keeps the gdbstub). Listeners never see that stop.
 local M = {}
 
 local GATED = {

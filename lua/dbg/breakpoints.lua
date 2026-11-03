@@ -1,8 +1,6 @@
 local M = {}
 
--- nvim-dap has no API for setFunctionBreakpoints / setInstructionBreakpoints,
--- so the list lives here. `break main` needs no line table, so a binary without
--- -g stays usable.
+-- nvim-dap has no API for function or instruction breakpoints, so they live here; `break main` needs no line table.
 local functions = {}
 local addresses = {}
 local status = {}
@@ -189,9 +187,8 @@ local function same_file(a, b)
   return a == b or (vim.uv.fs_realpath(a) or a) == (vim.uv.fs_realpath(b) or b)
 end
 
--- A breakpoint gdb makes itself (a tbreak for "stop at main", one typed in the
--- console) arrives as "new"; on a line the user already holds a breakpoint,
--- nvim-dap would replace that one and drop it on the tbreak's removal.
+-- gdb's own breakpoints (a "stop at main" tbreak, a console break) arrive as "new"; on a line the user already
+-- holds, nvim-dap would replace the user's and drop it when the tbreak goes.
 local function guard_events(session)
   local class_event = session.event_breakpoint
   session.event_breakpoint = function(self, body)
@@ -222,9 +219,8 @@ local function hex(s)
   end))
 end
 
--- Run to a source line or an address through gdb's own one-shot internal
--- breakpoint, the user's left active. nvim-dap's run_to_cursor clears them all,
--- and from a line without code it never stops again.
+-- Runs to a line or address through gdb's one-shot breakpoint, keeping the user's: nvim-dap's run_to_cursor
+-- clears them all and, from a line without code, never stops again.
 function M.run_to(session, where)
   local gdbq = require("dbg.gdbq")
   local on = { session = session }
@@ -267,9 +263,8 @@ function M.setup(dap)
     guard_events(session)
     M.sync(session)
   end
-  -- gdb answers a breakpoint it cannot place yet with no line, and nvim-dap then
-  -- stamps that one answer on every breakpoint of the file. The answer follows the
-  -- request's order, so the line comes from there.
+  -- gdb answers a breakpoint it cannot place yet with no line, and nvim-dap stamps that on the whole file;
+  -- answers follow the request's order, so the line comes from the request.
   dap.listeners.before.setBreakpoints["dbg_breakpoints"] = function(session, err, response, request)
     if err or not require("dbg.context").is_low_level(session) then
       return

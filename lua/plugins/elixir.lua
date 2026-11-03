@@ -1,6 +1,5 @@
--- Expert's manager and engine nodes talk over Erlang distribution, listening on every interface with the public
--- cookie "expert": anyone who reaches a port runs code as you. A per-session cookie closes that. ERL_FLAGS keeps the
--- manager on loopback; Expert scrubs ERL_FLAGS before starting the engine, whose port stays on 0.0.0.0.
+-- Expert's Erlang nodes listen on every interface with the public cookie "expert": anyone reaching a port runs code.
+-- A per-session cookie closes that; ERL_FLAGS keeps the manager on loopback (Expert drops it for the engine).
 local cookie = vim.uv.random(24):gsub(".", function(c)
   return ("%02x"):format(c:byte())
 end)

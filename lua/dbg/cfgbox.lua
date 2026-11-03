@@ -1,13 +1,10 @@
 local M = {}
 
--- The box view: one box per basic block, ranks stacked, branches drawn between
--- them. Calls stay as text inside their block, as in IDA and Binary Ninja.
--- Rank and order arrive from the analyser; only the mapping to cells is here.
+-- One box per basic block, ranks stacked, branches drawn between; calls stay inside their block as in IDA.
+-- Rank and order come from the analyser; only the mapping to cells is here.
 
--- The canvas is materialised cell by cell, so its area is the cost: 1.5M cells
--- measured at about 340 ms, the next step up was multi-second. The width cap
--- matters: one long operand widens its whole rank, and rank width multiplies
--- into the area.
+-- The canvas costs its area: 1.5M cells measured about 340 ms, the next step up multi-second. The width cap
+-- matters because one long operand widens its whole rank.
 M.canvas_cells = 1500000
 M.box_inner_max = 56
 

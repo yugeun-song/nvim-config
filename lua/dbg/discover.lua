@@ -7,9 +7,8 @@ local EM_NAMES = {
   [243] = "riscv64",
 }
 
--- Cross-gdb naming varies by distribution and toolchain, and a gdb built with
--- --enable-targets=all ships no cross binary at all. Probe, then fall back on
--- a host gdb that accepts the target architecture.
+-- Cross-gdb names vary by distribution, and an --enable-targets=all gdb ships none; probe them, then fall back
+-- on a host gdb that accepts the target architecture.
 local GDB_CANDIDATES = {
   aarch64 = { "aarch64-linux-gnu-gdb", "aarch64-none-linux-gnu-gdb", "aarch64-none-elf-gdb" },
   riscv64 = { "riscv64-linux-gnu-gdb", "riscv64-unknown-linux-gnu-gdb", "riscv64-unknown-elf-gdb" },
@@ -52,8 +51,8 @@ local function uint(str, pos, len, little)
   return v
 end
 
--- How an ELF carries its DWARF: "embedded", "external", "none", or nil when it
--- is not a readable ELF. Reads the section name table, so any class or endianness.
+-- How an ELF carries its DWARF: "embedded", "external", "stripped", "none", or nil
+-- when it is not a readable ELF. Reads the section name table, so any class or endianness.
 function M.elf_debug_info(path)
   if not path or path == "" then
     return nil
@@ -116,9 +115,8 @@ function M.elf_debug_info(path)
   if names:find(".gnu_debuglink", 1, true) or names:find(".debug_sup", 1, true) then
     return "external"
   end
-  -- No debug sections and no .symtab means stripped, so a debug package may
-  -- still supply it; with .symtab present it was never generated. A build-id
-  -- cannot tell these apart: gcc emits one with or without -g.
+  -- No debug sections: without .symtab it was stripped (a debug package may supply it), with one it was never
+  -- generated. A build-id cannot tell: gcc emits one with or without -g.
   if not names:find(".symtab", 1, true) then
     return "stripped"
   end
@@ -172,10 +170,8 @@ local function python_starts(bin)
   return false
 end
 
--- The gdb for an architecture: vim.g.dbg_gdb when the user states one (a name
--- or path, or a table keyed by arch), else the first candidate whose Python
--- starts, else the host gdb if it was built for every target.  nil and the
--- reason when none fits.
+-- vim.g.dbg_gdb when stated (a name, a path or a table keyed by arch), else the first candidate whose Python
+-- starts, else a host gdb that accepts the arch. nil and the reason when none fits.
 function M.gdb_for(arch)
   local key = ARCH_ALIASES[arch] or arch
   local stated = vim.g.dbg_gdb
@@ -273,9 +269,8 @@ function M.gdbtools_loader()
   return nil, ("%s names %s, which has no gdbtools.py (re-run gdbtools' install.sh)"):format(file, root)
 end
 
--- The kbuildlab to run: vim.g.dbg_kbuildlab or $KBUILDLAB when stated, else the
--- one on $PATH, else the checkout its installer recorded -- a session started
--- from a graphical launcher may not have ~/.local/bin on its PATH.
+-- vim.g.dbg_kbuildlab or $KBUILDLAB, else the one on $PATH, else the checkout its installer recorded: a
+-- graphical launcher may not put ~/.local/bin on PATH.
 function M.kbuildlab()
   local stated = vim.g.dbg_kbuildlab or vim.env.KBUILDLAB
   if stated and stated ~= "" then

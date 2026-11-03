@@ -79,10 +79,8 @@ local function liveness(value)
   return "live"
 end
 
--- gdbtools' `addr2sym` resolves a physical or virtual address against the
--- session's shadow symbols, so it works before the MMU is on. It never
--- dereferences: a u64 does not say whether it is a pointer, and a wrong read
--- takes QEMU down.
+-- gdbtools' `addr2sym` resolves against the session's shadow symbols, so it works before the MMU is on. It never
+-- dereferences: a u64 may not be a pointer, and a wrong read takes QEMU down.
 function M.explain()
   local addr = vim.api.nvim_get_current_line():match("(0x%x+)")
   if not addr then
@@ -141,8 +139,6 @@ local function pass(name)
   return not state.filter or name:lower():find(state.filter, 1, true)
 end
 
--- Not string.format: its width field is two digits, so a column past 99 cells
--- raised "invalid option '%-104'". Widths are display cells.
 local function width_of(text)
   return vim.fn.strdisplaywidth(text or "")
 end

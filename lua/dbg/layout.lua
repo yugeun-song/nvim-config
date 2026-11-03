@@ -5,10 +5,8 @@ local M = {}
 
 M.preset = "auto"
 
--- Font size changes what `columns` and `lines` report, so every threshold below
--- is in cells and re-measured on every resize.
--- Register rows carry a `<symbol + offset>` annotation; a narrow column cuts
--- kernel symbols off.
+-- Thresholds are in cells, re-measured on every resize, since font size changes `columns` and `lines`.
+-- A narrower sidebar cuts the `<symbol + offset>` of kernel register rows.
 M.sidebar_min = 44
 M.sidebar_max = 110
 M.sidebar_share = 0.38
@@ -497,9 +495,8 @@ local function drop_borrowed(listed)
   end
 end
 
--- Where the debugger may show source. nvim-dap otherwise falls back to the
--- previous window, a winfixbuf panel when stepping from the console, and the
--- jump raises E1513 inside nvim-dap's coroutine and drops the step.
+-- Where the debugger may show source; otherwise nvim-dap falls back to the previous window, a winfixbuf panel
+-- when stepping from the console, and E1513 inside its coroutine drops the step.
 function M.source_window()
   local function usable(win)
     if not (win and vim.api.nvim_win_is_valid(win)) then
@@ -594,10 +591,8 @@ function M.enter()
   M.apply()
 end
 
--- Give a window back the file it showed before the graph took it (w:dbg_cfg_prev),
--- and say whether it was such a window. The graph sits in an ordinary editor
--- window, so it has a dbg- filetype without being a panel; closing it loses the
--- source view.
+-- Gives a window back the file the graph took (w:dbg_cfg_prev) and says whether it was one: the graph has a
+-- dbg- filetype in an ordinary window, and closing that window loses the source view.
 local function release_cfg_host(win)
   local prev = vim.w[win].dbg_cfg_prev
   vim.w[win].dbg_cfg_prev = nil

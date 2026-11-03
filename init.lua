@@ -2,5 +2,4 @@
 require("open_folder").startup()
 require("remote_open").setup()
 require("terminal_background").setup()
--- bootstrap lazy.nvim, LazyVim and your plugins
 require("config.lazy")

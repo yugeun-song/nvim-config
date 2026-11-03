@@ -1,4 +1,5 @@
 local default = "spaceduck"
+-- Two lines: the confirmed colorscheme and the default it replaced; a new default drops the choice.
 local record = vim.fn.stdpath("state") .. "/colorscheme"
 
 return {

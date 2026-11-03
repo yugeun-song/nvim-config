@@ -92,9 +92,8 @@ function M.highlight(buf)
   return painted
 end
 
---- Extend a bold run over the `()` after it. man-pages writes `.BR mmap ()`,
---- so the name is bold and the parentheses roman. `mmap(2)` (a reference) and
---- `mmap(void addr[...]` (SYNOPSIS code) are left alone.
+--- Extend a bold run over the `()` after it: man-pages writes `.BR mmap ()`, a bold name with roman parens.
+--- `mmap(2)` (a reference) and `mmap(void addr[...]` (SYNOPSIS code) stay as they are.
 --- @param buf integer? buffer handle, defaults to the current one
 --- @return integer runs extended
 function M.close_calls(buf)

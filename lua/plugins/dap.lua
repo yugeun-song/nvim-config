@@ -100,9 +100,8 @@ return {
         opts = {
           winbar = {
             show = true,
-            -- No sections or default here: a session with no gdb behind it gets
-            -- nvim-dap-view as it ships. dbg.context picks the gdb ring or the
-            -- stock one per session; the ring stays up after the session ends.
+            -- No sections or default: a session without gdb gets nvim-dap-view as it ships. dbg.context picks
+            -- the gdb ring or the stock one per session; the ring stays up after the session ends.
             custom_sections = {
               watch = {
                 label = adaptive("Locals+Globals(A)", "Var(A)"),
@@ -510,9 +509,8 @@ return {
       -- and the kernel-only commands stay inert without a vmlinux.
       dap.adapters.gdb = function(callback, config)
         local notify = require("dbg.notify")
-        -- Cross-arch usermode (dbg_qemuser or an external target): the arch comes
-        -- from the ELF, and cross gdb, sysroot and QEMU follow from it. Host-arch
-        -- configs set neither, so this is a no-op for them.
+        -- Cross-arch usermode (dbg_qemuser or an external target): the ELF gives the arch, which picks gdb,
+        -- sysroot and QEMU. Host-arch configs set neither.
         if config.program and (config.dbg_qemuser or config.target) then
           config.arch = config.arch or discover.elf_arch(config.program)
           if config.dbg_qemuser and not config.target then
@@ -570,11 +568,8 @@ return {
         end
       end
 
-      -- The kernel session is kbuildlab's to describe: the gdb, the -iex lines
-      -- (which also trust the tree's own scripts/gdb), what gdbtools is told, the
-      -- vmlinux and the facts of this boot all come from `kbuildlab attach --json`,
-      -- asked afresh on every start so a replayed configuration follows a guest
-      -- that was restarted.  Without kbuildlab there is no kernel session.
+      -- kbuildlab describes the kernel session (gdb, -iex lines that trust the tree's scripts/gdb, gdbtools facts,
+      -- vmlinux), asked afresh at every start. Without kbuildlab there is no kernel session.
       dap.adapters.gdb_kernel = function(callback, config)
         local notify = require("dbg.notify")
         local kbl = config.kbl or {}
@@ -583,7 +578,7 @@ return {
           return
         end
         local args = { "attach", kbl.tree, "--port", tostring(kbl.port), "--json" }
-        -- "Attach now" leaves gdbtools inert until `kearly on`, as before.
+        -- "Attach now" leaves gdbtools inert until `kearly on`.
         local env = { GDBTOOLS_AUTO = config.kgdb_auto and "1" or "0" }
         discover.kbuildlab_json(args, env, function(spec, why)
           if not spec then
@@ -789,7 +784,6 @@ return {
         desc = "Keep the debugger panel highlights defined across colorscheme changes",
       })
 
-      -- Panels stay up as long as any gdb session is alive.
       local function low_level_session_running()
         for _, s in pairs(dap.sessions() or {}) do
           if context.is_low_level(s) then
@@ -896,8 +890,7 @@ return {
         pcall(function()
           require("dbg.registers").mark_stop()
         end)
-        -- Remember the stopping thread: with several halted vCPUs, moving the
-        -- wrong one resumes the whole machine.
+        -- dbg.session.focus continues this thread.
         if body and body.threadId then
           session["dbg_stopped_thread"] = body.threadId
         end

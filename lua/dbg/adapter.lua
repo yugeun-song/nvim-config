@@ -1,12 +1,5 @@
--- The gdb behind a gdb/kernel session exits by itself right after answering a
--- disconnect. nvim-dap closes the session on that answer, shutting stdin and
--- sending SIGINT into the exit; on kernel sessions that has left gdb hung,
--- holding the gdbstub. That close waits for gdb to go first, and Neovim's exit
--- kills what is still there.
---
--- gdb can also stop answering for good when a request lands while it starts
--- the target after configurationDone (seen with the setExceptionBreakpoints
--- nvim-dap-view sends then), so requests wait for the launch or attach answer.
+-- gdb exits by itself after answering disconnect; close waits for it, since nvim-dap's SIGINT left kernel gdbs hung.
+-- A request sent while gdb starts the target can hang it, so requests wait for the launch or attach answer.
 local M = {}
 
 local EXIT_GRACE_MS = 3000

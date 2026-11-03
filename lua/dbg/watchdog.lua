@@ -1,8 +1,7 @@
 local M = {}
 
--- A lost gdbstub is not an error to nvim-dap: gdb keeps its DAP connection and
--- the panels keep their last values. Liveness comes from gdb's output and the
--- kernel's socket table, never from connecting: the stub serves one client.
+-- A lost gdbstub is no error to nvim-dap (gdb keeps its DAP connection), so liveness comes from gdb's output and
+-- the socket table, never from connecting: the stub serves one client.
 
 local LOST = {
   "Remote connection closed",

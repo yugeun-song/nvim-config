@@ -103,9 +103,8 @@ function M.show_report()
   end)
 end
 
--- The DAP configuration names a tree and a port and nothing else: the adapter
--- asks kbuildlab for the session each time it starts, so a replayed
--- configuration follows a guest that was restarted in another boot mode.
+-- A configuration names only a tree and a port; the adapter asks kbuildlab at each start, so a replayed one
+-- follows a guest restarted in another boot mode.
 local function build(c)
   return {
     name = ("kernel %s @ %s"):format(c.label or "?", c.target or tostring(c.port)),
@@ -152,9 +151,8 @@ function M.manual(cb, port)
   end)
 end
 
--- The u-boot ELF names the firmware stages; its range does not overlap vmlinux,
--- so both resolve. gdb's DAP loads the program only once attach lands, so this
--- runs from the session rather than as a -ex argument.
+-- The u-boot ELF names the firmware stages without overlapping vmlinux. gdb's DAP loads the program only once
+-- attach lands, so this runs from the session, not as a -ex argument.
 function M.load_firmware_symbols(session, done)
   done = done or function() end
   local cfg = session and session.config or {}
@@ -167,10 +165,8 @@ function M.load_firmware_symbols(session, done)
   end, { session = session })
 end
 
--- Mirrors run-gdb.sh's connect sequence, stopping one step earlier: park on
--- the first head.S instruction with the MMU off. `kearly kaslr auto` would run
--- on to the MMU crossing; type it in the console when wanted. A breakpoint set
--- before the slide is known arms its own catcher on the crossing.
+-- run-gdb.sh's connect sequence, one step short: park on the first head.S instruction, MMU off; `kearly kaslr
+-- auto` in the console runs on. A breakpoint set before the slide is known arms its own catcher on the crossing.
 function M.arm_kaslr(session)
   local cfg = session and session.config or {}
   if not cfg.kgdb_auto then
@@ -194,9 +190,8 @@ function M.arm_kaslr(session)
       end, on)
     end
 
-    -- `arm` only plants the entry breakpoint: a bare bootbreak resumes inside the
-    -- evaluate, and gdb answers nothing else until the guest stops. It plants none
-    -- when the MMU is already on, which the temporary-breakpoint count tells.
+    -- `arm` only plants the entry breakpoint (a bare bootbreak resumes inside the evaluate and blocks gdb);
+    -- with the MMU already on it plants none, which the temporary-breakpoint count shows.
     local count = "python print(sum(1 for b in gdb.breakpoints() if b.temporary))"
     local steps = { "kearly on", count, "kearly bootbreak arm", count }
     local outs = {}
@@ -349,9 +344,8 @@ function M.start(opts)
       if not choice then
         return
       end
-      -- Attach where the kernel is, or arm early boot and stop on the first head.S
-      -- instruction.  Everything else -- the gdb, the trust for the kernel's own
-      -- scripts, what gdbtools is told -- comes from kbuildlab when the adapter starts.
+      -- Attach where the kernel is, or arm early boot; the gdb, the trust for the kernel's scripts and what
+      -- gdbtools is told come from kbuildlab when the adapter starts.
       local function launch(cfg, early)
         cfg.kgdb_auto = early and true or false
         local kaslr = cfg.kaslr_state

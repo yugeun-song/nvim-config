@@ -52,7 +52,7 @@ local ANNOTATE_PROBE = table.concat({
   "print('\\\\n'.join(out))\")",
 }, "")
 
--- Local state: two renders can be in flight, and shared state duplicated rows.
+-- Per-call state: two renders can be in flight.
 local function collect_annotations(cb)
   local annotations, order = {}, {}
   gdbq.run(ANNOTATE_PROBE, function(text)

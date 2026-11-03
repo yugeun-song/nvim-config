@@ -5,8 +5,7 @@ local M = {}
 local echo_next_stop = false
 local explained = {}
 
--- Once per session. nvim-dap marks the nearest frame with a source, which puts
--- the arrow on a glibc header when frame 0 has none.
+-- Once per session.
 local function explain_sourceless(session, frame)
   -- Already said at attach when the whole binary has no DWARF.
   if explained[session.id] or session.dbg_no_debug_info then
