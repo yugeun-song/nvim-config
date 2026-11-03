@@ -113,7 +113,9 @@ function M.close_calls(buf)
       end
       init = s + 2
       local col = s - 1
-      for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(buf, -1, { row - 1, 0 }, { row - 1, col }, { details = true })) do
+      for _, mark in
+        ipairs(vim.api.nvim_buf_get_extmarks(buf, -1, { row - 1, 0 }, { row - 1, col }, { details = true }))
+      do
         local d = mark[4]
         if d and d.hl_group == "manBold" and d.end_row == row - 1 and d.end_col == col then
           extended = extended + 1
