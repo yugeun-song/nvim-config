@@ -349,11 +349,11 @@ vim.api.nvim_create_autocmd("LspAttach", {
   group = augroup("kernel_tagfunc"),
   callback = function(args)
     local ft = vim.bo[args.buf].filetype
-    if ft == "c" or ft == "cpp" or ft == "h" then
+    if ft == "c" or ft == "cpp" then
       vim.bo[args.buf].tagfunc = ""
     end
   end,
-  desc = "Clear LSP tagfunc on C/C++/H buffers so <C-]> falls back to tags file",
+  desc = "Clear LSP tagfunc on C/C++ buffers so <C-]> falls back to tags file",
 })
 
 vim.api.nvim_create_autocmd("FileType", {
