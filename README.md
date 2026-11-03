@@ -299,7 +299,7 @@ heaptrack_gui, Settings → Code Navigation → Custom...: `nvim -l <home>/.conf
 
 ### ChKeys (`lua/chkeys.lua`)
 
-Typed keys show in floats at the bottom right for 1.6 s, with `한` while the IME is in Hangul; one window per key under Neovide. Off at startup; `<leader>uK` or `:ChKeysToggle`. On kitty, WezTerm, foot, ghostty and rio the kitty keyboard protocol is enabled at startup, display on or off. Nothing is written to disk.
+Typed keys show in floats at the bottom right for 1.6 s, with `한` while the IME is in Hangul; one window per key under Neovide. Off at startup; `<leader>uK` or `:ChKeysToggle`. Terminal mode and `input()`/`inputsecret()` prompts are never shown (`excluded_modes`, `hide_cmdtypes` in `setup()`). Nothing is written to disk.
 
 ### Neovide GUI (`lua/plugins/neovide.lua`, `lua/plugins/neovide-ime.lua`)
 

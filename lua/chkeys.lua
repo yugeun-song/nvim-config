@@ -14,7 +14,8 @@ local config = {
   border = "rounded",
   per_key_window = false,
   per_key_gap = 1,
-  excluded_modes = {},
+  excluded_modes = { "t" },
+  hide_cmdtypes = { "@", "-" },
   color_sources = {
     "String",
     "Function",
@@ -29,7 +30,6 @@ local config = {
   },
   bold = true,
   im_indicator = true,
-  kitty_keyboard = "auto",
 }
 
 local MOD_NAME = {
@@ -165,21 +165,14 @@ end
 
 local function stop_timer()
   if state.timer then
-    pcall(function()
-      state.timer:stop()
-    end)
-    pcall(function()
-      state.timer:close()
-    end)
-    state.timer = nil
+    state.timer:stop()
   end
 end
 
 local function arm_timer()
-  stop_timer()
-  local t = assert(uv.new_timer())
-  state.timer = t
-  t:start(
+  state.timer = state.timer or assert(uv.new_timer())
+  state.timer:stop()
+  state.timer:start(
     config.timeout,
     0,
     vim.schedule_wrap(function()
@@ -217,13 +210,7 @@ end
 
 local function cancel_esc_timer()
   if state.esc_timer then
-    pcall(function()
-      state.esc_timer:stop()
-    end)
-    pcall(function()
-      state.esc_timer:close()
-    end)
-    state.esc_timer = nil
+    state.esc_timer:stop()
   end
 end
 
@@ -510,58 +497,6 @@ local function should_skip(seq)
   return false
 end
 
-local function in_gui()
-  return vim.g.neovide or vim.g.fvim_loaded or vim.g.goneovim
-end
-
-local function detect_kitty_kb()
-  if in_gui() then
-    return false
-  end
-  local term = vim.env.TERM or ""
-  local prog = vim.env.TERM_PROGRAM or ""
-  if term == "xterm-kitty" or vim.env.KITTY_PID then
-    return true
-  end
-  if prog == "WezTerm" then
-    return true
-  end
-  if term:find("^foot") then
-    return true
-  end
-  if prog == "ghostty" or vim.env.GHOSTTY_RESOURCES_DIR then
-    return true
-  end
-  if prog == "rio" then
-    return true
-  end
-  return false
-end
-
-local function enable_kitty_kb()
-  local want = config.kitty_keyboard
-  if want == false then
-    return
-  end
-
-  local ok, detected = pcall(detect_kitty_kb)
-  if not ok or (want == "auto" and not detected) then
-    return
-  end
-
-  local sent, err = pcall(vim.fn.chansend, 2, "\27[>1u")
-  if not sent then
-    vim.notify("[chkeys] kitty keyboard protocol failed: " .. tostring(err), vim.log.levels.DEBUG)
-    return
-  end
-
-  vim.api.nvim_create_autocmd("VimLeavePre", {
-    callback = function()
-      pcall(vim.fn.chansend, 2, "\27[<u")
-    end,
-  })
-end
-
 local ESC_MERGE_MS = 50
 
 local function on_key(_, typed)
@@ -571,7 +506,7 @@ local function on_key(_, typed)
   if not typed or typed == "" then
     return
   end
-  if mode_excluded() then
+  if mode_excluded() or vim.list_contains(config.hide_cmdtypes, vim.fn.getcmdtype()) then
     return
   end
   local seq = vim.fn.keytrans(typed)
@@ -587,14 +522,13 @@ local function on_key(_, typed)
       end)
     end
     state.esc_pending = true
-    local t = assert(uv.new_timer())
-    state.esc_timer = t
-    t:start(
+    state.esc_timer = state.esc_timer or assert(uv.new_timer())
+    state.esc_timer:stop()
+    state.esc_timer:start(
       ESC_MERGE_MS,
       0,
       vim.schedule_wrap(function()
         state.esc_pending = false
-        state.esc_timer = nil
         push_key("Esc")
       end)
     )
@@ -669,10 +603,12 @@ end
 
 function M.enable()
   config.enabled = true
+  vim.on_key(on_key, state.ns)
 end
 
 function M.disable()
   config.enabled = false
+  vim.on_key(nil, state.ns)
   M._wipe()
 end
 
@@ -693,7 +629,9 @@ function M.setup(opts)
   math.randomseed(os.time())
   state.ns = vim.api.nvim_create_namespace("user_chkeys")
   setup_highlights()
-  vim.on_key(on_key, state.ns)
+  if config.enabled then
+    vim.on_key(on_key, state.ns)
+  end
   vim.api.nvim_create_autocmd("ColorScheme", {
     callback = function()
       setup_highlights()
@@ -703,8 +641,6 @@ function M.setup(opts)
   vim.api.nvim_create_user_command("ChKeysToggle", function()
     M.toggle()
   end, {})
-
-  enable_kitty_kb()
 end
 
 return M
