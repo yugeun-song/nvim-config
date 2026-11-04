@@ -303,7 +303,9 @@ local function annotate_then(base, raw, done)
   symbols = {}
   local session = panel.stopped_session()
 
-  if not (state.annotate and state.group == 8 and session and state.source.kind ~= "file") then
+  local gdb = session and require("dbg.context").is_low_level(session)
+
+  if not (state.annotate and state.group == 8 and gdb and state.source.kind ~= "file") then
     done()
 
     return

@@ -773,7 +773,7 @@ end
 -- Switches the host window (made on first call) between its file and the graph, which needs the whole width.
 -- The window remembers its file so the Source tab returns to it.
 function M.toggle_in_editor()
-  if require("dbg.context").block_if_managed("The control-flow graph") then
+  if require("dbg.context").block_unless_gdb("The control-flow graph") then
     return
   end
 

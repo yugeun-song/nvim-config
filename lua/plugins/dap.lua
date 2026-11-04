@@ -213,7 +213,7 @@ return {
         function()
           local dap = require("dap")
 
-          if require("dbg.context").is_low_level() then
+          if require("dbg.context").has_panels() then
             local ok, reason = require("dbg.caps").supports("line_breakpoints")
 
             if not ok then
@@ -475,6 +475,17 @@ return {
       local context = require("dbg.context")
       local group = vim.api.nvim_create_augroup("dbg", { clear = true })
 
+      local labels = {
+        scopes = adaptive("Scopes(S)", "Sco(S)"),
+        watches = adaptive("Watches(W)", "Wat(W)"),
+        threads = adaptive("Call stack(T)", "Stk(T)"),
+        breakpoints = adaptive("Breakpoints(B)", "Brk(B)"),
+        repl = adaptive("gdb console(R)", "gdb(R)"),
+        console = adaptive("Output(C)", "Out(C)"),
+        exceptions = adaptive("Exceptions(E)", "Exc(E)"),
+        sessions = adaptive("Sessions(K)", "Ses(K)"),
+      }
+
       -- The winbar of a gdb / Linux Kernel session; dbg.context only switches to it.
       context.set_low_level_winbar({
         sections = {
@@ -494,16 +505,25 @@ return {
         },
         default_section = "scopes",
         show_keymap_hints = false,
-        labels = {
-          scopes = adaptive("Scopes(S)", "Sco(S)"),
-          watches = adaptive("Watches(W)", "Wat(W)"),
-          threads = adaptive("Call stack(T)", "Stk(T)"),
-          breakpoints = adaptive("Breakpoints(B)", "Brk(B)"),
-          repl = adaptive("gdb console(R)", "gdb(R)"),
-          console = adaptive("Output(C)", "Out(C)"),
-          exceptions = adaptive("Exceptions(E)", "Exc(E)"),
-          sessions = adaptive("Sessions(K)", "Ses(K)"),
+        labels = labels,
+      })
+
+      -- An LLDB session keeps the panels that speak plain DAP; the others run gdb commands.
+      context.set_lldb_winbar({
+        sections = {
+          "scopes",
+          "watches",
+          "registers",
+          "memory",
+          "disassembly",
+          "threads",
+          "breakpoints",
+          "repl",
+          "console",
         },
+        default_section = "scopes",
+        show_keymap_hints = false,
+        labels = vim.tbl_extend("force", labels, { repl = adaptive("LLDB console(R)", "lldb(R)") }),
       })
 
       -- The panels are winfixbuf, so bufferline's keys raise E1513 from inside
@@ -525,8 +545,8 @@ return {
         end
       end)
 
-      -- Only a gdb stop jumps through the layout; other adapters keep nvim-dap's.
-      for _, adapter in ipairs({ "gdb", "gdb_kernel" }) do
+      -- Only a stop in a session with the panels jumps through the layout; other adapters keep nvim-dap's.
+      for _, adapter in ipairs({ "gdb", "gdb_kernel", "lldb" }) do
         dap.defaults[adapter].switchbuf = function(bufnr, line, column)
           require("dbg.layout").jump(bufnr, line, column)
         end
@@ -540,7 +560,7 @@ return {
         local report = dap_utils.notify
 
         rawset(dap_utils, "notify", function(msg, ...)
-          if type(msg) == "string" and msg:find("^Source missing, cannot jump to frame") and context.is_low_level() then
+          if type(msg) == "string" and msg:find("^Source missing, cannot jump to frame") and context.has_panels() then
             return
           end
 
@@ -786,6 +806,7 @@ return {
           callback({ type = "executable", command = cmd })
         end
 
+        -- codelldb evaluates C expressions only with expressions = "native"; lldb-dap always does and ignores it.
         local lldb_configs = {
           {
             name = "Launch executable (lldb)",
@@ -794,6 +815,7 @@ return {
             program = input_path("Executable: ", cwd_exe),
             args = input_args("Arguments: "),
             cwd = "${workspaceFolder}",
+            expressions = "native",
           },
           {
             name = "Launch executable, stop at main (lldb)",
@@ -803,11 +825,13 @@ return {
             args = input_args("Arguments: "),
             cwd = "${workspaceFolder}",
             preRunCommands = { "breakpoint set --one-shot true --name main" },
+            expressions = "native",
           },
           {
             name = "Attach to a running process (lldb)",
             type = "lldb",
             request = "attach",
+            expressions = "native",
             program = input_path("Executable: ", cwd_exe),
             pid = function()
               return tonumber(vim.fn.input("PID: "))
@@ -937,7 +961,7 @@ return {
 
       local function low_level_session_running()
         for _, s in pairs(dap.sessions() or {}) do
-          if context.is_low_level(s) then
+          if context.has_panels(s) then
             return true
           end
         end
@@ -970,13 +994,21 @@ return {
         end,
       }
 
+      local LLDB_PANELS = { registers = true, memory = true }
+
+      local function allowed(key, session)
+        return not context.is_lldb(session) or LLDB_PANELS[key] == true
+      end
+
       local dirty = {}
 
-      local function refresh_panels()
+      local function refresh_panels(session)
         local panel = require("dbg.panel")
 
         for key, refresh in pairs(PANELS) do
-          if panel.visible(key) then
+          if not allowed(key, session) then
+            dirty[key] = nil
+          elseif panel.visible(key) then
             dirty[key] = nil
             pcall(refresh)
           else
@@ -991,7 +1023,7 @@ return {
         callback = function(ev)
           local key = ev.file:match("^dbg://(.+)$")
 
-          if key and dirty[key] and dap.session() then
+          if key and dirty[key] and dap.session() and allowed(key, dap.session()) then
             dirty[key] = nil
             vim.schedule(function()
               pcall(PANELS[key])
@@ -1006,11 +1038,11 @@ return {
           return
         end
 
-        if not context.is_low_level(session) then
+        if not context.has_panels(session) then
           return
         end
 
-        refresh_panels()
+        refresh_panels(session)
         pcall(function()
           require("dbg.layout").resize()
           if not require("dbg.console").has_source(session.current_frame) then
@@ -1045,7 +1077,7 @@ return {
       end
 
       dap.listeners.after.event_stopped["dbg_panels"] = function(session, body)
-        if not context.is_low_level(session) then
+        if not context.has_panels(session) then
           return
         end
 
@@ -1062,7 +1094,7 @@ return {
       end
 
       dap.listeners.after.stackTrace["dbg_panels"] = function(session, err, _, payload)
-        if not context.is_low_level(session) then
+        if not context.has_panels(session) then
           return
         end
 
@@ -1088,7 +1120,7 @@ return {
       end
 
       local function snapshot_layout(session)
-        if not context.is_low_level(session) then
+        if not context.has_panels(session) then
           return
         end
 
@@ -1102,10 +1134,16 @@ return {
 
       dap.listeners.after.event_initialized["dbg_panels"] = function(session)
         pcall(function()
+          -- GDB's DAP mishandles a negative instructionOffset and codelldb rejects the -0 a zero one encodes to,
+          -- so only gdb starts the disassembly at the pc.
+          require("dap-disasm").set_memref(nil, context.is_low_level(session) and -1 or 16)
+        end)
+
+        pcall(function()
           context.apply_winbar(session)
           require("dbg.caps").invalidate(session)
           require("dbg.session").remember(session.config)
-          if not context.is_low_level(session) then
+          if not context.has_panels(session) then
             -- DbgLayout may have built the panels with no session up.
             if not low_level_session_running() then
               require("dbg.layout").drop_panels()
@@ -1115,9 +1153,9 @@ return {
           end
 
           require("dbg.layout").enter()
-          local kernel = require("dbg.kernel")
-
-          kernel.after_attach(session)
+          if context.is_low_level(session) then
+            require("dbg.kernel").after_attach(session)
+          end
         end)
       end
 
@@ -1184,7 +1222,7 @@ return {
       end, { nargs = "?", desc = "Break on a function name or 0xADDRESS" })
 
       vim.api.nvim_create_user_command("DbgInline", function(o)
-        if context.block_if_managed_session("Inline values") then
+        if context.block_unless_gdb_session("Inline values") then
           return
         end
 

@@ -138,7 +138,7 @@ function M.probe()
 end
 
 function M.open()
-  if require("dbg.context").block_if_managed("The mappings view") then
+  if require("dbg.context").block_unless_gdb("The mappings view") then
     return
   end
 

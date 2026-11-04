@@ -27,6 +27,22 @@ local PANELS = {
   { name = "session", title = "Target", mod = "dbg.session", weight = 2 },
 }
 
+-- An LLDB session gets only the panels that speak plain DAP.
+local LLDB_PANELS = { registers = true, memory = true }
+
+local function ring()
+  local ok, dap = pcall(require, "dap")
+  local session = ok and dap.session() or nil
+
+  if not (session and require("dbg.context").is_lldb(session)) then
+    return PANELS
+  end
+
+  return vim.tbl_filter(function(p)
+    return LLDB_PANELS[p.name] == true
+  end, PANELS)
+end
+
 local MIN_PANEL_ROWS = 5
 
 local index = 1
@@ -36,7 +52,7 @@ local function slot(i)
 end
 
 local function panel_by_name(name)
-  for i, p in ipairs(PANELS) do
+  for i, p in ipairs(ring()) do
     if p.name == name then
       return p, i
     end
@@ -161,14 +177,15 @@ end
 local function selection(count)
   local own = live_slots()
   local out, taken = {}, {}
+  local list = ring()
   local i = index
 
-  for _ = 1, #PANELS * 2 do
+  for _ = 1, #list * 2 do
     if #out >= count then
       break
     end
 
-    local p = PANELS[((i - 1) % #PANELS) + 1]
+    local p = list[((i - 1) % #list) + 1]
 
     if not taken[p.name] and not shown_outside(p, own) then
       taken[p.name] = true
@@ -356,7 +373,7 @@ function M.show_disassembly()
 end
 
 function M.sidebar_cycle(delta)
-  index = ((index - 1 + (delta or 1)) % #PANELS) + 1
+  index = ((index - 1 + (delta or 1)) % #ring()) + 1
   M.sidebar_open()
 end
 
@@ -405,7 +422,7 @@ function M.focus(name)
 end
 
 function M.pick()
-  vim.ui.select(PANELS, {
+  vim.ui.select(ring(), {
     prompt = "Show panel",
     format_item = function(p)
       return p.title

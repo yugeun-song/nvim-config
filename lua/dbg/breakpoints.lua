@@ -40,7 +40,7 @@ function M.sync(session)
     return
   end
 
-  if not require("dbg.context").is_low_level(session) then
+  if not require("dbg.context").has_panels(session) then
     return
   end
 
@@ -298,12 +298,17 @@ function M.setup(dap)
   -- Before nvim-dap's own breakpoints and configurationDone, so the target is not
   -- running yet.
   dap.listeners.before.event_initialized["dbg_breakpoints"] = function(session)
-    if not require("dbg.context").is_low_level(session) then
+    local context = require("dbg.context")
+
+    if not context.has_panels(session) then
       return
     end
 
     status = {}
-    guard_events(session)
+    if context.is_low_level(session) then
+      guard_events(session)
+    end
+
     M.sync(session)
   end
 

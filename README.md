@@ -73,7 +73,7 @@ It is built on Arch Linux with Hyprland, kitty and fcitx5; [Environments](#envir
 | Other terminals, tmux, Zellij | The background follow needs OSC 11 and OSC 111 and is skipped inside tmux, screen, Zellij and nested Neovim; foot gets its IME mode sequence. | Full |
 | ibus, fcitx4 | The IME still returns to English; the `한`/`EN` indicator reads fcitx5. `langmap` assumes Dubeolsik. | Indicator unsupported |
 | No `$XDG_RUNTIME_DIR` | The focus records move to `stdpath("state")`. | Full |
-| macOS | IME switch and `한`/`EN` through `macism`, `im-select` or `issw`; Caps Lock and window raise through `osascript`; Discord through its socket. C and C++ debug through LLDB with nvim-dap-view's own panels, since gdb cannot debug on Apple silicon (an Intel gdb must be codesigned). QEMU user mode and kernels are Linux-only. | Partly |
+| macOS | IME switch and `한`/`EN` through `macism`, `im-select` or `issw`; Caps Lock and window raise through `osascript`; Discord through its socket. C and C++ debug through LLDB with the Registers, Memory and Disassembly panels, since gdb cannot debug on Apple silicon (an Intel gdb must be codesigned). QEMU user mode and kernels are Linux-only. | Partly |
 | Windows | Paths under `%LOCALAPPDATA%`; Mason's `.cmd` shims, GHCup's `C:\ghcup\bin` and `im-select.exe` are handled, window raise goes through PowerShell. No `:Man`, no Mason `elp`, gdb from MSYS2 (found under `C:\msys64` when not on PATH); QEMU user mode, kernels and the indicators are absent. | Partly |
 | WSL | As Linux; the IME switches through `im-select.exe`. No window raise, and the Windows Discord client is out of reach. | Partly |
 | SSH | The background follow reaches the local terminal and the clipboard goes through OSC 52; the IME switch and the window raise would act on the remote host. | Partly |
@@ -233,13 +233,13 @@ C, C++ and assembly are debugged by GDB itself (`gdb -i dap`), so `~/.gdbinit`, 
 |---|---|---|
 | C / C++ / asm | `gdb -i dap` | The panels below, QEMU user mode, gdbtools |
 | Linux Kernel | `gdb -i dap` (`gdb_kernel`) | The same, plus kernel attach |
-| C / C++ on macOS | `lldb-dap` or `codelldb` | Launch, launch to `main`, attach; nvim-dap-view's own panels |
+| C / C++ on macOS | `lldb-dap` or `codelldb` | Launch, launch to `main`, attach; Registers, Memory, Disassembly, function and address breakpoints |
 | Python | [`nvim-dap-python`](https://github.com/mfussenegger/nvim-dap-python) on `debugpy` | Its configurations, the test under the cursor |
 | Rust | [`rustaceanvim`](https://github.com/mrcjkb/rustaceanvim) on `codelldb` | `:RustLsp debuggables`, LLDB's Rust formatters |
 | JavaScript / TypeScript | `js-debug-adapter` | `pwa-node`/`-chrome`/`-msedge`; `.ts` on Node's type stripping, or `tsx`/`ts-node` if installed |
 | Elixir | [ElixirLS](https://github.com/elixir-lsp/elixir-ls)'s adapter (`mix_task`) | `mix test` and `mix run` |
 
-`.vscode/launch.json` is read for every language; Julia and Java have no debugger. The rest applies to `gdb` and `gdb_kernel` sessions; others get plain `nvim-dap-view`.
+`.vscode/launch.json` is read for every language; Julia and Java have no debugger. The rest applies to `gdb` and `gdb_kernel` sessions; an `lldb` session gets the Registers, Memory and Disassembly panels and the function and address breakpoints, and the panels that run gdb commands stay gdb-only; others get plain `nvim-dap-view`.
 
 - **Programs.** Launch, launch to `main`, attach by PID, *Run on QEMU user* (Linux; `qemu-<arch> -g` on a private Unix socket with the toolchain's sysroot, stopped at `_start`; x86_64, aarch64, riscv64, arm) and *Attach to a QEMU user gdbstub*. The executable and shell-quoted arguments are remembered: `<leader>dc` with no session replays the last run, `<leader>dn` asks again. A cross target gets `vim.g.dbg_gdb`, else the first `<triple>-gdb`, `gdb-multiarch` or host `gdb` that runs DAP and knows the architecture; with none the session does not start and says why, naming the package to install. gdbtools is sourced from `$GDBTOOLS_PATH` or the checkout its `setup.sh` recorded.
 - **Kernel targets.** `<leader>dq` lists the guests from `kbuildlab attach --list --json` (tree, boot mode, KASLR, whether a debugger holds the stub; a busy stub is refused); a guest kbuildlab did not start is attached by picking its registered tree and port. It then asks: attach where the kernel is, or early boot (`:DbgKernelEarly` skips the question), which runs `kearly on` and `kearly bootbreak arm` and continues to the first `head.S` instruction; `kearly kaslr auto` is left to you.
@@ -387,7 +387,7 @@ The font lives in `neovide/config.toml`, tuned to match kitty at scale 1: Caskay
 | `<leader>du` | Toggle the debug panel |
 | `<leader>de` / `<leader>dw` | Evaluate under cursor / add a watch (asks in a panel); also Visual mode |
 | `<leader>dr` | Toggle the debug console |
-| `<leader>dR` / `<leader>dm` / `<leader>dD` | Registers / hex view / disassembly (GDB sessions only) |
+| `<leader>dR` / `<leader>dm` / `<leader>dD` | Registers / hex view / disassembly (gdb and LLDB sessions) |
 | `<leader>ds` | Target panel (GDB sessions only) |
 | `<leader>dq` | Pick a kbuildlab guest and attach |
 | `<leader>dQ` | List the kbuildlab guests |

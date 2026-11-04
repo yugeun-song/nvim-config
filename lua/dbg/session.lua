@@ -439,7 +439,7 @@ end
 function M.open()
   -- Reads the target through gdb commands; a managed session has dap-view's
   -- Sessions section instead.
-  if require("dbg.context").block_if_managed("The target panel") then
+  if require("dbg.context").block_unless_gdb("The target panel") then
     return
   end
 

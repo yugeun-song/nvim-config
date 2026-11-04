@@ -57,9 +57,15 @@ local ANNOTATE_PROBE = table.concat({
   "print('\\\\n'.join(out))\")",
 }, "")
 
--- Per-call state: two renders can be in flight.
+-- Per-call state: two renders can be in flight. Only gdb answers these probes.
 local function collect_annotations(cb)
   local annotations, order = {}, {}
+
+  if not require("dbg.context").is_low_level() then
+    cb(annotations, order)
+
+    return
+  end
 
   gdbq.run(ANNOTATE_PROBE, function(text)
     if text and not text:find("Undefined command") and text:find("|") then
@@ -491,8 +497,9 @@ function M.render()
     local function expand(vars, order, done)
       local groups = {}
 
+      -- Register sets come as parents (lldb-dap leaves their value empty, codelldb summarises it).
       for _, v in ipairs(vars) do
-        if (v.value == nil or v.value == "") and v.variablesReference and v.variablesReference ~= 0 then
+        if v.variablesReference and v.variablesReference ~= 0 then
           groups[#groups + 1] = v
         end
       end

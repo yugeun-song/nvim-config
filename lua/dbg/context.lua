@@ -2,7 +2,7 @@
 -- default is "managed" so an unknown adapter never gets the gdb/kernel UI.
 local M = {}
 
-local PROFILE_BY_TYPE = { gdb_kernel = "linux_kernel", gdb = "native" }
+local PROFILE_BY_TYPE = { gdb_kernel = "linux_kernel", gdb = "native", lldb = "lldb" }
 
 function M.profile_of_config(cfg)
   cfg = cfg or {}
@@ -29,13 +29,32 @@ function M.is_low_level(s)
   return p == "linux_kernel" or p == "native"
 end
 
+function M.is_lldb(s)
+  return M.of(s) == "lldb"
+end
+
+-- gdb and LLDB sessions share the panels that ask the adapter in plain DAP: registers, memory, disassembly.
+function M.has_panels(s)
+  return M.is_low_level(s) or M.is_lldb(s)
+end
+
 function M.is_managed(s)
   return M.of(s) == "managed"
 end
 
 function M.block_if_managed(what, session)
   if M.is_managed(session) then
-    require("dbg.notify").info((what or "This view") .. " is available for gdb (C/C++ or Linux Kernel) sessions.")
+    require("dbg.notify").info((what or "This view") .. " is available for gdb and LLDB sessions.")
+
+    return true
+  end
+
+  return false
+end
+
+function M.block_unless_gdb(what, session)
+  if not M.is_low_level(session) then
+    require("dbg.notify").info((what or "This view") .. " needs a gdb session (C/C++ or Linux Kernel).")
 
     return true
   end
@@ -54,13 +73,28 @@ function M.block_if_managed_session(what)
   return M.block_if_managed(what)
 end
 
--- A gdb session gets the winbar ring the configuration layer injects; a managed
--- one keeps nvim-dap-view's own.
+function M.block_unless_gdb_session(what)
+  local ok, dap = pcall(require, "dap")
+
+  if not (ok and dap.session()) then
+    return false
+  end
+
+  return M.block_unless_gdb(what)
+end
+
+-- gdb and LLDB sessions get the winbar rings the configuration layer injects; a
+-- managed one keeps nvim-dap-view's own.
 local low_level = nil
+local lldb = nil
 local stock = nil
 
 function M.set_low_level_winbar(spec)
   low_level = spec
+end
+
+function M.set_lldb_winbar(spec)
+  lldb = spec
 end
 
 local function dapview_config()
@@ -152,7 +186,7 @@ function M.apply_winbar(session)
   end
 
   remember_stock(cfg)
-  local want = (not M.is_managed(session)) and low_level or stock
+  local want = M.is_low_level(session) and low_level or M.is_lldb(session) and lldb or stock
   local filtered = put(cfg, want or stock)
 
   pcall(function()
