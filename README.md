@@ -149,7 +149,7 @@ nvim-config/
     ├── terminal_background.lua # the terminal's background follows Normal (OSC 11)
     ├── indent_motion.lua     # h/l/arrows step by shiftwidth through leading spaces
     ├── asm_highlight.lua     # assembly colours in asm buffers and asm("…") templates
-    ├── macro_highlight.lua   # #define bodies where tree-sitter swapped strings and code
+    ├── macro_highlight.lua   # C/C++ code where tree-sitter swapped strings and code
     ├── dbg/                  # GDB debugger support:
     │   ├── discover.lua      #   ELF reading, gdb choice, kbuildlab and gdbtools lookup
     │   ├── breakpoints.lua   #   function/address breakpoints, run-to
@@ -220,7 +220,7 @@ lazy.nvim (stable) is cloned on first run and imports LazyVim plus `lua/plugins/
 
 ### Low-level highlighting (`lua/plugins/asm.lua`, `after/queries/`)
 
-In `.S`/`.s`, a line that starts with a preprocessor directive is parsed as C; a `#` comment after an instruction stays a comment. `lua/asm_highlight.lua` colours assembly in `asm` buffers and C/C++ `asm("…")` templates, since tree-sitter-asm misparses labels, dotted mnemonics and GCC operands (it keeps only comments and strings); a token it does not know stays plain. `lua/macro_highlight.lua` recolours a `#define` body from the line where tree-sitter's strings stop matching a C lexer: after `#x`, `a##b` or a macro used as an `asm` template, the C parser can drop a quote and swap strings and code. `asm` templates in such a body keep their assembly colours. `.S`/`.s`/`.sx` are `asm`, `*.lds`/`*.ld`/`*.lds.S` `linkerscript`, `*.dts`/`*.dtsi` `devicetree`. This is injection, not preprocessing: `#if 0` bodies stay highlighted.
+In `.S`/`.s`, a line that starts with a preprocessor directive is parsed as C; a `#` comment after an instruction stays a comment. `lua/asm_highlight.lua` colours assembly in `asm` buffers and C/C++ `asm("…")` templates, since tree-sitter-asm misparses labels, dotted mnemonics and GCC operands (it keeps only comments and strings); a token it does not know stays plain. `lua/macro_highlight.lua` recolours C/C++ code whose strings tree-sitter misreads: after `#x`, `a##b` or a macro used as an `asm` template, the parser can drop a quote and swap strings and code. A `#define` body is re-parsed with those constructs masked (lexer colours where that still fails), a function line gets lexer colours, and `asm` templates keep their assembly colours. `.S`/`.s`/`.sx` are `asm`, `*.lds`/`*.ld`/`*.lds.S` `linkerscript`, `*.dts`/`*.dtsi` `devicetree`. This is injection, not preprocessing: `#if 0` bodies stay highlighted.
 
 ### Man pages (`after/ftplugin/man.lua`, `lua/man_code/`)
 
