@@ -266,6 +266,26 @@ local function row_marks(row)
   return list
 end
 
+local function template_text(line, i, j, state, tmpl, out)
+  if state == STRING then
+    add(out, i, j, "@string")
+
+    return state
+  end
+
+  return scan(line, i, j, state, false, tmpl, out)
+end
+
+local function template_escape(text, state)
+  if text == '\\"' then
+    return state == STRING and OPERANDS or STRING
+  elseif state ~= STRING and (text == "\\n" or text == "\\r") then
+    return START
+  end
+
+  return state
+end
+
 local function walk(node, state, tmpl)
   for child in node:iter_children() do
     local kind = child:type()
@@ -279,22 +299,11 @@ local function walk(node, state, tmpl)
       for row = sr, er do
         local line = line_at(row)
         local s, e = row == sr and sc or 0, math.min(row == er and ec or #line, #line)
-        local out = row >= top_row and row_marks(row) or nil
 
-        if state == STRING then
-          add(out, s + 1, e, "@string")
-        else
-          state = scan(line, s + 1, e, state, false, tmpl, out)
-        end
+        state = template_text(line, s + 1, e, state, tmpl, row >= top_row and row_marks(row) or nil)
       end
     elseif kind == "escape_sequence" then
-      local text = line_at(sr):sub(sc + 1, sc + 2)
-
-      if text == '\\"' then
-        state = state == STRING and OPERANDS or STRING
-      elseif state ~= STRING and (text == "\\n" or text == "\\r") then
-        state = START
-      end
+      state = template_escape(line_at(sr):sub(sc + 1, sc + 2), state)
     elseif kind == "identifier" then
       state = OPERANDS
     end
@@ -410,5 +419,8 @@ end
 function M.setup()
   api.nvim_set_decoration_provider(ns, { on_win = on_win, on_line = on_line })
 end
+
+-- macro_highlight runs the same template scan on the asm strings of the #define bodies it repaints.
+M.START, M.OPERANDS, M.template_text, M.template_escape = START, OPERANDS, template_text, template_escape
 
 return M

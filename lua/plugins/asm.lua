@@ -31,5 +31,6 @@ return {
     end, { force = true })
 
     require("asm_highlight").setup()
+    require("macro_highlight").setup()
   end,
 }
