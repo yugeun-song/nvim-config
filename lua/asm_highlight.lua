@@ -286,12 +286,23 @@ local function template_escape(text, state)
   return state
 end
 
+local function has_colon(node)
+  for child in node:iter_children() do
+    if child:type() == ":" or child:child_count() > 0 and has_colon(child) then
+      return true
+    end
+  end
+
+  return false
+end
+
 local function walk(node, state, tmpl)
   for child in node:iter_children() do
     local kind = child:type()
     local sr, sc, er, ec = child:range()
 
-    if sr > bot_row then
+    -- An ERROR that swallowed the operand ":" pulls the strings after it, constraints and clobbers, into the template.
+    if sr > bot_row or kind == "ERROR" and has_colon(child) then
       return state
     elseif kind == "string_literal" then
       state = walk(child, state, tmpl)
