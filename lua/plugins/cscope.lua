@@ -1,3 +1,30 @@
+local ASM_DEFINERS = { "#%s*define", "%.macro", "%.set", "%.equ", "%.equiv", "%.eqv" }
+
+local function defines(line, symbol)
+  local name = vim.pesc(symbol)
+
+  if line:find("^%s*" .. name .. "%s*[:=]") then
+    return true
+  end
+
+  for _, definer in ipairs(ASM_DEFINERS) do
+    if line:find("^%s*" .. definer .. "%s+" .. name .. "%f[^%w_]") then
+      return true
+    end
+  end
+
+  return false
+end
+
+-- cscope lexes assembler as C, where a mnemonic can read as a declaration.
+local function real_definitions(hits, symbol)
+  local kept = vim.tbl_filter(function(hit)
+    return not hit.filename:find("%.[sS]x?$") or defines(hit.text:gsub("^<<.->>%s*", ""), symbol)
+  end, hits)
+
+  return #kept > 0 and kept or hits
+end
+
 return {
   {
     "dhananjaylatkar/cscope_maps.nvim",
@@ -24,5 +51,18 @@ return {
         },
       },
     },
+    config = function(_, opts)
+      require("cscope_maps").setup(opts)
+
+      local cscope = require("cscope")
+      local get_result = cscope.get_result
+
+      ---@diagnostic disable-next-line: duplicate-set-field
+      cscope.get_result = function(op_n, op_s, symbol, hide_log)
+        local rc, hits = get_result(op_n, op_s, symbol, hide_log)
+
+        return rc, op_s == "g" and hits and real_definitions(hits, symbol) or hits
+      end
+    end,
   },
 }
