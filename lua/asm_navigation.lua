@@ -6,6 +6,8 @@ local TAG_PATTERN_SPECIALS = [[\.*$^~[]]
 
 local CLANGD_PATIENCE_MS = 2000
 
+local C_TYPE_KINDS = { s = true, u = true, g = true, t = true }
+
 local function prefer(items, wanted)
   local kept = vim.tbl_filter(wanted, items)
 
@@ -33,14 +35,20 @@ local function tag_line(tag, path)
   end
 end
 
+local function in_assembler(path)
+  return path:find("%.[sS]x?$") ~= nil
+end
+
 -- ctags' assembler parser also lists a .globl, and a macro called at the start of a line as a label.
 local function defines(item, word)
   if item.kind == "p" or item.kind == "x" then
     return false
-  elseif not item.filename:find("%.[sS]x?$") or (item.kind ~= "s" and item.kind ~= "l") then
+  elseif not in_assembler(item.filename) then
     return true
   elseif item.kind == "s" then
-    return false
+    return not item.text:find("^%s*%.%a")
+  elseif item.kind ~= "l" then
+    return true
   end
 
   local name = vim.pesc(word)
@@ -63,33 +71,31 @@ local function tag_items(buf, word)
     local path = vim.fn.fnamemodify(tag.filename, ":p")
     local stat = vim.uv.fs_stat(path)
 
-    -- Assembler can name a symbol or a macro, never a member. A tags file can name
-    -- anything, and reading a device or a pipe would never end.
-    if not (tag.struct or tag.union or tag.class) and stat and stat.type == "file" then
+    -- Assembler can name a symbol or a macro: not a member or a C type, and not another
+    -- file's static, which it cannot link to. A tags file can name anything, and reading
+    -- a device or a pipe would never end.
+    local nameable = not (tag.struct or tag.union or tag.class)
+      and (in_assembler(path) or not C_TYPE_KINDS[tag.kind])
+      and (tag.static == 0 or path == file)
+
+    if nameable and stat and stat.type == "file" then
       local readable, lnum, lines = pcall(tag_line, tag, path)
 
       if readable and lnum then
-        items[#items + 1] =
-          { filename = path, lnum = lnum, text = lines[lnum] or "", kind = tag.kind, static = tag.static }
+        items[#items + 1] = { filename = path, lnum = lnum, text = lines[lnum] or "", kind = tag.kind }
       end
     end
   end
 
-  local function here(item)
-    return item.filename == file
-  end
-
   -- What does not define the name counts only when nothing does. A definition in its own
-  -- file comes first, and another file's static cannot be linked to.
+  -- file comes first.
   items = prefer(items, function(item)
     return defines(item, word)
   end)
 
-  items = prefer(items, function(item)
-    return item.static == 0 or here(item)
+  return prefer(items, function(item)
+    return item.filename == file
   end)
-
-  return prefer(items, here)
 end
 
 local function cscope_items(word)
@@ -213,7 +219,9 @@ function M.definition()
       items, title = tag_items(buf, word), "tags " .. word
     end
 
-    if #items == 0 then
+    -- cscope reads assembler as C. Once tags have found no definition, nearly all it
+    -- has left are registers, mnemonics and members under the same name.
+    if #items == 0 and #vim.fn.tagfiles() == 0 then
       items, title = cscope_items(word), "cscope find g " .. word
     end
 
@@ -308,7 +316,7 @@ function M.setup()
       vim.keymap.set("n", "gd", M.definition, { buffer = args.buf, desc = "Goto Definition" })
       vim.keymap.set("n", "K", M.hover, { buffer = args.buf, desc = "Hover" })
     end,
-    desc = "gd in assembler follows clangd's preprocessor answers, tags, cscope, then Vim's gd; K follows gd's first step",
+    desc = "gd in assembler follows clangd's preprocessor answers, tags or else cscope, then Vim's gd; K follows gd's first step",
   })
 end
 
