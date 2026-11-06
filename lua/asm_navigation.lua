@@ -250,7 +250,7 @@ function M.server()
       "--header-insertion=never",
       "--pch-storage=memory",
       "--log=error",
-      "-j=1",
+      "-j=" .. vim.uv.available_parallelism(),
     },
     filetypes = { "asm" },
     root_markers = {

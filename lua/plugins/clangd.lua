@@ -26,10 +26,6 @@ end
 return {
   "neovim/nvim-lspconfig",
   opts = function(_, opts)
-    local cpu_info = vim.uv.cpu_info()
-    local cpu_count = cpu_info and #cpu_info or 1
-    local half_cpus = math.max(1, math.floor(cpu_count / 2))
-
     local tmp = private_tmp()
 
     opts.servers = opts.servers or {}
@@ -50,7 +46,7 @@ return {
         "--limit-references=2000",
         -- Neovim logs server stderr at ERROR; clangd's info lines grew lsp.log past 100 MB.
         "--log=error",
-        "-j=" .. half_cpus,
+        "-j=" .. vim.uv.available_parallelism(),
       },
       cmd_env = { TMPDIR = tmp, TMP = tmp, TEMP = tmp },
     }
