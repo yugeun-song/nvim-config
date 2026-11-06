@@ -33,6 +33,21 @@ local function tag_line(tag, path)
   end
 end
 
+-- ctags' assembler parser also lists a .globl, and a macro called at the start of a line as a label.
+local function defines(item, word)
+  if item.kind == "p" or item.kind == "x" then
+    return false
+  elseif not item.filename:find("%.[sS]x?$") or (item.kind ~= "s" and item.kind ~= "l") then
+    return true
+  elseif item.kind == "s" then
+    return false
+  end
+
+  local name = vim.pesc(word)
+
+  return item.text:find("^%s*%.?" .. name .. "%s*[:=]") ~= nil or item.text:find("^%s*" .. name .. "%s+%.%a") ~= nil
+end
+
 local function tag_items(buf, word)
   local file = vim.api.nvim_buf_get_name(buf)
   local tagcase = vim.bo[buf].tagcase
@@ -42,46 +57,39 @@ local function tag_items(buf, word)
 
   vim.bo[buf].tagcase = tagcase
 
-  local function here(tag)
-    return vim.fn.fnamemodify(tag.filename, ":p") == file
-  end
-
-  -- Assembler can name a symbol or a macro, never a member. A declaration or .globl only
-  -- counts when nothing defines the name, a definition in its own file comes first, and
-  -- another file's static cannot be linked to.
-  tags = vim.tbl_filter(function(tag)
-    return not (tag.struct or tag.union or tag.class)
-  end, ok and tags or {})
-
-  tags = prefer(tags, function(tag)
-    local global_directive = tag.kind == "s" and tag.filename:find("%.[sS]x?$")
-
-    return tag.kind ~= "p" and tag.kind ~= "x" and not global_directive
-  end)
-
-  tags = prefer(tags, function(tag)
-    return tag.static == 0 or here(tag)
-  end)
-
-  tags = prefer(tags, here)
-
   local items = {}
 
-  for _, tag in ipairs(tags) do
+  for _, tag in ipairs(ok and tags or {}) do
     local path = vim.fn.fnamemodify(tag.filename, ":p")
     local stat = vim.uv.fs_stat(path)
 
-    -- A tags file can name anything, and reading a device or a pipe would never end.
-    if stat and stat.type == "file" then
+    -- Assembler can name a symbol or a macro, never a member. A tags file can name
+    -- anything, and reading a device or a pipe would never end.
+    if not (tag.struct or tag.union or tag.class) and stat and stat.type == "file" then
       local readable, lnum, lines = pcall(tag_line, tag, path)
 
       if readable and lnum then
-        items[#items + 1] = { filename = path, lnum = lnum, text = lines[lnum] or "" }
+        items[#items + 1] =
+          { filename = path, lnum = lnum, text = lines[lnum] or "", kind = tag.kind, static = tag.static }
       end
     end
   end
 
-  return items
+  local function here(item)
+    return item.filename == file
+  end
+
+  -- What does not define the name counts only when nothing does. A definition in its own
+  -- file comes first, and another file's static cannot be linked to.
+  items = prefer(items, function(item)
+    return defines(item, word)
+  end)
+
+  items = prefer(items, function(item)
+    return item.static == 0 or here(item)
+  end)
+
+  return prefer(items, here)
 end
 
 local function cscope_items(word)
