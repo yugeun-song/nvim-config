@@ -46,14 +46,17 @@ local function tag_items(buf, word)
   tags = vim.tbl_filter(function(tag)
     return not (tag.struct or tag.union or tag.class)
   end, ok and tags or {})
+
   tags = prefer(tags, function(tag)
     local global_directive = tag.kind == "s" and tag.filename:find("%.[sS]x?$")
 
     return tag.kind ~= "p" and tag.kind ~= "x" and not global_directive
   end)
+
   tags = prefer(tags, function(tag)
     return tag.static == 0 or here(tag)
   end)
+
   tags = prefer(tags, here)
 
   local items = {}
