@@ -202,7 +202,15 @@ end
 
 function M.server()
   return {
-    cmd = { "clangd", "--background-index=0", "--clang-tidy=0", "--header-insertion=never", "--log=error", "-j=1" },
+    cmd = {
+      "clangd",
+      "--background-index=0",
+      "--clang-tidy=0",
+      "--header-insertion=never",
+      "--pch-storage=memory",
+      "--log=error",
+      "-j=1",
+    },
     filetypes = { "asm" },
     root_markers = {
       ".clangd",
