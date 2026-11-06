@@ -30,6 +30,7 @@ return {
       return true
     end, { force = true })
 
+    require("asm_navigation").setup()
     require("asm_highlight").setup()
     require("macro_highlight").setup()
   end,

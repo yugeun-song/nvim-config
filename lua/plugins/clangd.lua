@@ -54,5 +54,9 @@ return {
       },
       cmd_env = { TMPDIR = tmp, TMP = tmp, TEMP = tmp },
     }
+
+    local asm_navigation = require("asm_navigation")
+
+    opts.servers[asm_navigation.CLIENT] = asm_navigation.server()
   end,
 }

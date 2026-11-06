@@ -149,6 +149,7 @@ nvim-config/
     ├── terminal_background.lua # the terminal's background follows Normal (OSC 11)
     ├── indent_motion.lua     # h/l/arrows step by shiftwidth through leading spaces
     ├── asm_highlight.lua     # assembly colours in asm buffers and asm("…") templates
+    ├── asm_navigation.lua    # gd and K in asm buffers: clangd, tags, cscope, then the built-in
     ├── macro_highlight.lua   # C/C++ code where tree-sitter swapped strings and code
     ├── dbg/                  # GDB debugger support:
     │   ├── discover.lua      #   ELF reading, gdb choice, kbuildlab and gdbtools lookup
@@ -214,8 +215,9 @@ lazy.nvim (stable) is cloned on first run and imports LazyVim plus `lua/plugins/
 - **Indentation.** A `.clang-format` found upward sets it (`IndentWidth`, `UseTab`, `TabWidth` or the `BasedOnStyle` default); a project `.editorconfig` wins. With neither, a buffer whose first 2000 lines start more often with a tab than with two spaces gets 8-column tabs, else 4 spaces. Existing whitespace is never rewritten; `list` is on and autoformat off.
 - **clangd**: `--background-index --clang-tidy --completion-style=detailed --header-insertion=never --pch-storage=disk --background-index-priority=background --limit-results=200 --limit-references=2000 --log=error -j=<half the CPUs>`; preambles go to a private per-instance directory under `stdpath("cache")`, removed when that Neovim exits.
 - **cscope**: `cscope_maps.nvim` with Telescope under `<leader>i`; reading a `*.c`/`*.h`/`*.S` file adds the nearest `cscope.out` above it, once per session. cscope reads assembler as C, so `find g` keeps an assembler hit only where its line defines the symbol (`#define`, label, `.macro`, `.set`, `.equ`), or every hit when none does.
-- **`<C-]>`**: the LSP `tagfunc` is cleared in C/C++ buffers, so it jumps through `tags` (`make tags`).
+- **`<C-]>`**: the LSP `tagfunc` is cleared in C/C++ and assembler buffers, so it jumps through `tags` (`make tags`).
 - **`gf`** on an `#include` line follows the project's own tools: with a project `compile_commands.json` or `compile_flags.txt`, clangd's header when it is in the project or a system one; else a matching `tags` file entry, `cscope.out` file or `cscope.files` line (a picker when several match); else the built-in `gf`.
+- **`gd` in assembler** (`lua/asm_navigation.lua`): tries clangd, then `tags`, then `cscope find g`, then the built-in `gd`; one hit jumps, several open the `<leader>i` Telescope picker. A second clangd (`clangd_asm`, no index or tidy) attaches to `asm` buffers and leaves one the project's clangd configuration cannot read as C (no such configuration, or a plain `.s`). That reading is true only for the preprocessor, so `gd` and `K` take clangd's answer only for a word's `#define` or on an `#include` line, and the client offers nothing else: no completion, tokens, formatting or diagnostics. `gr`, `gy` and the like have nothing to answer with; `<leader>is` lists a symbol's uses. A `\name` operand is a `.macro` parameter and goes straight to the built-in `gd`.
 - **All `#if` branches**: `<leader>uB` (off by default, saved, followed by every running nvim) colours every preprocessor branch and answers hover, definition and completion in the inactive ones through an extra clangd per inactive branch.
 
 ### Low-level highlighting (`lua/plugins/asm.lua`, `after/queries/`)
