@@ -4,25 +4,31 @@ local KEPT_CAPABILITIES = { "positionEncoding", "textDocumentSync", "definitionP
 
 local TAG_PATTERN_SPECIALS = [[\.*$^~[]]
 
+local CLANGD_PATIENCE_MS = 2000
+
 local function prefer(items, wanted)
   local kept = vim.tbl_filter(wanted, items)
 
   return #kept > 0 and kept or items
 end
 
-local function tag_line(tag, lines)
-  local lnum = tonumber(tag.cmd)
+-- A tag's address is a line number, a search pattern, or both; it is never run as a command.
+local function tag_line(tag, path)
+  local lnum = tonumber(tag.cmd:match("^%d+"))
 
   if lnum then
-    return lnum
+    return lnum, vim.fn.readfile(path, "", lnum)
   end
 
+  local lines = vim.fn.readfile(path)
   local pattern = tag.cmd:match("^/(.*)/$") or tag.cmd:match("^%?(.*)%?$")
-  local regex = pattern and vim.regex("\\C\\M" .. pattern)
+  local compiled, regex = pcall(vim.regex, "\\C\\M" .. (pattern or ""))
 
-  for i, line in ipairs(regex and lines or {}) do
-    if regex:match_str(line) then
-      return i
+  if pattern and compiled then
+    for i, line in ipairs(lines) do
+      if regex:match_str(line) then
+        return i, lines
+      end
     end
   end
 end
@@ -63,11 +69,15 @@ local function tag_items(buf, word)
 
   for _, tag in ipairs(tags) do
     local path = vim.fn.fnamemodify(tag.filename, ":p")
-    local readable, lines = pcall(vim.fn.readfile, path)
-    local lnum = readable and tag_line(tag, lines)
+    local stat = vim.uv.fs_stat(path)
 
-    if lnum then
-      items[#items + 1] = { filename = path, lnum = lnum, text = lines[lnum] or "" }
+    -- A tags file can name anything, and reading a device or a pipe would never end.
+    if stat and stat.type == "file" then
+      local readable, lnum, lines = pcall(tag_line, tag, path)
+
+      if readable and lnum then
+        items[#items + 1] = { filename = path, lnum = lnum, text = lines[lnum] or "" }
+      end
     end
   end
 
@@ -81,9 +91,9 @@ local function cscope_items(word)
     return {}
   end
 
-  local _, hits = cscope.get_result(cscope.op_s_n.g, "g", word, true)
+  local ran, _, hits = pcall(cscope.get_result, cscope.op_s_n.g, "g", word, true)
 
-  return hits or {}
+  return ran and hits or {}
 end
 
 -- Read as C, instructions come back as declarations. Only what the preprocessor did is true:
@@ -99,25 +109,45 @@ local function preprocessed_items(buf, win, word, done)
   local define = "^%s*#%s*define%s+" .. vim.pesc(word) .. "%f[^%w_]"
   local params = vim.lsp.util.make_position_params(win, client.offset_encoding)
 
-  local sent = client:request("textDocument/definition", params, function(err, result)
+  local finished = false
+  local timer = assert(vim.uv.new_timer())
+
+  local function finish(items)
+    if not finished then
+      finished = true
+      timer:close()
+      done(items)
+    end
+  end
+
+  local sent, id = client:request("textDocument/definition", params, function(err, result)
     local items = {}
 
     if not err and result then
       local locations = vim.islist(result) and result or { result }
 
       for _, item in ipairs(vim.lsp.util.locations_to_items(locations, client.offset_encoding)) do
-        if includes or item.text:find(define) then
+        if includes or (item.text or ""):find(define) then
           items[#items + 1] = item
         end
       end
     end
 
-    done(items)
+    finish(items)
   end, buf)
 
   if not sent then
-    done({})
+    return finish({})
   end
+
+  timer:start(
+    CLANGD_PATIENCE_MS,
+    0,
+    vim.schedule_wrap(function()
+      pcall(client.cancel_request, client, id)
+      finish({})
+    end)
+  )
 end
 
 local function run_builtin(keys)
@@ -244,7 +274,9 @@ function M.server()
       }
 
       client:request("textDocument/definition", params, function(err)
-        if err and err.code ~= codes.RequestCancelled and err.code ~= codes.ContentModified then
+        local unreadable = err and err.code ~= codes.RequestCancelled and err.code ~= codes.ContentModified
+
+        if unreadable and client.attached_buffers[buf] then
           vim.lsp.buf_detach_client(buf, client.id)
 
           if vim.tbl_isempty(client.attached_buffers) then
