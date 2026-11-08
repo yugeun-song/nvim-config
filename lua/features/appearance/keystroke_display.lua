@@ -79,9 +79,11 @@ local state = {
   per_bufs = {},
   per_wins = {},
   keys = {},
+  ---@type uv.uv_timer_t?
   timer = nil,
   last_color = 0,
   esc_pending = false,
+  ---@type uv.uv_timer_t?
   esc_timer = nil,
 }
 

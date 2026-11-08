@@ -337,7 +337,10 @@ end
 -- Read and decoded in a worker thread, which hands back only the CUDA entries: a database of a few hundred MB
 -- would otherwise hold the editor for seconds. Most databases hold no CUDA file at all; those are not decoded.
 local function read_cuda_entries(db, done)
-  local work = uv.new_work(function(path)
+  -- Runs in the thread, where only vim.uv, vim.json and a few others exist.
+  ---@param path string
+  ---@return string
+  local function cuda_entries_as_json(path)
     local ok, json = pcall(function()
       local fd = assert(vim.uv.fs_open(path, "r", 438))
       local st = vim.uv.fs_fstat(fd)
@@ -362,7 +365,9 @@ local function read_cuda_entries(db, done)
     end)
 
     return ok and json or "[]"
-  end, function(json)
+  end
+
+  local work = uv.new_work(cuda_entries_as_json, function(json)
     vim.schedule(function()
       local ok, entries = pcall(vim.json.decode, json)
 
