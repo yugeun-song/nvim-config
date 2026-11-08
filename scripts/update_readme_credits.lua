@@ -32,6 +32,39 @@ local PROGRAMS = {
   { "yazi", "https://github.com/sxyazi/yazi", "MIT", "Open Folder" },
   { "Neovide", "https://neovide.dev", "MIT", "the GUI" },
   { "kitty", "https://sw.kovidgoyal.net/kitty", "GPL-3.0", "the terminal the profile is tuned for" },
+  -- Proprietary programs, run where the user has them, under the terms the user accepted with them.
+  {
+    "Visual Studio, Build Tools (MSVC, MSBuild, vswhere)",
+    "https://visualstudio.microsoft.com",
+    "Microsoft Software License Terms (proprietary)",
+    "the MSVC environment, compile databases, building scripts/winctl.c (Windows)",
+  },
+  {
+    "NVIDIA CUDA Toolkit",
+    "https://developer.nvidia.com/cuda-toolkit",
+    "NVIDIA CUDA Toolkit EULA (proprietary)",
+    "its headers and nvcc's flags, read by clangd for CUDA files",
+  },
+  {
+    "Windows PowerShell",
+    "https://learn.microsoft.com/powershell",
+    "part of Windows (proprietary)",
+    "program discovery and a window-raise fallback (Windows)",
+  },
+  { "Discord", "https://discord.com", "Discord Terms of Service (proprietary)", "Rich Presence, optional" },
+}
+
+-- What the credits say about the licenses as a whole, and about names and marks.
+local CLOSING = {
+  "This repository holds none of these plugins', packages' or programs' code: lazy.nvim, Mason and the system",
+  "install each from its own source under its own license, and the proprietary ones under the terms their users",
+  "accept. The configuration's own files are under the BSD Zero Clause License (`LICENSE`), which every license",
+  'above, the GPL included, can be combined with; the files and parts listed under "Code and assets taken into',
+  'this repository" keep their own licenses (`THIRD-PARTY-NOTICES`).',
+  "",
+  "Product names, logos and brands (Microsoft, Windows, Visual Studio, NVIDIA, CUDA, Discord, Apple, macOS,",
+  "Linux distributions and the rest) belong to their owners; they are named here and drawn in the dashboard",
+  "only to say what works with what. This project is not affiliated with, sponsored or endorsed by any of them.",
 }
 
 local ADAPTED = {
@@ -218,6 +251,9 @@ local function section()
   for _, p in ipairs(PROGRAMS) do
     out[#out + 1] = ("| [%s](%s) | %s | %s |"):format(p[1], p[2], p[3], p[4])
   end
+
+  out[#out + 1] = ""
+  vim.list_extend(out, CLOSING)
 
   vim.list_extend(out, { "", STOP })
 
