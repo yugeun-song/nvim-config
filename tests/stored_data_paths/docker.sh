@@ -148,8 +148,9 @@ target() {
       ;;
     nixos)
       # Nix's store has no /lib64 loader for the official build, and the image no useradd: Nixpkgs' Neovim, as root.
+      # The image has grep and coreutils but no sed or awk, which run.sh uses.
       image=docker.io/nixos/nix:latest
-      setup="nix-channel --update && nix-env -iA nixpkgs.neovim nixpkgs.util-linux"
+      setup="nix-channel --update && nix-env -iA nixpkgs.neovim nixpkgs.util-linux nixpkgs.gnused nixpkgs.gawk"
       args="--installed"
       ;;
     gentoo)
