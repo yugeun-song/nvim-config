@@ -182,12 +182,24 @@ trap '[ -n "$current" ] && "$engine" rm -f "$current" >/dev/null 2>&1; exit 130'
 # A setup failure prints its log's tail and ends the container with 1. Expanded in the container, not here.
 # shellcheck disable=SC2016
 INNER='set -u
-# Three tries, half a minute apart: a mirror caught mid-sync fails an install that works moments later.
+# Bounded where the image has timeout(1): a hung mirror or key server ends as a FAIL with its log, not at the CI
+# job time limit with nothing to show.
+bounded() {
+  limit=$1
+  shift
+  if command -v timeout >/dev/null 2>&1; then timeout "$limit" "$@"; else "$@"; fi
+}
+# Five tries, the pauses doubling from half a minute: a mirror caught mid-sync fails an install that works minutes
+# later. A try that hangs for 25 minutes is not repeated.
 tries=0
-until { eval "$SETUP"; } >/tmp/setup.log 2>&1; do
+pause=30
+until bounded 1500 sh -c "$SETUP" >/tmp/setup.log 2>&1; do
+  rc=$?
   tries=$((tries + 1))
-  [ "$tries" -lt 3 ] || { tail -n 40 /tmp/setup.log; echo "FAIL [setup] could not install"; exit 1; }
-  sleep 30
+  if [ "$rc" -eq 124 ]; then tail -n 40 /tmp/setup.log; echo "FAIL [setup] no answer for 25 minutes"; exit 1; fi
+  [ "$tries" -lt 5 ] || { tail -n 40 /tmp/setup.log; echo "FAIL [setup] could not install"; exit 1; }
+  sleep "$pause"
+  pause=$((pause * 2))
 done
 user=root
 home=/root
@@ -198,7 +210,10 @@ fi
 mkdir -p "$home/.config" && cp -R /cfg "$home/.config/nvim" && chown -R "$user" "$home/.config" || exit 1
 nv=$(command -v nvim || true)
 cmd="NVIM_PATHS_THROWAWAY_CONTAINER=1 sh $home/.config/nvim/tests/stored_data_paths/run.sh $ARGS $nv"
-if [ "$user" = root ]; then sh -c "$cmd"; else su -s /bin/sh "$user" -c "$cmd"; fi'
+if [ "$user" = root ]; then bounded 1200 sh -c "$cmd"; else bounded 1200 su -s /bin/sh "$user" -c "$cmd"; fi
+rc=$?
+[ "$rc" -ne 124 ] || echo "FAIL [run] no answer for 20 minutes"
+exit "$rc"'
 
 summary=""
 status=0
