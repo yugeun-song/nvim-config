@@ -182,7 +182,13 @@ trap '[ -n "$current" ] && "$engine" rm -f "$current" >/dev/null 2>&1; exit 130'
 # A setup failure prints its log's tail and ends the container with 1. Expanded in the container, not here.
 # shellcheck disable=SC2016
 INNER='set -u
-{ eval "$SETUP"; } >/tmp/setup.log 2>&1 || { tail -n 40 /tmp/setup.log; echo "FAIL [setup] could not install"; exit 1; }
+# Three tries, half a minute apart: a mirror caught mid-sync fails an install that works moments later.
+tries=0
+until { eval "$SETUP"; } >/tmp/setup.log 2>&1; do
+  tries=$((tries + 1))
+  [ "$tries" -lt 3 ] || { tail -n 40 /tmp/setup.log; echo "FAIL [setup] could not install"; exit 1; }
+  sleep 30
+done
 user=root
 home=/root
 if command -v useradd >/dev/null 2>&1 && command -v su >/dev/null 2>&1 && useradd -m -s /bin/sh nvimtest; then

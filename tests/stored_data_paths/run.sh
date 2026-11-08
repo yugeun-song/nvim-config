@@ -171,7 +171,16 @@ run_gate() { # label, nvim
       if [ "$answer" = piped ]; then
         printf 'reset\n' | sh -c "$cmd" >"$out" 2>&1
       else
-        printf '%s\n' "$answer" | in_pty "$cmd" >"$out" 2>&1
+        # Typed once the question is on the terminal, as a person would: macOS's script(1) loses what comes before
+        # the program reads it. Ten seconds at most, then typed anyway.
+        {
+          i=0
+          while [ "$i" -lt 100 ] && ! grep -q 'Type "reset"' "$out" 2>/dev/null; do
+            sleep 0.1
+            i=$((i + 1))
+          done
+          printf '%s\n' "$answer"
+        } | in_pty "$cmd" >"$out" 2>&1
       fi
     )
 
@@ -191,7 +200,8 @@ run_gate() { # label, nvim
     if [ "$got" = "$want" ]; then
       say "$1 PASS [gate] $what: $got"
     else
-      say "$1 FAIL [gate] $what: $got, expected $want (output in $out)"
+      say "$1 FAIL [gate] $what: $got, expected $want; it showed:"
+      sed 's/^/    | /' "$out" | tee -a "$LOG"
     fi
   done
 }
