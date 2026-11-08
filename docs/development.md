@@ -69,7 +69,7 @@ It needs Visual Studio 2022 or later with the C++ tools and enters a Developer P
 
 ## CI
 
-`.github/workflows/tests.yml` runs on every push, every pull request and by hand (Actions > tests > Run workflow):
+`.github/workflows/tests.yml` runs on every push and by hand (Actions > tests > Run workflow):
 
 | Job | Runs |
 |---|---|
