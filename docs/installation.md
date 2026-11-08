@@ -1,0 +1,101 @@
+# Installation
+
+What to install, per feature and per system. The clone itself is in the [README](../README.md#quick-install).
+
+## Requirements
+
+| Needed for | Programs |
+|---|---|
+| Everything | Neovim 0.12 or later, `git`, network access on the first start |
+| Tree-sitter parsers | the `tree-sitter` CLI, a C compiler (`cc`, `gcc`, `clang` or `cl`), `curl`, `tar` |
+| Pickers and grep | `rg` (ripgrep), `fd` |
+| Icons | a Nerd Font, in the terminal too (Neovide's profile uses CaskaydiaCove Nerd Font Mono) |
+| C and C++ | `clangd` (Mason installs one), `cscope`, `ctags` (Universal Ctags) |
+| CUDA in clangd | the CUDA toolkit: `CUDA_PATH`, or `nvcc` on PATH |
+| Debugging C, C++ and assembly | `gdb` 14 or later with Python; macOS and Windows: `lldb-dap` or Mason's `codelldb` |
+| Foreign architectures, Linux kernels | Linux only: `qemu-<arch>`, a gdb for the target, [kbuildlab](https://github.com/yugeun-song/kbuildlab), optionally [gdbtools](https://github.com/yugeun-song/gdbtools) |
+| Common Lisp | `sbcl`, `ocicl`, and alive-lsp ([languages](features/languages.md#common-lisp)) |
+| Racket | `racket` |
+| Haskell | `ghc`, `cabal`, `haskell-language-server`, `hlint`, from [GHCup](https://www.haskell.org/ghcup/) |
+| Lean | [elan](https://github.com/leanprover/elan) |
+| Python lint and format | `ruff` |
+| IME switch and indicator | [input method](features/input_method.md#what-it-needs) |
+| Open Folder | [yazi](https://yazi-rs.github.io/) |
+| GUI | [Neovide](https://neovide.dev/) |
+| Window raise for `scripts/open-at.lua` | [editing](features/editing.md#opening-from-other-programs) |
+| Man page highlighting | `man` |
+
+The Mason packages ([external programs](features/external_programs.md#mason-packages)) install by themselves; some need a runtime on PATH. `:FeatureStatus` lists every feature as available, not supported here, or blocked with what is missing ([troubleshooting](troubleshooting.md#feature-status)).
+
+For the kernel workflow, generate the indexes in the source tree: `make C=2 compile_commands.json` (or `scripts/clang-tools/gen_compile_commands.py`), `make cscope`, `make tags`.
+
+## First start
+
+The first start installs lazy.nvim, the plugins, the parsers and the Mason packages (into `stdpath("data")`: `~/.local/share/nvim` on Linux and macOS, `%LOCALAPPDATA%\nvim-data` on Windows). Check with `:Lazy` and `:LazyHealth`, restart once, then run `:FeatureStatus`. Update the plugins with `:Lazy update` (commits are recorded in `lazy-lock.json`) and the configuration with `git pull`.
+
+To try it beside another configuration, clone it as another `NVIM_APPNAME`:
+
+```sh
+git clone https://github.com/yugeun-song/nvim-config.git ~/.config/test-nvim
+NVIM_APPNAME=test-nvim nvim
+```
+
+Neovide reads its own settings; link the ones here (on Windows a junction needs no administrator):
+
+```sh
+ln -s ~/.config/nvim/neovide ~/.config/neovide
+```
+
+```powershell
+New-Item -ItemType Junction -Path $env:APPDATA\neovide -Target $env:LOCALAPPDATA\nvim\neovide
+```
+
+## Arch Linux
+
+The system it is built on: x86_64 with Hyprland, kitty or Neovide, and fcitx5. Everything works. gdb comes from `pacman -S gdb`; a foreign target's gdb is `<triple>-gdb` (`aarch64-linux-gnu-gdb`, say) or `gdb-multiarch`, with the sysroot in `/usr/<triple>`.
+
+## Debian and Ubuntu
+
+- `fd` is installed as `fdfind`; both names are found.
+- A gdb older than 14 has no DAP: `apt install gdb` must bring 14 or later. Foreign targets: `apt install gdb-multiarch`.
+- If the distribution's Neovim is older than 0.12, use the official [release build](https://github.com/neovim/neovim/releases).
+
+## Fedora
+
+gdb comes from `dnf install gdb`. A cross sysroot is found in `/usr/<triple>/sys-root` as well as `/usr/<triple>`.
+
+## openSUSE
+
+gdb comes from `zypper install gdb`. Leap's gdb has no riscv64 target.
+
+## Other Linux systems
+
+| System | gdb |
+|---|---|
+| Alpine | `apk add gdb`; foreign targets `apk add gdb-multiarch` |
+| Void | `xbps-install gdb` |
+| NixOS | add `pkgs.gdb` |
+
+A Mason package with no build for the machine is reported as not supported; the distribution's own program on PATH serves instead. Desktops other than Hyprland raise windows through their own tool ([editing](features/editing.md#opening-from-other-programs)).
+
+## macOS
+
+- Neovim: `brew install neovim`.
+- IME: `macism`, `im-select` or `issw`; Caps Lock and the window raise go through `osascript`.
+- C and C++ debug through LLDB: `xcode-select --install` brings `lldb-dap` (Xcode 16 tools), or `:MasonInstall codelldb`. gdb cannot debug programs on Apple silicon; on Intel, `brew install gdb` and codesign it.
+- QEMU user mode and Linux kernels are Linux only.
+
+## Windows
+
+- The configuration is `%LOCALAPPDATA%\nvim`; data, state and logs are `%LOCALAPPDATA%\nvim-data`; the cache is `%TEMP%\nvim`.
+- Visual Studio (or its Build Tools) with the MSVC tools builds the [IME helper](features/windows_platform.md#windows-ime-helper), sets the [MSVC environment](features/languages.md#msvc-toolchain) and writes compile databases. clang targeting MSVC also builds the helper; without either, the IME switch uses `im-select.exe`.
+- gdb: MSYS2's `pacman -S mingw-w64-ucrt-x86_64-gdb` (`mingw-w64-ucrt-x86_64-gdb-multiarch` for foreign targets), found under `C:\msys64` when not on PATH.
+- cscope has no native build: register one by path with `<leader>uX`, such as MSYS2's ([external programs](features/external_programs.md#programs-registered-by-path)).
+- GHCup installs to `C:\ghcup\bin`, which joins PATH with the first Haskell buffer.
+- Not available: `:Man` highlighting, QEMU user mode, Linux kernels.
+- `nvim.exe` started outside a terminal opens in the console host with its own font: make Windows Terminal the default terminal application (Settings > System > For developers). `"font": { "size": 11, "cellWidth": "0.9ch" }` matches kitty's cells. Windows Terminal binds Ctrl+C and Ctrl+V to copy and paste; bind those actions to Ctrl+Shift+C and Ctrl+Shift+V, as kitty does, so `<C-v>` and `<C-c>` reach Neovim.
+
+## WSL and SSH
+
+- WSL works as Linux, with the IME switch through `im-select.exe`.
+- Over SSH, the terminal background follow reaches the local terminal, while the IME switch and the window raise act on the remote host.

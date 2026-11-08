@@ -125,7 +125,7 @@ local function neovide_items()
       path = norm(config),
       action = "keep",
       note = (target or (st and st.type == "link"))
-          and ("a link to %s, made at installation (README); remove it by hand"):format(
+          and ("a link to %s, made at installation (docs/installation.md); remove it by hand"):format(
             M.display(norm(target or uv.fs_realpath(config) or "?"))
           )
         or "Neovide's own settings; not this configuration's to remove",

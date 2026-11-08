@@ -315,7 +315,7 @@ if #c_files > 0 then
   )
 end
 
-local credits = vim.fs.joinpath(root, "scripts", "update_readme_credits.lua")
+local credits = vim.fs.joinpath(root, "scripts", "update_credits.lua")
 
 -- Part of the repository: missing means a rename left this behind, which must fail rather than skip.
 if not vim.uv.fs_stat(credits) then

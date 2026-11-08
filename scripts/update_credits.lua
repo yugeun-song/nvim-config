@@ -1,4 +1,4 @@
--- nvim -l scripts/update_readme_credits.lua --write|--check: the Credits section of README.md, from lazy-lock.json,
+-- nvim -l scripts/update_credits.lua --write|--check: the generated block of docs/credits.md, from lazy-lock.json,
 -- the installed plugins' LICENSE files, Mason's registry and the lists below.
 local root = vim.fs.dirname(vim.fs.dirname(vim.fs.normalize(vim.fn.fnamemodify(arg[0], ":p"))))
 local data = vim.fn.stdpath("data")
@@ -260,12 +260,12 @@ local function section()
   return table.concat(out, "\n")
 end
 
-local readme_path = vim.fs.joinpath(root, "README.md")
-local readme = assert(read(readme_path))
-local s, e = readme:find(START, 1, true), select(2, readme:find(STOP, 1, true))
+local credits_path = vim.fs.joinpath(root, "docs", "credits.md")
+local credits = assert(read(credits_path), "docs/credits.md is missing")
+local s, e = credits:find(START, 1, true), select(2, credits:find(STOP, 1, true))
 
 if not (s and e) then
-  io.stderr:write("README.md has no " .. START .. " ... " .. STOP .. " block\n")
+  io.stderr:write("docs/credits.md has no " .. START .. " ... " .. STOP .. " block\n")
   vim.cmd.cquit(1)
 end
 
@@ -277,16 +277,16 @@ if not block then
   return
 end
 
-local updated = readme:sub(1, s - 1) .. block .. readme:sub(e + 1)
+local updated = credits:sub(1, s - 1) .. block .. credits:sub(e + 1)
 
 if arg[1] == "--write" then
-  if updated ~= readme then
-    local fd = assert(io.open(readme_path, "wb"))
+  if updated ~= credits then
+    local fd = assert(io.open(credits_path, "wb"))
 
     fd:write(updated)
     fd:close()
   end
-elseif updated ~= readme then
-  io.stdout:write("README.md Credits is out of date: run nvim -l scripts/update_readme_credits.lua --write\n")
+elseif updated ~= credits then
+  io.stdout:write("docs/credits.md is out of date: run nvim -l scripts/update_credits.lua --write\n")
   vim.cmd.cquit(1)
 end
