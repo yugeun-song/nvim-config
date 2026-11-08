@@ -1,6 +1,7 @@
 # The tests that need a system this repository is not developed on: macOS, Linux natively, every desktop
 # distribution in its own official container (tests/stored_data_paths/docker.sh, podman), and Windows. Runs on every
-# push, on pull requests and by hand (Actions > tests > Run workflow).
+# push, on pull requests and by hand (Actions > tests > Run workflow). A failure leaves its output as an error
+# annotation too (.github/scripts/report_failure_as_annotation.sh), readable without signing in.
 name: tests
 
 on:
@@ -27,7 +28,14 @@ jobs:
       - name: Neovim from the system's package manager
         run: |
           if [ "$RUNNER_OS" = macOS ]; then brew install neovim; else sudo apt-get update && sudo apt-get install -y neovim; fi
-      - run: sh tests/stored_data_paths/run.sh --release
+      - name: Path tests
+        run: |
+          sh tests/stored_data_paths/run.sh --release > "$RUNNER_TEMP/paths.log" 2>&1 && status=0 || status=$?
+          cat "$RUNNER_TEMP/paths.log"
+          if [ "$status" -ne 0 ]; then
+            sh .github/scripts/report_failure_as_annotation.sh "path tests on ${{ matrix.os }}" "$RUNNER_TEMP/paths.log"
+            exit "$status"
+          fi
 
   stored-data-paths-distributions:
     runs-on: ubuntu-latest
@@ -41,7 +49,15 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
       # Rootful: the runner's user has no cgroup delegation for the limits the containers run with. The VM is thrown
       # away after the job.
-      - run: sudo --preserve-env=TMPDIR sh tests/stored_data_paths/docker.sh --engine podman ${{ matrix.distribution }}
+      - name: Path tests in ${{ matrix.distribution }}
+        run: |
+          sudo --preserve-env=TMPDIR sh tests/stored_data_paths/docker.sh --engine podman ${{ matrix.distribution }} \
+            && status=0 || status=$?
+          if [ "$status" -ne 0 ]; then
+            log=$(ls -t "${TMPDIR:-/tmp}"/nvim-paths-docker/*/${{ matrix.distribution }}.log 2>/dev/null | head -n 1)
+            sh .github/scripts/report_failure_as_annotation.sh "${{ matrix.distribution }}" "$log"
+            exit "$status"
+          fi
       - if: always()
         run: sudo sh tests/stored_data_paths/docker.sh --engine podman --clean
 
@@ -62,5 +78,16 @@ jobs:
           if ($actual -ne $expected) { throw "nvim-win64.zip: SHA-256 $actual, GitHub publishes $expected" }
           Expand-Archive $zip -DestinationPath $env:RUNNER_TEMP
           "NVIM_EXE=$env:RUNNER_TEMP\nvim-win64\bin\nvim.exe" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
-      - shell: pwsh
-        run: powershell -NoProfile -File tests\stored_data_paths\run.ps1 -Nvim $env:NVIM_EXE
+      - name: Path tests
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP "paths.log"
+          powershell -NoProfile -File tests\stored_data_paths\run.ps1 -Nvim $env:NVIM_EXE *> $log
+          $status = $LASTEXITCODE
+          Get-Content $log
+          $failed = Select-String -Path $log -Pattern '^FAIL' -Quiet
+          if ($status -ne 0 -or $failed) {
+            $lines = (Select-String -Path $log -Pattern '^(FAIL|SKIP)').Line + "-- last lines --" + (Get-Content $log -Tail 60)
+            "::error title=path tests on Windows::" + (($lines -join "%0A") -replace "`r", "")
+            exit 1
+          }
