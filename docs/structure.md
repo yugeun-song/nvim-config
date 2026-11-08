@@ -7,7 +7,7 @@ Where everything is, and why it is there.
 ```text
 nvim-config/
 ├── init.lua                 Windows lookups and MSVC environment, registered programs, Open Folder, running
-│                            instance, terminal background; then lua/config/lazy.lua
+│                            instance, terminal background, the last reset's report; then lua/config/lazy.lua
 ├── lazy-lock.json           plugin commits
 ├── lazyvim.json             LazyVim extras (mini.files)
 ├── LICENSE, LICENSES/       0BSD, and the Apache-2.0 text for files taken from LazyVim (THIRD-PARTY-NOTICES)

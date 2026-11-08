@@ -15,4 +15,13 @@ end
 require("features.editing.open_folder").startup()
 require("features.editing.open_in_running_instance").setup()
 require("features.appearance.terminal_background").setup()
+
+-- The first start after :ManagedPathsReset says what it did, or why it did nothing, once the UI is up. One stat
+-- at every start; the module loads only when the reset left its flag.
+if vim.uv.fs_stat(require("features.maintenance.local_storage").path("state", "reset_report_unread")) then
+  pcall(function()
+    require("features.maintenance.stored_data_paths").announce_report()
+  end)
+end
+
 require("config.lazy")

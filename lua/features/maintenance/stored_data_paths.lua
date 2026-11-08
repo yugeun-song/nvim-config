@@ -1060,7 +1060,7 @@ function M.reset(scope)
   vim.notify("Reset cancelled: Neovim did not quit", vim.log.levels.WARN, { title = "Managed paths" })
 end
 
--- The first start after a reset says what it did, or why it did nothing; config/lazy.lua calls this when the
+-- The first start after a reset says what it did, or why it did nothing; init.lua calls this when the
 -- reset left its flag.
 function M.announce_report()
   local report = M.report_file()

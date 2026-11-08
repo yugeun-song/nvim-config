@@ -1,6 +1,6 @@
 # Windows platform
 
-What Windows lacks and Linux has elsewhere: an IME tool, a Caps Lock LED, a window raise, symbolic links, fast program lookups. Everything here sits behind `has("win32")`; Linux and macOS run none of it. Code: `lua/features/windows_platform/`, `native/windows_ime_helper.c`, `lua/config/lazy.lua`. No specs: `init.lua` and the features that need it load it.
+What Windows lacks and Linux has elsewhere: an IME tool, a Caps Lock LED, a window raise, symbolic links, fast program lookups. Everything here sits behind `has("win32")`; Linux and macOS run none of it. Code: `lua/features/windows_platform/`, `native/windows_ime_helper.c`. No specs: `init.lua` and the features that need it load it.
 
 ## Windows IME helper
 
