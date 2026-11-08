@@ -85,7 +85,13 @@ function M.path(kind, name)
   local entry = by_name[kind .. "/" .. name]
 
   if entry and not uv.fs_stat(path) then
+    -- Where the old name may be: directly in stdpath(kind), or already in this directory under it (a rename that
+    -- came after the move here, as winctl's to windows_ime_helper).
     local old = vim.fs.joinpath(base_of(kind), entry[3])
+
+    if not uv.fs_stat(old) and entry[3] ~= name then
+      old = vim.fs.joinpath(M.dir(kind), entry[3])
+    end
 
     if uv.fs_stat(old) then
       make_directories(vim.fs.dirname(path))
