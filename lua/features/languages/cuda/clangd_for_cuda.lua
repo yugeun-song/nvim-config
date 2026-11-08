@@ -334,41 +334,89 @@ local function database_for(file)
   end
 end
 
-local loaded = {} -- database path -> { stamp, entries by file }
+-- Read and decoded in a worker thread, which hands back only the CUDA entries: a database of a few hundred MB
+-- would otherwise hold the editor for seconds. Most databases hold no CUDA file at all; those are not decoded.
+local function read_cuda_entries(db, done)
+  local work = uv.new_work(function(path)
+    local ok, json = pcall(function()
+      local fd = assert(vim.uv.fs_open(path, "r", 438))
+      local st = vim.uv.fs_fstat(fd)
+      local text = st and vim.uv.fs_read(fd, st.size, 0) or ""
 
-local function entry_for(db, file)
+      vim.uv.fs_close(fd)
+      if not text:find("nvcc", 1, true) then
+        return "[]"
+      end
+
+      local entries = {}
+
+      for _, e in ipairs(vim.json.decode(text)) do
+        local file = type(e) == "table" and e.file
+
+        if type(file) == "string" and (file:lower():find("%.cu$") or file:lower():find("%.cuh$")) then
+          entries[#entries + 1] = e
+        end
+      end
+
+      return vim.json.encode(entries)
+    end)
+
+    return ok and json or "[]"
+  end, function(json)
+    vim.schedule(function()
+      local ok, entries = pcall(vim.json.decode, json)
+
+      done(ok and type(entries) == "table" and entries or {})
+    end)
+  end)
+
+  work:queue(db)
+end
+
+local loaded = {} -- database path -> { stamp, by_file } once read; { stamp, waiting } while being read
+
+-- done(entry): file's entry in db, or nil.
+local function entry_for(db, file, done)
   local st = uv.fs_stat(db)
   local stamp = st and ("%d.%d:%d"):format(st.mtime.sec, st.mtime.nsec, st.size)
   local cached = loaded[db]
 
-  if not (cached and cached.stamp == stamp) then
-    local ok, lines = pcall(vim.fn.readfile, db, "b")
-    local text = ok and table.concat(lines, "\n") or ""
-
-    -- Most databases hold no CUDA file at all; those are not decoded.
-    local by_file = {}
-
-    if text:find("nvcc", 1, true) then
-      local dok, data = pcall(vim.json.decode, text)
-
-      for _, e in ipairs(dok and type(data) == "table" and data or {}) do
-        if type(e) == "table" and e.file and is_cuda(e.file) then
-          local abs = e.file
-
-          if not (abs:match("^/") or abs:match("^%a:[/\\]")) then
-            abs = vim.fs.joinpath(e.directory or "", abs)
-          end
-
-          by_file[key(abs)] = e
-        end
-      end
-    end
-
-    cached = { stamp = stamp, by_file = by_file }
-    loaded[db] = cached
+  local function answer()
+    done(cached.by_file[key(file)])
   end
 
-  return cached.by_file[key(file)]
+  if cached and cached.stamp == stamp then
+    if cached.by_file then
+      return answer()
+    end
+
+    cached.waiting[#cached.waiting + 1] = answer
+
+    return
+  end
+
+  cached = { stamp = stamp, waiting = { answer } }
+  loaded[db] = cached
+  read_cuda_entries(db, function(entries)
+    local by_file = {}
+
+    for _, e in ipairs(entries) do
+      local abs = e.file
+
+      if not (abs:match("^/") or abs:match("^%a:[/\\]")) then
+        abs = vim.fs.joinpath(type(e.directory) == "string" and e.directory or "", abs)
+      end
+
+      by_file[key(abs)] = e
+    end
+
+    local waiting = cached.waiting
+
+    cached.by_file, cached.waiting = by_file, nil
+    for _, waiter in ipairs(waiting) do
+      waiter()
+    end
+  end)
 end
 
 -- On clangd attaching to a CUDA buffer: its nvcc command, if it has one, as clang's.
@@ -379,9 +427,13 @@ function M.attach(client, bufnr)
     return
   end
 
-  vim.schedule(function()
-    local db = database_for(file)
-    local entry = db and entry_for(db, file)
+  local db = database_for(file)
+
+  if not db then
+    return
+  end
+
+  entry_for(db, file, function(entry)
     local command = entry and clang_command(entry)
 
     if not command or client:is_stopped() then
