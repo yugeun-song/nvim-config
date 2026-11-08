@@ -106,7 +106,9 @@ local function apply_edits(old, edits)
   return out
 end
 
-local function strip(data, cidx, keep_line)
+-- Drops the inactive-code (comment) tokens and reports their lines; keep_comment(line) keeps one where no other
+-- client draws that line.
+local function strip(data, cidx, keep_line, keep_comment)
   local out, dropped = {}, {}
   local line, col, last_line, last_col = 0, 0, 0, 0
 
@@ -118,10 +120,17 @@ local function strip(data, cidx, keep_line)
     end
 
     local ty = data[i + 3]
+    local is_inactive = ty == cidx
+    local is_kept
 
-    if ty == cidx then
+    if is_inactive then
       dropped[line] = true
-    elseif not keep_line or keep_line(line) then
+      is_kept = keep_comment ~= nil and keep_comment(line)
+    else
+      is_kept = not keep_line or keep_line(line)
+    end
+
+    if is_kept then
       local dl = line - last_line
 
       out[#out + 1] = dl
@@ -136,10 +145,30 @@ local function strip(data, cidx, keep_line)
   return out, dropped
 end
 
+-- Full results kept per document by resultId, the last KEPT_RESULTS: a late answer to a request Neovim cancelled
+-- must not replace the one Neovim holds and sends deltas against.
+local KEPT_RESULTS = 3
+
 local function token_tracker()
   local docs = {}
 
-  return function(cidx, method, params, result, keep_line)
+  local function keep(uri, id, data)
+    local doc = docs[uri] or { by_id = {}, order = {} }
+
+    docs[uri] = doc
+    if not doc.by_id[id] then
+      doc.order[#doc.order + 1] = id
+    end
+
+    doc.by_id[id] = data
+    if #doc.order > KEPT_RESULTS then
+      doc.by_id[table.remove(doc.order, 1)] = nil
+    end
+  end
+
+  -- Returns the result to pass on, the inactive lines of a full result, and true when the edits had no known base
+  -- (nothing is passed on then, and the caller asks for a full result).
+  return function(cidx, method, params, result, keep_line, keep_comment)
     if type(result) ~= "table" or not cidx then
       return result
     end
@@ -150,26 +179,27 @@ local function token_tracker()
     if result.data then
       data = result.data
     elseif result.edits then
-      local doc = docs[uri]
+      local base = docs[uri] and docs[uri].by_id[params.previousResultId]
 
-      if not doc or doc.id ~= params.previousResultId then
+      -- Edits against unstripped tokens this side no longer holds: Neovim would apply them to its stripped copy.
+      if not base then
         docs[uri] = nil
 
-        return result
+        return nil, nil, true
       end
 
-      data = apply_edits(doc.data, result.edits)
+      data = apply_edits(base, result.edits)
     else
       return result
     end
 
     local whole = method ~= "textDocument/semanticTokens/range"
 
-    if whole then
-      docs[uri] = { id = result.resultId, data = data }
+    if whole and result.resultId then
+      keep(uri, result.resultId, data)
     end
 
-    local kept, dropped = strip(data, cidx, keep_line)
+    local kept, dropped = strip(data, cidx, keep_line, keep_comment)
 
     return { resultId = result.resultId, data = kept }, whole and dropped or nil
   end, function(uri)
@@ -200,6 +230,46 @@ local function owner_of(uri, line)
   return st and st.owners[line] or 0
 end
 
+local function variant_key(st, k)
+  return st.root .. "\0" .. k
+end
+
+local function live(id)
+  local c = id and vim.lsp.get_client_by_id(id)
+
+  return c and not c:is_stopped() and c or nil
+end
+
+-- Whether a variant draws the line: it owns it, is attached, and has sent its tokens. Until then the main server keeps
+-- the line dimmed (more branches than MAX_VARIANTS, a variant that failed to start, a hidden buffer, start-up).
+local function drawn_by_variant(uri, line)
+  local st = by_uri[uri]
+  local k = st and st.owners[line] or 0
+
+  if k == 0 or not st.ready[k] then
+    return false
+  end
+
+  local c = live(variants[variant_key(st, k)])
+
+  return c ~= nil and c.attached_buffers[st.buf] == true
+end
+
+-- One full refresh for a burst of variants coming up.
+local function refresh_soon(st)
+  if st.refresh_pending then
+    return
+  end
+
+  st.refresh_pending = true
+  vim.defer_fn(function()
+    st.refresh_pending = false
+    if by_buf[st.buf] == st and vim.api.nvim_buf_is_loaded(st.buf) then
+      pcall(vim.lsp.semantic_tokens.force_refresh, st.buf)
+    end
+  end, 100)
+end
+
 local function owner_at_cursor(bufnr)
   if bufnr == nil or vim.in_fast_event() then
     return nil
@@ -222,6 +292,9 @@ end
 
 local gated = setmetatable({}, { __mode = "k" })
 
+-- Neovim asks every client that supports a method; the gate leaves one per request, by the cursor's line, as every
+-- positional request of this configuration is made at the cursor (no mouse hover). Requests for another buffer
+-- are not gated; the request hooks below answer those by position.
 local function gate(client, who)
   if gated[client] then
     return
@@ -273,11 +346,18 @@ local function hook_main(client)
 
         callback = function(err, result, id)
           if not err then
-            local dropped
+            local dropped, unknown_base
 
-            result, dropped = track(cidx, method, params, result)
+            result, dropped, unknown_base = track(cidx, method, params, result, nil, function(line)
+              return not drawn_by_variant(td.uri, line)
+            end)
+
             if dropped then
               M._on_inactive(td.uri, dropped)
+            end
+
+            if unknown_base and by_uri[td.uri] then
+              refresh_soon(by_uri[td.uri])
             end
           end
 
@@ -370,9 +450,18 @@ local function proxy(rpc, k)
 
         callback = function(err, result, id)
           if not err then
-            result = track(cidx, method, params, result, function(line)
+            local tracked, _, unknown_base = track(cidx, method, params, result, function(line)
               return owner_of(uri, line) == k
             end)
+
+            result = tracked
+
+            local st = by_uri[uri]
+
+            if st and (unknown_base or (result and not st.ready[k])) then
+              st.ready[k] = result ~= nil or nil
+              refresh_soon(st)
+            end
           end
 
           return cb(err, result, id)
@@ -447,16 +536,6 @@ local function variant_config(main, k)
       gate(client, k)
     end,
   }
-end
-
-local function variant_key(st, k)
-  return st.root .. "\0" .. k
-end
-
-local function live(id)
-  local c = id and vim.lsp.get_client_by_id(id)
-
-  return c and not c:is_stopped() and c or nil
 end
 
 local function attach_variant(st, k)
@@ -553,10 +632,12 @@ local function recompute(st)
       local id, fresh = attach_variant(st, k)
 
       if id and not fresh and old_keys[k] and old_keys[k] ~= keys[k] then
+        st.ready[k] = nil
         vim.lsp.buf_detach_client(st.buf, id)
         vim.lsp.buf_attach_client(st.buf, id)
       end
     else
+      st.ready[k] = nil
       detach_variant(st, k)
     end
   end
@@ -566,7 +647,7 @@ local function recompute(st)
   end
 
   st.n = #assigns
-  if refresh and shown and #assigns > 0 then
+  if refresh and shown then
     vim.lsp.semantic_tokens.force_refresh(st.buf)
   end
 end
@@ -605,6 +686,8 @@ local function track(buf, client)
     owners = {},
     assigns = {},
     keys = {},
+    -- [k] = true once variant k has sent its tokens for this buffer.
+    ready = {},
     n = 0,
     tick = 0,
   }

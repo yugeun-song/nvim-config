@@ -28,6 +28,17 @@ end
 -- drivers in this allowlist: the directories the compilers on PATH live in, so nothing a repository names runs.
 local function query_driver()
   local dirs, seen = {}, {}
+  -- PATH's own entries only: with cmd.exe as 'shell', exepath() also finds a compiler in the current directory,
+  -- which a repository could put there.
+  local on_path = {}
+
+  for entry in (vim.env.PATH or ""):gmatch("[^;]+") do
+    local dir = vim.fs.normalize(entry):gsub("/+$", "")
+
+    if vim.fn.isabsolutepath(dir) == 1 then
+      on_path[dir:lower()] = true
+    end
+  end
 
   for _, name in ipairs({ "gcc", "g++", "cc", "c++", "clang", "clang++" }) do
     local path = vim.fn.exepath(name)
@@ -35,7 +46,7 @@ local function query_driver()
     if path ~= "" then
       local dir = vim.fs.dirname(vim.fs.normalize(path))
 
-      if not seen[dir:lower()] then
+      if on_path[dir:lower()] and not seen[dir:lower()] then
         seen[dir:lower()] = true
         dirs[#dirs + 1] = dir .. "/*"
       end
