@@ -62,6 +62,15 @@ function M.buffer(key, filetype)
   return buf, true
 end
 
+-- The panel key of buf, or nil when buf is not a panel's.
+function M.key_of(buf)
+  for key, panel_buf in pairs(buffers) do
+    if panel_buf == buf then
+      return key
+    end
+  end
+end
+
 function M.is_debug_ft(ft)
   return ft:match("^dbg%-") ~= nil or ft:match("^dap%-") ~= nil
 end
@@ -90,7 +99,7 @@ function M.render(buf, lines, highlights)
   end
 
   for i, line in ipairs(lines) do
-    lines[i] = (line:gsub("%s+$", ""))
+    lines[i] = (line:gsub("%s+$", ""):gsub("\n", " "))
   end
 
   vim.bo[buf].modifiable = true
@@ -98,7 +107,16 @@ function M.render(buf, lines, highlights)
   vim.bo[buf].modifiable = false
   vim.api.nvim_buf_clear_namespace(buf, M.ns, 0, -1)
   for _, h in ipairs(highlights or {}) do
-    pcall(vim.api.nvim_buf_set_extmark, buf, M.ns, h[1], h[2], { end_col = h[3], hl_group = h[4], priority = h[5] })
+    -- Not strict: a column past the line's end stops there; -1 reaches the end of the line.
+    local opts = { hl_group = h[4], priority = h[5], strict = false }
+
+    if h[3] == -1 then
+      opts.end_row, opts.end_col = h[1] + 1, 0
+    else
+      opts.end_col = h[3]
+    end
+
+    pcall(vim.api.nvim_buf_set_extmark, buf, M.ns, h[1], h[2], opts)
   end
 end
 

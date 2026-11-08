@@ -14,7 +14,7 @@ local function input_path(prompt, default)
       local answer = vim.fn.input(prompt, seed, "file")
 
       if vim.trim(answer) == "" then
-        return nil
+        return require("dap").ABORT
       end
 
       answer = vim.fn.expand(answer)
@@ -396,13 +396,14 @@ function M.setup()
     local env = { GDBTOOLS_AUTO = config.kgdb_auto and "1" or "0" }
 
     discover.kbuildlab_json(args, env, function(spec, why)
-      if not spec then
-        notify.error(why)
+      if type(spec) ~= "table" then
+        notify.error(why or "kbuildlab described no session")
 
         return
       end
 
-      local dap_ok, dap_why = discover.gdb_supports_dap(spec.gdb or "gdb")
+      local gdb = type(spec.gdb) == "string" and spec.gdb ~= "" and spec.gdb or "gdb"
+      local dap_ok, dap_why = discover.gdb_supports_dap(gdb)
 
       if not dap_ok then
         notify.error(dap_why)
@@ -446,7 +447,7 @@ function M.setup()
 
       callback({
         type = "executable",
-        command = spec.gdb,
+        command = gdb,
         args = gargs,
         -- The attach answers once gdb has read vmlinux, 9-11 s here; 4 s warns every time.
         options = { env = env_list, initialize_timeout_sec = 60 },
@@ -482,7 +483,7 @@ function M.setup()
       request = "attach",
       program = input_path("Executable: ", cwd_exe),
       pid = function()
-        return tonumber(vim.fn.input("PID: "))
+        return tonumber(vim.fn.input("PID: ")) or require("dap").ABORT
       end,
     },
     {
@@ -563,7 +564,7 @@ function M.setup()
         expressions = "native",
         program = input_path("Executable: ", cwd_exe),
         pid = function()
-          return tonumber(vim.fn.input("PID: "))
+          return tonumber(vim.fn.input("PID: ")) or require("dap").ABORT
         end,
       },
     }
@@ -604,11 +605,8 @@ function M.setup()
     group = group,
     pattern = "dap-repl",
     callback = function(ev)
-      -- A managed adapter keeps nvim-dap's own REPL.
-      if not context.is_gdb() then
-        return
-      end
-
+      -- The REPL buffer outlives sessions: the keys are always set and decide per session, a session that is
+      -- not gdb's getting nvim-dap's own behaviour.
       local buf = ev.buf
 
       -- blink.cmp completes dap-repl from buffer words; a command line wants
@@ -632,6 +630,12 @@ function M.setup()
       end
 
       vim.keymap.set("n", "<CR>", function()
+        if not context.is_gdb() then
+          require("dap.ui").trigger_actions({ mode = "first" })
+
+          return
+        end
+
         local pre = prompt()
         local lnum = vim.api.nvim_win_get_cursor(0)[1]
         local line = vim.api.nvim_buf_get_lines(buf, lnum - 1, lnum, false)[1] or ""
@@ -656,6 +660,12 @@ function M.setup()
 
       for _, key in ipairs({ "i", "I", "a", "A" }) do
         vim.keymap.set("n", key, function()
+          if not context.is_gdb() then
+            vim.api.nvim_feedkeys(key, "n", false)
+
+            return
+          end
+
           to_prompt()
           vim.cmd("startinsert!")
         end, { buffer = buf, desc = "gdb console: type at the prompt" })
@@ -746,11 +756,11 @@ function M.setup()
     end
   end
 
+  -- By buffer, not by name: the control-flow graph's buffer is renamed for the tabline.
   vim.api.nvim_create_autocmd("BufWinEnter", {
     group = group,
-    pattern = "dbg://*",
     callback = function(ev)
-      local key = ev.file:match("^dbg://(.+)$")
+      local key = require("features.debugging.views.buffers_and_windows").key_of(ev.buf)
 
       if key and dirty[key] and dap.session() and allowed(key, dap.session()) then
         dirty[key] = nil

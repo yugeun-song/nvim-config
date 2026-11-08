@@ -3,6 +3,25 @@
 return {
   {
     "mfussenegger/nvim-dap",
+    -- Its commands load it too (lua/features/debugging/nvim_dap_setup.lua defines them).
+    cmd = {
+      "DbgBreak",
+      "DbgBreakpoints",
+      "DbgClose",
+      "DbgControlFlow",
+      "DbgInline",
+      "DbgLayout",
+      "DbgLayoutReset",
+      "DbgLinuxKernel",
+      "DbgLinuxKernelEarly",
+      "DbgLog",
+      "DbgMappings",
+      "DbgMemory",
+      "DbgRegisters",
+      "DbgSafeMem",
+      "DbgState",
+      "DbgTargets",
+    },
     dependencies = {
       {
         "igorlfs/nvim-dap-view",

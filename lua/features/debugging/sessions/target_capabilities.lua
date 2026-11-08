@@ -216,7 +216,12 @@ function M.detect(session, cb)
 
     caps.monitor = mon ~= "" and not mon:find("Undefined") and not mon:find("^<")
     caps.kind = classify(caps)
-    cache[k] = caps
+
+    -- gdb answers "<error>" while the target runs: that is asked again at the next stop, not kept.
+    if not tostring(out[sym_probe] or ""):find("^<") then
+      cache[k] = caps
+    end
+
     cb(caps)
   end, { session = session })
 end

@@ -143,7 +143,10 @@ function M.buffer()
     end, { buffer = buf, nowait = true, desc = "Watch: filter" })
 
     vim.keymap.set("n", "<CR>", function()
-      local name = vim.api.nvim_get_current_line():match("[%w_]+")
+      local cursor = vim.api.nvim_win_get_cursor(0)
+      local row = state.rows and state.rows[cursor[1]]
+      local entry = row and ((row.split_at and cursor[2] >= row.split_at) and row.right or row.left)
+      local name = entry and entry.name
 
       if name then
         pcall(function()
@@ -231,6 +234,11 @@ function M.render()
     end
   end
 
+  -- Which entry each line shows, by column, for <CR>.
+  local rows = {}
+
+  state.rows = rows
+
   local split = width >= MIN_SPLIT_WIDTH
   local colw = split and math.floor((width - 3) / 2) or width - 2
 
@@ -277,6 +285,7 @@ function M.render()
       local text = " " .. ui.pad(clip(l, colw), colw) .. "  " .. r
 
       lines[#lines + 1] = text
+      rows[#lines] = { left = left[i], right = rightcol[i], split_at = colw + 3 }
       local ln = #lines - 1
 
       if left[i] then
@@ -297,6 +306,7 @@ function M.render()
     push(" " .. header("LOCALS", #left), { { 1, 8, "DbgPanelTitle" } })
     for _, e in ipairs(left) do
       lines[#lines + 1] = " " .. cell(e, lnw, lvw)
+      rows[#lines] = { left = e }
       hls[#hls + 1] = { #lines - 1, 3, 3 + lnw, state.changed[e.key] and "DbgChanged" or "DbgKey" }
     end
 
@@ -304,6 +314,7 @@ function M.render()
     push(" " .. header("GLOBALS", #rightcol), { { 1, 9, "DbgPanelTitle" } })
     for _, e in ipairs(rightcol) do
       lines[#lines + 1] = " " .. cell(e, rnw, rvw)
+      rows[#lines] = { left = e }
       hls[#hls + 1] = { #lines - 1, 3, 3 + rnw, state.changed[e.key] and "DbgChanged" or "DbgKey" }
     end
   end

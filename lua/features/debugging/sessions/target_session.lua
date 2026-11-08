@@ -419,9 +419,16 @@ function M.probe(force)
       end
     end
 
+    -- The probes of this session: a late answer for an earlier one is dropped.
+    local mine = fixed
+
     gdbq.run_all(queries, function(out)
+      if fixed ~= mine then
+        return
+      end
+
       probes = {}
-      for cmd, text in pairs(fixed.out) do
+      for cmd, text in pairs(mine.out) do
         if text then
           probes[cmd] = text
         end
@@ -429,8 +436,9 @@ function M.probe(force)
 
       for cmd, text in pairs(out) do
         probes[cmd] = vim.trim(tostring(text))
+        -- A failed probe ("<error>") is asked again next time instead of being kept.
         if FIXED[cmd] then
-          fixed.out[cmd] = probes[cmd]
+          mine.out[cmd] = not probes[cmd]:find("^<") and probes[cmd] or nil
         end
       end
 

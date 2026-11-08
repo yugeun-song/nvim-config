@@ -320,10 +320,15 @@ function M.watch_target(session)
       end)
 
       -- Close the session, not the windows: what the guest printed stays readable.
+      -- Only the session this watched: another may have become the current one meanwhile.
       vim.defer_fn(function()
-        if require("dap").session() then
+        local dap_now = require("dap")
+
+        if dap_now.session() == session then
+          pcall(dap_now.close)
+        elseif not session.closed then
           pcall(function()
-            require("dap").close()
+            session:close()
           end)
         end
       end, 1200)
