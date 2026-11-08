@@ -105,6 +105,12 @@ local function directories(raw)
     end
 
     dir = vim.fs.normalize(dir)
+
+    -- A network location (\\server\share) is not looked into: one that does not answer would hold the editor.
+    if dir:find("^//") then
+      return
+    end
+
     if not seen[key(dir)] and is_dir(dir) then
       seen[key(dir)] = true
       dirs[#dirs + 1] = { dir = dir, via = via }
@@ -174,9 +180,13 @@ function M.run(names, cb)
 
   vim.system(
     { "powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", SCRIPT },
-    { text = true },
+    { text = true, timeout = 30000 },
     vim.schedule_wrap(function(res)
       local ok, raw = pcall(vim.json.decode, res.stdout or "")
+
+      if res.code == 124 then
+        return cb(nil, "PowerShell did not answer within 30 seconds")
+      end
 
       if res.code ~= 0 or not ok or type(raw) ~= "table" then
         return cb(nil, "PowerShell gave no readable answer: " .. vim.trim(res.stderr or ""))

@@ -36,6 +36,10 @@ local COMPILERS = {
       return {
         "cl",
         "/nologo",
+        -- The object beside the build's own temporary .exe: another Neovim may be building at the same time.
+        "/Fo"
+          .. out:sub(1, -5)
+          .. ".obj",
         "/O2",
         "/MT",
         "/W4",
@@ -64,9 +68,13 @@ local COMPILERS = {
         "-Wall",
         "-Wextra",
         "-Werror",
+        -- What cl gets from /guard:cf (clang-cl passes the same).
+        "-Xclang",
+        "-cfguard",
         "-o",
         out,
         SRC,
+        "-Wl,/WX,/guard:cf,/DEPENDENTLOADFLAG:0x800,/CETCOMPAT",
       }
     end,
   },
@@ -129,11 +137,11 @@ local function finish(exe, why)
 end
 
 -- Builds of an older source, unless a running watcher or shim still holds one open, and what a build left
--- when its Neovim quit while the compiler ran: a temporary .exe whose process is gone, cl's object file.
+-- when its Neovim quit while the compiler ran: a temporary .exe or cl object whose process is gone.
 local function prune(keep)
   for name in vim.fs.dir(DIR) do
     local path = vim.fs.joinpath(DIR, name)
-    local owner = tonumber(name:match("^windows_ime_helper%-%x+%-%x+%.(%d+)%.tmp%.exe$"))
+    local owner = tonumber(name:match("^windows_ime_helper%-%x+%-%x+%.(%d+)%.tmp%.%a+$"))
 
     -- winctl-* and winctl.obj: what the helper's builds were named before it was windows_ime_helper.
     if (name:match(EXE_NAME) and path ~= keep) or name == "windows_ime_helper.obj" or name:match("^winctl[%-.]") then
@@ -231,6 +239,7 @@ local function compile(s)
 
   local exe, log = exe_for(s), log_for(s)
   local tmp = ("%s.%d.tmp.exe"):format(exe:sub(1, -5), vim.fn.getpid())
+  local object = tmp:sub(1, -5) .. ".obj"
   local transcript = {}
 
   local function try(i)
@@ -249,14 +258,14 @@ local function compile(s)
       vim.list_extend(transcript, { "$ " .. table.concat(cmd, " "), why })
       vim.list_extend(transcript, vim.split(((res and res.stdout) or "") .. ((res and res.stderr) or ""), "\n"))
       os.remove(tmp)
-      os.remove(vim.fs.joinpath(DIR, "windows_ime_helper.obj"))
+      os.remove(object)
 
       return try(i + 1)
     end
 
     local ok = pcall(vim.system, cmd, { cwd = DIR, text = true, timeout = BUILD_TIMEOUT_MS }, function(res)
       vim.schedule(function()
-        os.remove(vim.fs.joinpath(DIR, "windows_ime_helper.obj"))
+        os.remove(object)
 
         if res.code ~= 0 or not uv.fs_stat(tmp) then
           return failed("build failed: " .. describe(res), res)

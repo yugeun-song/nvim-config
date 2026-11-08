@@ -1,6 +1,7 @@
 local M = {}
 
-function M.english_command()
+-- opts.build = false: report the Windows helper only if it is built (the health check), never start a build.
+function M.english_command(opts)
   local candidates
 
   if vim.fn.has("mac") == 1 then
@@ -12,7 +13,7 @@ function M.english_command()
   elseif vim.fn.has("win32") == 1 then
     -- windows_ime_helper turns the IME to its English mode and keeps the keyboard layout; im-select.exe switches
     -- layouts.
-    local ime_helper = require("features.windows_platform.windows_ime_helper").path()
+    local ime_helper = require("features.windows_platform.windows_ime_helper").path(opts)
 
     candidates = { { "im-select.exe", "1033" } }
     if ime_helper then

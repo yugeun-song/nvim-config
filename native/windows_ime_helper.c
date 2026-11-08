@@ -768,12 +768,19 @@ Cleanup:
     return result;
 }
 
-static BOOL IsNeovimProcess(_In_ DWORD processId)
+// Whether processId is a Neovim that started no later than startedBy (its child's start). Both on one handle, which
+// keeps the id from being reused meanwhile: a process that started after the child took a dead ancestor's id.
+static BOOL IsNeovimProcess(_In_ DWORD processId, _In_ ULONGLONG startedBy)
 {
     wchar_t image[SHIM_PATH_MAX_CHARS] = { 0 };
     DWORD length = ARRAYSIZE(image);
     const wchar_t *name = NULL;
     HANDLE process = NULL;
+    FILETIME creation = { 0 };
+    FILETIME unusedExit = { 0 };
+    FILETIME unusedKernel = { 0 };
+    FILETIME unusedUser = { 0 };
+    ULONGLONG started = 0;
     BOOL isNeovim = FALSE;
 
     if (processId == 0)
@@ -793,6 +800,13 @@ static BOOL IsNeovimProcess(_In_ DWORD processId)
         name = name != NULL ? name + 1 : image;
         isNeovim = CompareStringOrdinal(name, -1, L"nvim.exe", -1, TRUE) == CSTR_EQUAL;
     }
+
+    if (isNeovim && GetProcessTimes(process, &creation, &unusedExit, &unusedKernel, &unusedUser))
+    {
+        started = ((ULONGLONG)creation.dwHighDateTime << 32) | creation.dwLowDateTime;
+    }
+
+    isNeovim = isNeovim && started != 0 && started <= startedBy;
 
     CloseHandle(process);
     SecureZeroMemory(image, sizeof(image));
@@ -815,7 +829,7 @@ static DWORD FindNeovimCaller(_In_ int depth)
     length = GetProcessLineage(GetCurrentProcessId(), lineage, MAX_LINEAGE);
     for (int i = 1; caller == 0 && i < length && i <= depth; ++i)
     {
-        if (IsNeovimProcess(lineage[i]))
+        if (IsNeovimProcess(lineage[i], GetProcessStartTime(lineage[i - 1])))
         {
             caller = lineage[i];
         }
@@ -1201,6 +1215,56 @@ Cleanup:
     return result;
 }
 
+// The checks that must hold for the file the shim holds open and runs, not only for its path: on no network share
+// (a directory link to one passes the drive-letter check above), and not this shim itself.
+static SHIM_RESULT CheckHeldTarget(_In_ HANDLE file, _In_opt_z_ const wchar_t *self, _Out_ DWORD *lastError)
+{
+    FILE_REMOTE_PROTOCOL_INFO remote;
+    BY_HANDLE_FILE_INFORMATION targetId;
+    BY_HANDLE_FILE_INFORMATION selfId;
+    SHIM_RESULT result = SHIM_OK;
+
+    ZeroMemory(&remote, sizeof(remote));
+    ZeroMemory(&targetId, sizeof(targetId));
+    ZeroMemory(&selfId, sizeof(selfId));
+    if (lastError == NULL)
+    {
+        return SHIM_BAD_ARGUMENT;
+    }
+
+    *lastError = ERROR_SUCCESS;
+    if (file == NULL || file == INVALID_HANDLE_VALUE || self == NULL)
+    {
+        return SHIM_BAD_ARGUMENT;
+    }
+
+    // Only a file a network redirector serves has a remote protocol; a local one fails the query.
+    if (GetFileInformationByHandleEx(file, FileRemoteProtocolInfo, &remote, sizeof(remote)))
+    {
+        result = SHIM_NOT_LOCAL;
+        goto Cleanup;
+    }
+
+    if (!GetFileInformationByHandle(file, &targetId) || !GetFileId(self, &selfId))
+    {
+        *lastError = GetLastError();
+        result = SHIM_CANNOT_IDENTIFY;
+        goto Cleanup;
+    }
+
+    if (selfId.dwVolumeSerialNumber == targetId.dwVolumeSerialNumber &&
+        selfId.nFileIndexHigh == targetId.nFileIndexHigh && selfId.nFileIndexLow == targetId.nFileIndexLow)
+    {
+        result = SHIM_TARGET_IS_SELF;
+    }
+
+Cleanup:
+    SecureZeroMemory(&remote, sizeof(remote));
+    SecureZeroMemory(&targetId, sizeof(targetId));
+    SecureZeroMemory(&selfId, sizeof(selfId));
+    return result;
+}
+
 // Each step's failure is its own result, with the system's error where there is one.
 static SHIM_RESULT ReadShimTarget(_In_opt_z_ const wchar_t *shim, _In_opt_z_ const wchar_t *self,
                                   _Out_writes_z_(capacity) wchar_t *target, _In_ DWORD capacity, _Out_ DWORD *lastError)
@@ -1542,7 +1606,13 @@ static int RunShim(_In_opt_z_ const wchar_t *shim, _In_opt_z_ const wchar_t *sel
     size_t argumentsLength = 0;
     size_t size = 0;
     wchar_t *commandLine = NULL;
-    STARTUPINFOW startup;
+    HANDLE targetFile = INVALID_HANDLE_VALUE;
+    HANDLE inherited[3] = { 0 };
+    DWORD inheritedCount = 0;
+    LPPROC_THREAD_ATTRIBUTE_LIST attributes = NULL;
+    SIZE_T attributesSize = 0;
+    BOOL isAttributeListReady = FALSE;
+    STARTUPINFOEXW startup;
     PROCESS_INFORMATION process;
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits;
     HANDLE job = NULL;
@@ -1556,6 +1626,22 @@ static int RunShim(_In_opt_z_ const wchar_t *shim, _In_opt_z_ const wchar_t *sel
     ZeroMemory(&limits, sizeof(limits));
 
     result = ReadShimTarget(shim, self, target, ARRAYSIZE(target), &lastError);
+    if (result != SHIM_OK)
+    {
+        exitCode = (DWORD)FailShim(shim, DescribeShimResult(result), lastError);
+        goto Cleanup;
+    }
+
+    // Held until the program runs, shared for reading only: the file checked cannot be written, replaced or renamed
+    // before CreateProcessW opens it.
+    targetFile = CreateFileW(target, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (targetFile == INVALID_HANDLE_VALUE)
+    {
+        exitCode = (DWORD)FailShim(shim, L"cannot open the program", GetLastError());
+        goto Cleanup;
+    }
+
+    result = CheckHeldTarget(targetFile, self, &lastError);
     if (result != SHIM_OK)
     {
         exitCode = (DWORD)FailShim(shim, DescribeShimResult(result), lastError);
@@ -1615,16 +1701,68 @@ static int RunShim(_In_opt_z_ const wchar_t *shim, _In_opt_z_ const wchar_t *sel
     // here changes nothing.
     SetConsoleCtrlHandler(WaitThroughConsoleInterrupt, TRUE);
 
-    startup.cb = sizeof(startup);
-    startup.dwFlags = STARTF_USESTDHANDLES;
-    startup.hStdInput = GetValidStdHandle(STD_INPUT_HANDLE);
-    startup.hStdOutput = GetValidStdHandle(STD_OUTPUT_HANDLE);
-    startup.hStdError = GetValidStdHandle(STD_ERROR_HANDLE);
+    startup.StartupInfo.cb = sizeof(startup);
+    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    startup.StartupInfo.hStdInput = GetValidStdHandle(STD_INPUT_HANDLE);
+    startup.StartupInfo.hStdOutput = GetValidStdHandle(STD_OUTPUT_HANDLE);
+    startup.StartupInfo.hStdError = GetValidStdHandle(STD_ERROR_HANDLE);
+
+    // The program inherits the three standard handles and nothing else Neovim left inheritable to the shim. A handle
+    // listed twice, or not inheritable, would fail CreateProcessW.
+    {
+        HANDLE standard[3] = { startup.StartupInfo.hStdInput, startup.StartupInfo.hStdOutput,
+                               startup.StartupInfo.hStdError };
+
+        for (DWORD i = 0; i < ARRAYSIZE(standard); ++i)
+        {
+            BOOL isListed = FALSE;
+            DWORD flags = 0;
+
+            for (DWORD j = 0; j < inheritedCount; ++j)
+            {
+                isListed = isListed || inherited[j] == standard[i];
+            }
+
+            if (standard[i] == NULL || isListed || !GetHandleInformation(standard[i], &flags))
+            {
+                continue;
+            }
+
+            if ((flags & HANDLE_FLAG_INHERIT) ||
+                SetHandleInformation(standard[i], HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT))
+            {
+                inherited[inheritedCount] = standard[i];
+                ++inheritedCount;
+            }
+        }
+    }
+
+    if (inheritedCount > 0)
+    {
+        InitializeProcThreadAttributeList(NULL, 1, 0, &attributesSize);
+        attributes = (LPPROC_THREAD_ATTRIBUTE_LIST)calloc(1, attributesSize);
+        if (attributes == NULL)
+        {
+            exitCode = (DWORD)FailShim(shim, L"out of memory", ERROR_NOT_ENOUGH_MEMORY);
+            goto Cleanup;
+        }
+
+        isAttributeListReady = InitializeProcThreadAttributeList(attributes, 1, 0, &attributesSize);
+        if (!isAttributeListReady || !UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                                                                inherited, inheritedCount * sizeof(HANDLE), NULL, NULL))
+        {
+            exitCode = (DWORD)FailShim(shim, L"cannot limit what the program inherits", GetLastError());
+            goto Cleanup;
+        }
+
+        startup.lpAttributeList = attributes;
+    }
 
     // By full path, never searched for; suspended so it cannot run before it is in the job; with the default
     // error mode, not the one this process set for itself.
-    wasStarted = CreateProcessW(target, commandLine, NULL, NULL, TRUE, CREATE_SUSPENDED | CREATE_DEFAULT_ERROR_MODE,
-                                NULL, NULL, &startup, &process);
+    wasStarted = CreateProcessW(target, commandLine, NULL, NULL, inheritedCount > 0,
+                                CREATE_SUSPENDED | CREATE_DEFAULT_ERROR_MODE | EXTENDED_STARTUPINFO_PRESENT, NULL, NULL,
+                                &startup.StartupInfo, &process);
     if (!wasStarted)
     {
         exitCode = (DWORD)FailShim(shim, L"cannot start the program", GetLastError());
@@ -1677,12 +1815,25 @@ Cleanup:
         CloseHandle(job);
     }
 
+    if (targetFile != INVALID_HANDLE_VALUE)
+    {
+        CloseHandle(targetFile);
+    }
+
+    if (isAttributeListReady)
+    {
+        DeleteProcThreadAttributeList(attributes);
+    }
+
+    free(attributes);
+
     if (commandLine != NULL)
     {
         SecureZeroMemory(commandLine, size * sizeof(wchar_t));
         free(commandLine);
     }
 
+    SecureZeroMemory(inherited, sizeof(inherited));
     SecureZeroMemory(target, sizeof(target));
     SecureZeroMemory(&startup, sizeof(startup));
     SecureZeroMemory(&process, sizeof(process));

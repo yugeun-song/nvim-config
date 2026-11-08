@@ -18,7 +18,10 @@ local function mason_packages()
   local failures = gate and gate.failures() or {}
   local installed = {}
 
-  for _, name in ipairs(LazyVim.opts("mason.nvim").ensure_installed or {}) do
+  -- The merged options run the gate's filter; what it held back is listed too.
+  local asked = LazyVim.opts("mason.nvim").ensure_installed or {}
+
+  for _, name in ipairs(gate and gate.requested or asked) do
     local found, pkg = pcall(registry.get_package, name)
 
     if not found then

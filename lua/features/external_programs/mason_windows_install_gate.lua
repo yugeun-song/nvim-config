@@ -48,8 +48,13 @@ function M.held_back(name, failures)
   return type(at) == "number" and os.time() - at < M.RETRY_DAYS * 86400 and at or nil
 end
 
+-- Everything asked for, before filter(): the health check lists what the gate holds back too.
+M.requested = nil
+
 function M.filter(names)
   local failures = M.failures()
+
+  M.requested = vim.deepcopy(names)
 
   return vim.tbl_filter(function(name)
     return not M.missing_runtime(name) and not M.held_back(name, failures)

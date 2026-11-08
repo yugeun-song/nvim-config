@@ -8,7 +8,7 @@ function M.check()
   status.available("Korean langmap (Normal-mode keys typed in 한글 work)")
 
   local backends = require("features.input_method.per_os_backends")
-  local cmd = backends.english_command()
+  local cmd = backends.english_command({ build = false })
 
   if cmd then
     status.available("English on leaving Insert", table.concat(cmd, " "))

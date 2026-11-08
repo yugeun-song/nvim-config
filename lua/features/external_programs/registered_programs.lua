@@ -72,6 +72,11 @@ local function add_to_path()
   vim.env.PATH = path .. SEP .. (WIN and SHIMS:gsub("/", "\\") or SHIMS)
 end
 
+-- A registered name: also a file name in the shims directory, so nothing that leaves it (no separator, no "..").
+local function is_valid_name(name)
+  return type(name) == "string" and name:match("^[%w][%w._+-]*$") ~= nil
+end
+
 -- The .shim goes first: a launcher copy without one would run as the helper itself.
 local function make_shim(name, target, launcher)
   vim.fn.mkdir(SHIMS, "p")
@@ -105,12 +110,36 @@ end
 -- Windows: a new windows_ime_helper build becomes every shim's launcher.
 function M.refresh_shims(launcher)
   for name, target in pairs(M.read()) do
-    make_shim(name, target, launcher)
+    if is_valid_name(name) then
+      make_shim(name, target, launcher)
+    end
+  end
+end
+
+-- Windows, at startup: what an unregistration could not remove while it ran, and launchers no registration names.
+-- A launcher older than the helper's current build (it was running when the helper was rebuilt) is copied again.
+local function tidy_shims(tools)
+  local launcher = require("features.windows_platform.windows_ime_helper").path({ build = false })
+  local current = launcher and uv.fs_stat(launcher)
+
+  for file in vim.fs.dir(SHIMS) do
+    local path = vim.fs.joinpath(SHIMS, file)
+    local name = file:match("^(.+)%.[eE][xX][eE]$")
+
+    if file:match("%.removed$") or (name and not tools[name]) then
+      os.remove(path)
+    elseif name and launcher and current then
+      local st = uv.fs_stat(path)
+
+      if st and (st.size ~= current.size or st.mtime.sec < current.mtime.sec) then
+        uv.fs_copyfile(launcher, path)
+      end
+    end
   end
 end
 
 local function check(name, target)
-  if not name:match("^[%w][%w._+-]*$") then
+  if not is_valid_name(name) then
     return nil, "a name is letters, digits and . _ + -"
   end
 
@@ -159,6 +188,9 @@ function M.register(name, target)
 
   ok, err = make_shim(name, target)
   add_to_path()
+  if WIN then
+    M.watch_log()
+  end
 
   return ok, err
 end
@@ -172,7 +204,13 @@ function M.unregister(name)
 
   tools[name] = nil
   write(tools)
-  os.remove(shim_of(name))
+
+  local shim = shim_of(name)
+
+  if not os.remove(shim) and WIN and uv.fs_stat(shim) then
+    uv.fs_rename(shim, ("%s.%d.removed"):format(shim, os.time()))
+  end
+
   if WIN then
     os.remove(vim.fs.joinpath(SHIMS, name .. ".shim"))
   end
@@ -194,9 +232,16 @@ function M.setup()
 
   -- Removed by hand, or by a cleaner: made again, the .shim beside it too.
   for name, target in pairs(tools) do
-    if not uv.fs_lstat(shim_of(name)) or (WIN and not uv.fs_stat(vim.fs.joinpath(SHIMS, name .. ".shim"))) then
+    if
+      is_valid_name(name)
+      and (not uv.fs_lstat(shim_of(name)) or (WIN and not uv.fs_stat(vim.fs.joinpath(SHIMS, name .. ".shim"))))
+    then
       make_shim(name, target)
     end
+  end
+
+  if WIN then
+    tidy_shims(tools)
   end
 
   add_to_path()
