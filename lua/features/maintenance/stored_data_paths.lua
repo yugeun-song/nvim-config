@@ -371,6 +371,20 @@ function safe(item)
   end
 
   if item.kind == "stdpath" then
+    local config = vim.fn.stdpath("config")
+
+    local function strictly_inside(inner, outer)
+      return within(inner, outer) and key(inner) ~= key(outer)
+    end
+
+    -- Inside the configuration (a variable pointed into a checkout): what lies there is not the reset's to remove.
+    if
+      strictly_inside(path, config)
+      or strictly_inside(uv.fs_realpath(path) or path, uv.fs_realpath(config) or config)
+    then
+      return false, "lies inside the configuration"
+    end
+
     return vim.startswith(base, app), "not named after " .. app
   elseif item.kind == "neovide" then
     return base == "neovide-settings.json", "not Neovide's settings file"

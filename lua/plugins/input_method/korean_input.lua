@@ -25,9 +25,27 @@ return {
           end
         or nil
 
-      vim.api.nvim_create_autocmd({ "InsertLeave", "FocusGained" }, {
-        group = vim.api.nvim_create_augroup("IMControl", { clear = true }),
+      -- The switch acts on the foreground window: an InsertLeave while another program has the focus (a timer, a
+      -- --remote-send) would switch that program's IME. A terminal without focus reports stays "focused".
+      local group = vim.api.nvim_create_augroup("IMControl", { clear = true })
+      local is_focused = true
+
+      vim.api.nvim_create_autocmd("FocusLost", {
+        group = group,
         callback = function()
+          is_focused = false
+        end,
+      })
+
+      vim.api.nvim_create_autocmd({ "InsertLeave", "FocusGained" }, {
+        group = group,
+        callback = function(ev)
+          is_focused = is_focused or ev.event == "FocusGained"
+
+          if not is_focused then
+            return
+          end
+
           if send and send("e") then
             return
           end

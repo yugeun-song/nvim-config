@@ -235,7 +235,8 @@ done
 
 # The real layout: this user's $HOME, the configuration where it is installed, no variable set.
 in_container() {
-  [ -e /.dockerenv ] || [ -e /run/.containerenv ] || [ -n "${container:-}" ]
+  # docker.sh's own containers only: toolbox, distrobox and devcontainers are containers too, with the real home.
+  [ "${NVIM_PATHS_THROWAWAY_CONTAINER:-}" = 1 ] && { [ -e /.dockerenv ] || [ -e /run/.containerenv ] || [ -n "${container:-}" ]; }
 }
 
 if [ "$installed" = 1 ]; then

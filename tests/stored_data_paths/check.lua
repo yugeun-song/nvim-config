@@ -100,6 +100,22 @@ end
 
 expected.log = expected.state
 
+-- The directories come from XDG_*, LOCALAPPDATA and TEMP too, not only HOME: each must lie in the root before
+-- anything is written (the installed variant tests the real layout, in docker.sh's containers only).
+local function refuse_outside(what, path)
+  if VARIANT ~= "installed" and not under(path, ROOT) then
+    fail(("%s is outside the test root, refusing to run: %s"):format(what, path))
+
+    return true
+  end
+end
+
+for _, kind in ipairs({ "config", "data", "state", "cache" }) do
+  if refuse_outside(kind, expected[kind]) then
+    return finish()
+  end
+end
+
 local version = vim.fn.execute("version"):match("NVIM v[^\r\n]+") or "?"
 
 say("INFO", ("%s, %s"):format(version, WIN and "Windows" or MAC and "macOS" or "Linux"))
@@ -177,6 +193,12 @@ end
 
 -- Neovide: its settings linked to the configuration as the README installs them, and its window state.
 local neovide = mp.neovide_paths()
+
+if
+  refuse_outside("Neovide's settings", neovide.config or "") or refuse_outside("Neovide's data", neovide.data or "")
+then
+  return finish()
+end
 
 local neovide_config = assert(neovide.config, "no Neovide settings directory: HOME or APPDATA unset")
 local neovide_data = assert(neovide.data, "no Neovide data directory: HOME or LOCALAPPDATA unset")

@@ -513,6 +513,20 @@ function M.ensure(buf)
     return
   end
 
+  -- MSBuild runs what a project defines (property functions, tasks, targets, the Directory.Build files above it):
+  -- a project is evaluated unasked only after :MsvcCompileDb has made its database once, which is the consent.
+  if not mine then
+    M.notify_when_ready(
+      (
+        "No compile_commands.json for %s; :MsvcCompileDb makes one (MSBuild evaluates the project and runs what it "
+        .. "defines)"
+      ):format(vim.fn.fnamemodify(file, ":~:.")),
+      vim.log.levels.INFO
+    )
+
+    return
+  end
+
   -- Stale when an input's mtime is not the one recorded: compared for change, not for order, so a file stamped
   -- in the future (a clock off, an archive) does not rebuild at every start.
   local stale = not db_time

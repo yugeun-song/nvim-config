@@ -6,12 +6,24 @@ local POLL_INTERVAL_MS = 2000
 
 local minifiles_dirty = {}
 
+-- Buffers without unsaved changes only, and only in Normal mode: a changed file under unsaved edits asks (W12),
+-- and a question popping up unasked takes the next key as its answer ("l" loads the file over the edits). Those are
+-- left to LazyVim's check on FocusGained, when the user is looking, and to :checktime.
 local function checktime()
-  if vim.fn.getcmdwintype() ~= "" or vim.bo.buftype == "nofile" then
+  if vim.fn.getcmdwintype() ~= "" or vim.api.nvim_get_mode().mode ~= "n" then
     return
   end
 
-  pcall(vim.cmd.checktime)
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if
+      vim.api.nvim_buf_is_loaded(buf)
+      and vim.bo[buf].buftype == ""
+      and not vim.bo[buf].modified
+      and vim.api.nvim_buf_get_name(buf) ~= ""
+    then
+      pcall(vim.cmd.checktime, buf)
+    end
+  end
 end
 
 local function minifiles_if_open()
@@ -62,7 +74,7 @@ end
 function M.setup()
   local group = vim.api.nvim_create_augroup("FsRefresh", { clear = true })
 
-  vim.api.nvim_create_autocmd({ "BufEnter", "CursorHold", "CursorHoldI" }, {
+  vim.api.nvim_create_autocmd({ "BufEnter", "CursorHold" }, {
     group = group,
     callback = checktime,
     desc = "Check for external file changes on events LazyVim's focus-based checktime misses",

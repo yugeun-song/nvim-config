@@ -197,7 +197,7 @@ if command -v useradd >/dev/null 2>&1 && command -v su >/dev/null 2>&1 && userad
 fi
 mkdir -p "$home/.config" && cp -R /cfg "$home/.config/nvim" && chown -R "$user" "$home/.config" || exit 1
 nv=$(command -v nvim || true)
-cmd="sh $home/.config/nvim/tests/stored_data_paths/run.sh $ARGS $nv"
+cmd="NVIM_PATHS_THROWAWAY_CONTAINER=1 sh $home/.config/nvim/tests/stored_data_paths/run.sh $ARGS $nv"
 if [ "$user" = root ]; then sh -c "$cmd"; else su -s /bin/sh "$user" -c "$cmd"; fi'
 
 summary=""

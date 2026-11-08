@@ -1526,6 +1526,14 @@ static int FailShim(_In_opt_z_ const wchar_t *shim, _In_opt_z_ const wchar_t *wh
 
 // The program runs in a job that ends it with the shim; when that cannot be guaranteed, it does not run at all,
 // since a killed shim would leave it orphaned.
+// The shim waits through Ctrl+C and Ctrl+Break, which reach every process of the console, and leaves them to the
+// program. A handler, not SetConsoleCtrlHandler(NULL, TRUE): that "ignore" is inherited, and the program would
+// ignore them too.
+static BOOL WINAPI WaitThroughConsoleInterrupt(_In_ DWORD controlType)
+{
+    return controlType == CTRL_C_EVENT || controlType == CTRL_BREAK_EVENT;
+}
+
 static int RunShim(_In_opt_z_ const wchar_t *shim, _In_opt_z_ const wchar_t *self)
 {
     wchar_t target[SHIM_PATH_MAX_CHARS] = { 0 };
@@ -1589,7 +1597,8 @@ static int RunShim(_In_opt_z_ const wchar_t *shim, _In_opt_z_ const wchar_t *sel
         goto Cleanup;
     }
 
-    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    // The program ends with the shim; what the program starts breaks away, as from Neovim's own job (libuv).
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK;
     if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits)))
     {
         exitCode = (DWORD)FailShim(shim, L"cannot make the job end the program with the shim", GetLastError());
@@ -1602,9 +1611,9 @@ static int RunShim(_In_opt_z_ const wchar_t *shim, _In_opt_z_ const wchar_t *sel
         goto Cleanup;
     }
 
-    // Ctrl-C reaches the program through the shared console; the shim stays to pass on its exit code. Without a
-    // console there is no Ctrl-C to pass on, so a failure here changes nothing.
-    SetConsoleCtrlHandler(NULL, TRUE);
+    // The shim stays to pass on the exit code. Without a console there is no Ctrl+C to wait through, so a failure
+    // here changes nothing.
+    SetConsoleCtrlHandler(WaitThroughConsoleInterrupt, TRUE);
 
     startup.cb = sizeof(startup);
     startup.dwFlags = STARTF_USESTDHANDLES;

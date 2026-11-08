@@ -241,12 +241,27 @@ local function translate(args, dir, out, state)
 
       i = i + ((joined or a:sub(1, 1) == "@") and 0 or 1)
 
-      if file then
+      -- A regular file of sensible size, each once, eight deep at most: a response file naming itself, a device
+      -- or a pipe would loop or block Neovim.
+      if file and (state.depth or 0) < 8 then
         local path = vim.fs.joinpath(dir, file)
-        local ok, text = pcall(vim.fn.readfile, uv.fs_stat(path) and path or file)
 
-        if ok then
-          translate(split(table.concat(text, " ")), dir, out, state)
+        path = uv.fs_stat(path) and path or file
+
+        local st = uv.fs_stat(path)
+        local real = uv.fs_realpath(path) or path
+
+        state.seen = state.seen or {}
+        if st and st.type == "file" and st.size <= 1048576 and not state.seen[real] then
+          state.seen[real] = true
+
+          local ok, text = pcall(vim.fn.readfile, path)
+
+          if ok then
+            state.depth = (state.depth or 0) + 1
+            translate(split(table.concat(text, " ")), dir, out, state)
+            state.depth = state.depth - 1
+          end
         end
       end
     elseif name == "-Xcompiler" or name == "--compiler-options" then
