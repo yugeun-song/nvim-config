@@ -60,7 +60,10 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-ROOT=$(mktemp -d "${TMPDIR:-/tmp}/nvim-paths.XXXXXX") || exit 2
+# The root as the system resolves it (macOS: /var is /private/var; TMPDIR may end in "/"), which is how Neovim
+# reports the directories under it.
+tmp=${TMPDIR:-/tmp}
+ROOT=$(mktemp -d "${tmp%/}/nvim-paths.XXXXXX") && ROOT=$(cd "$ROOT" && pwd -P) || exit 2
 if [ "${KEEP_ROOT:-0}" = 1 ]; then
   echo "root: $ROOT"
 else

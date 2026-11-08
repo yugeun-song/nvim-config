@@ -49,8 +49,11 @@ local function env(name)
   return value ~= nil and value ~= "" and value or nil
 end
 
+-- Paths compared as the system resolves them: links followed where the path exists (macOS's /var is /private/var),
+-- separators and doubled slashes made one.
 local function norm(path)
-  path = (path or ""):gsub("\\", "/"):gsub("/+$", "")
+  path = path or ""
+  path = (uv.fs_realpath(path) or path):gsub("\\", "/"):gsub("//+", "/"):gsub("/+$", "")
 
   return WIN and path:lower() or path
 end

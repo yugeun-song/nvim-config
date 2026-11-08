@@ -110,23 +110,59 @@ if [ "$clean" = images ]; then
 fi
 
 # Fully qualified, each from the registry its distribution publishes to: a short name would let podman guess.
-# image | setup | run.sh arguments | extra container options
+# Sets image, setup (run in the container as root), args (run.sh's) and opts (extra container options); each is a
+# variable of its own, so a setup may hold any shell text, || and | included.
 target() {
+  args="--release --installed" opts=""
   case "$1" in
-    arch) echo 'docker.io/library/archlinux:latest|pacman -Syu --noconfirm --needed neovim util-linux shadow curl tar gzip|--release --installed|' ;;
-    debian) echo 'docker.io/library/debian:stable|apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends neovim util-linux bsdutils passwd ca-certificates curl tar gzip|--release --installed|' ;;
-    ubuntu) echo 'docker.io/library/ubuntu:latest|apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends neovim util-linux bsdutils passwd ca-certificates curl tar gzip|--release --installed|' ;;
-    # --allowerasing: the image's curl-minimal yields to curl instead of failing the install as a conflict.
-    fedora) echo 'registry.fedoraproject.org/fedora:latest|dnf -y install --allowerasing neovim util-linux shadow-utils curl tar gzip && { command -v script >/dev/null || dnf -y install util-linux-script; }|--release --installed|' ;;
-    # The Rocky project's own image (Docker Hub's library/rockylinux stopped at 9). Neovim is EPEL's, which
-    # needs CRB for its libraries; epel-release comes from Rocky's extras repository.
-    rocky) echo 'docker.io/rockylinux/rockylinux:10|dnf -y install epel-release && dnf -y --enablerepo=crb install --allowerasing neovim util-linux shadow-utils curl tar gzip && { command -v script >/dev/null || dnf -y install util-linux-script; }|--release --installed|' ;;
-    opensuse) echo 'registry.opensuse.org/opensuse/tumbleweed:latest|zypper --non-interactive install neovim util-linux shadow curl tar gzip|--release --installed|' ;;
-    void) echo 'ghcr.io/void-linux/void-glibc-full:latest|xbps-install -Syu xbps && xbps-install -Syu && xbps-install -y neovim util-linux shadow curl tar gzip|--release --installed|' ;;
-    # Nix's store has no /lib64 loader for the official build, and the image no useradd: Nixpkgs' Neovim, as root.
-    nixos) echo 'docker.io/nixos/nix:latest|nix-channel --update && nix-env -iA nixpkgs.neovim nixpkgs.util-linux|--installed|' ;;
-    gentoo) echo 'docker.io/gentoo/stage3:latest|emerge-webrsync && getuto && emerge --getbinpkg --usepkgonly app-editors/neovim|--release --installed|' ;;
-    flatpak) echo 'registry.fedoraproject.org/fedora:latest|dnf -y install flatpak util-linux && flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo && flatpak install -y --noninteractive flathub io.neovim.nvim|--flatpak io.neovim.nvim|--privileged' ;;
+    arch)
+      image=docker.io/library/archlinux:latest
+      setup="pacman -Syu --noconfirm --needed neovim util-linux shadow curl tar gzip"
+      ;;
+    debian | ubuntu)
+      image=docker.io/library/$([ "$1" = debian ] && echo debian:stable || echo ubuntu:latest)
+      setup="apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends neovim \
+        util-linux bsdutils passwd ca-certificates curl tar gzip"
+      ;;
+    fedora)
+      image=registry.fedoraproject.org/fedora:latest
+      # --allowerasing: the image's curl-minimal yields to curl instead of failing the install as a conflict.
+      setup="dnf -y install --allowerasing neovim util-linux shadow-utils curl tar gzip \
+        && { command -v script >/dev/null || dnf -y install util-linux-script; }"
+      ;;
+    rocky)
+      # The Rocky project's own image (Docker Hub's library/rockylinux stopped at 9). Neovim is EPEL's, which needs
+      # CRB for its libraries; epel-release comes from Rocky's extras repository.
+      image=docker.io/rockylinux/rockylinux:10
+      setup="dnf -y install epel-release \
+        && dnf -y --enablerepo=crb install --allowerasing neovim util-linux shadow-utils curl tar gzip \
+        && { command -v script >/dev/null || dnf -y install util-linux-script; }"
+      ;;
+    opensuse)
+      image=registry.opensuse.org/opensuse/tumbleweed:latest
+      setup="zypper --non-interactive install neovim util-linux shadow curl tar gzip"
+      ;;
+    void)
+      image=ghcr.io/void-linux/void-glibc-full:latest
+      setup="xbps-install -Syu xbps && xbps-install -Syu && xbps-install -y neovim util-linux shadow curl tar gzip"
+      ;;
+    nixos)
+      # Nix's store has no /lib64 loader for the official build, and the image no useradd: Nixpkgs' Neovim, as root.
+      image=docker.io/nixos/nix:latest
+      setup="nix-channel --update && nix-env -iA nixpkgs.neovim nixpkgs.util-linux"
+      args="--installed"
+      ;;
+    gentoo)
+      image=docker.io/gentoo/stage3:latest
+      setup="emerge-webrsync && getuto && emerge --getbinpkg --usepkgonly app-editors/neovim"
+      ;;
+    flatpak)
+      image=registry.fedoraproject.org/fedora:latest
+      setup="dnf -y install flatpak util-linux \
+        && flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo \
+        && flatpak install -y --noninteractive flathub io.neovim.nvim"
+      args="--flatpak io.neovim.nvim" opts="--privileged"
+      ;;
     *) return 1 ;;
   esac
 }
@@ -164,16 +200,12 @@ status=0
 [ -n "$names" ] || names=$DEFAULT
 
 for name in $names; do
-  spec=$(target "$name") || {
+  target "$name" || {
     echo "unknown distribution: $name (known: $DEFAULT flatpak)" >&2
     status=2
     continue
   }
 
-  image=$(echo "$spec" | cut -d'|' -f1)
-  setup=$(echo "$spec" | cut -d'|' -f2)
-  args=$(echo "$spec" | cut -d'|' -f3)
-  opts=$(echo "$spec" | cut -d'|' -f4)
   log="$LOGS/$name.log"
   current="nvim-paths-$RUN-$name"
 
