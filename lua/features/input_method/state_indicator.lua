@@ -109,8 +109,8 @@ local function watch_caps()
   watcher = ok and proc or nil
 end
 
--- Windows: one long-lived winctl for both, started once; focus changes pause and resume it through its stdin
--- instead of ending and starting a process.
+-- Windows: one long-lived windows_ime_helper for both, started once; focus changes pause and resume it through its
+-- stdin instead of ending and starting a process.
 local last_pair
 
 local function on_pair(data)
@@ -130,10 +130,10 @@ local function watch_both()
     return
   end
 
-  local winctl = require("features.windows_platform.winctl")
+  local ime_helper = require("features.windows_platform.windows_ime_helper")
 
-  if not winctl.send("r") then
-    winctl.watch(on_pair)
+  if not ime_helper.send("r") then
+    ime_helper.watch(on_pair)
   end
 end
 
@@ -176,7 +176,7 @@ function M.start()
     end
 
     if both then
-      require("features.windows_platform.winctl").send("p")
+      require("features.windows_platform.windows_ime_helper").send("p")
     elseif watcher then
       watcher:kill("sigterm")
       watcher = nil

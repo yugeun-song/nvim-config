@@ -2,8 +2,8 @@
 -- stdpath("state")/nvim-config/registered_programs.json maps each name to its program;
 -- stdpath("data")/nvim-config/registered_program_shims holds one shim per name and is the only directory this adds to
 -- PATH, at its end, so a program's neighbours stay out of reach and anything already on PATH wins. A shim is a symbolic
--- link; on Windows, a copy of winctl that runs the program NAME.shim names. With nothing registered this costs one stat
--- and leaves PATH alone.
+-- link; on Windows, a copy of the Windows IME helper that runs the program NAME.shim names. With nothing registered
+-- this costs one stat and leaves PATH alone.
 local M = {}
 
 local uv = vim.uv
@@ -72,7 +72,7 @@ local function add_to_path()
   vim.env.PATH = path .. SEP .. (WIN and SHIMS:gsub("/", "\\") or SHIMS)
 end
 
--- The .shim goes first: a launcher copy without one would run as winctl.
+-- The .shim goes first: a launcher copy without one would run as the helper itself.
 local function make_shim(name, target, launcher)
   vim.fn.mkdir(SHIMS, "p")
   local shim = shim_of(name)
@@ -87,9 +87,9 @@ local function make_shim(name, target, launcher)
     return nil, "could not write " .. name .. ".shim"
   end
 
-  launcher = launcher or require("features.windows_platform.winctl").path()
+  launcher = launcher or require("features.windows_platform.windows_ime_helper").path()
   if not launcher then
-    return nil, "the shim launcher (winctl) is not built yet; it is created once winctl is"
+    return nil, "the shim launcher (windows_ime_helper) is not built yet; it is created once the helper is"
   end
 
   -- A running shim cannot be replaced; it is the same launcher and reads the new .shim on its next start.
@@ -102,7 +102,7 @@ local function make_shim(name, target, launcher)
   return true
 end
 
--- Windows: a new winctl build becomes every shim's launcher.
+-- Windows: a new windows_ime_helper build becomes every shim's launcher.
 function M.refresh_shims(launcher)
   for name, target in pairs(M.read()) do
     make_shim(name, target, launcher)
@@ -129,10 +129,10 @@ local function check(name, target)
     return nil, "on Windows a registered program is an .exe or .com"
   end
 
-  -- A shim, or winctl itself, as the program would start shims in a loop.
-  for _, dir in ipairs({ SHIMS, require("features.maintenance.local_storage").path("data", "winctl") }) do
+  -- A shim, or windows_ime_helper itself, as the program would start shims in a loop.
+  for _, dir in ipairs({ SHIMS, require("features.maintenance.local_storage").path("data", "windows_ime_helper") }) do
     if key(target):sub(1, #key(dir) + 1) == key(dir) .. "/" then
-      return nil, target .. " is a shim or winctl itself, not a program"
+      return nil, target .. " is a shim or windows_ime_helper itself, not a program"
     end
   end
 
@@ -208,15 +208,15 @@ end
 
 local log_watcher
 
--- Windows: a shim writes its failures to winctl-shim.log beside it (scripts/winctl.c), since it runs for other
--- programs whose stderr Neovim may never see; each new line is shown here. The system reports the directory's
--- changes, so this costs nothing while nothing fails.
+-- Windows: a shim writes its failures to windows_ime_helper_shims.log beside it (native/windows_ime_helper.c), since it
+-- runs for other programs whose stderr Neovim may never see; each new line is shown here. The system reports the
+-- directory's changes, so this costs nothing while nothing fails.
 function M.watch_log()
   if log_watcher or not WIN then
     return
   end
 
-  local log = vim.fs.joinpath(SHIMS, "winctl-shim.log")
+  local log = vim.fs.joinpath(SHIMS, "windows_ime_helper_shims.log")
   local st = uv.fs_stat(log)
   local offset = st and st.size or 0
   local handle = uv.new_fs_event()
@@ -226,7 +226,7 @@ function M.watch_log()
   end
 
   local is_started = handle:start(SHIMS, {}, function(err, filename)
-    if err or (filename and filename:lower() ~= "winctl-shim.log") then
+    if err or (filename and filename:lower() ~= "windows_ime_helper_shims.log") then
       return
     end
 
@@ -252,8 +252,8 @@ function M.watch_log()
       offset = now.size
       -- The report has its own time; the log's would repeat it.
       for line in (data or ""):gmatch("[^\r\n]+") do
-        require("features.windows_platform.winctl").report(
-          "winctl shim " .. line:gsub("^%d+%-%d+%-%d+ %d+:%d+:%d+ ", "")
+        require("features.windows_platform.windows_ime_helper").report(
+          "windows_ime_helper shim " .. line:gsub("^%d+%-%d+%-%d+ %d+:%d+:%d+ ", "")
         )
       end
     end)

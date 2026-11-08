@@ -14,7 +14,7 @@ trim_trailing_whitespace = false
 [*.{py,pyi}]
 indent_size = 4
 
-# scripts/winctl.c and its tests: four spaces, as scripts/.clang-format (Microsoft-based) formats them.
+# native/windows_ime_helper.c and its tests: four spaces, as native/.clang-format (Microsoft-based) formats them.
 [*.{c,h}]
 indent_size = 4
 tab_width = 4

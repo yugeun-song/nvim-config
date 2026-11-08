@@ -224,19 +224,20 @@ local RAISE = {
     available = function()
       return vim.fn.has("win32") == 1
     end,
-    -- One process for the whole lineage: winctl natively, else one PowerShell trying pid and three ancestors.
+    -- One process for the whole lineage: windows_ime_helper natively, else one PowerShell trying pid and three
+    -- ancestors.
     raise_from = function(pid)
       if type(pid) ~= "number" or pid < 1 or pid % 1 ~= 0 then
         return false
       end
 
-      local winctl = require("features.windows_platform.winctl").path({ build = false })
+      local ime_helper = require("features.windows_platform.windows_ime_helper").path({ build = false })
 
-      if winctl then
-        local res = vim.system({ winctl, "raise", ("%d"):format(pid) }, { text = true }):wait(5000)
+      if ime_helper then
+        local res = vim.system({ ime_helper, "raise-window", ("%d"):format(pid) }, { text = true }):wait(5000)
 
         if res.code ~= 0 then
-          require("features.windows_platform.winctl").report_exit("raise", res)
+          require("features.windows_platform.windows_ime_helper").report_exit("raise-window", res)
         end
 
         return res.code == 0

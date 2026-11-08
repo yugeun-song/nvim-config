@@ -762,8 +762,8 @@ function M.other_instances(ignore)
   return found
 end
 
--- Removes one item. A directory is first renamed beside itself: Windows refuses that while any file in it is
--- open (a running clangd, the winctl watcher, a swap file), and the directory stays whole instead of half gone.
+-- Removes one item. A directory is first renamed beside itself: Windows refuses that while any file in it is open (a
+-- running clangd, the windows_ime_helper watcher, a swap file), and the directory stays whole instead of half gone.
 local function remove_one(item)
   local path = item.path
   local st = uv.fs_lstat(path)

@@ -14,31 +14,31 @@ function M.check()
     status.available("English on leaving Insert", table.concat(cmd, " "))
   else
     local advice = status.MACOS and "macism, im-select or issw"
-      or status.WINDOWS and "Visual Studio's cl or clang targeting MSVC (builds scripts/winctl.c), or im-select.exe"
+      or status.WINDOWS and "Visual Studio's cl or clang targeting MSVC (builds native/windows_ime_helper.c), or im-select.exe"
       or "fcitx5, fcitx or ibus"
 
     status.blocked("English on leaving Insert", "no IME tool found", { "install " .. advice })
   end
 
   if status.WINDOWS then
-    local winctl = require("features.windows_platform.winctl")
-    local path, why = winctl.path({ build = false })
+    local ime_helper = require("features.windows_platform.windows_ime_helper")
+    local path, why = ime_helper.path({ build = false })
 
     if path then
       status.available("IME and Caps Lock in the statusline", path .. " watch")
     else
-      status.blocked("IME and Caps Lock in the statusline", "winctl " .. why, {
-        "Visual Studio's cl, or clang targeting MSVC, on PATH builds scripts/winctl.c in the background at startup",
+      status.blocked("IME and Caps Lock in the statusline", "windows_ime_helper " .. why, {
+        "Visual Studio's cl, or clang targeting MSVC, on PATH builds native/windows_ime_helper.c in the background at startup",
       })
     end
 
-    if winctl.watch_failure() then
-      status.blocked("IME and Caps Lock in the statusline", "the watcher stopped: " .. winctl.watch_failure())
+    if ime_helper.watch_failure() then
+      status.blocked("IME and Caps Lock in the statusline", "the watcher stopped: " .. ime_helper.watch_failure())
     end
 
-    -- Everything winctl reported this session, shims included (each was shown once as a notification).
-    for _, line in ipairs(winctl.reports()) do
-      vim.health.info("winctl reported " .. line)
+    -- Everything windows_ime_helper reported this session, shims included (each was shown once as a notification).
+    for _, line in ipairs(ime_helper.reports()) do
+      vim.health.info("windows_ime_helper reported " .. line)
     end
   elseif status.LINUX or status.MACOS then
     local sources = backends.indicators()

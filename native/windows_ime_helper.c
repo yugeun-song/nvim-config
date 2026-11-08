@@ -1,11 +1,13 @@
-// winctl: what Windows lacks for Neovim and Linux has elsewhere (fcitx5-remote, the Caps Lock LED, a compositor's
-// window raise, symlinks). lua/features/windows_platform/winctl.lua builds it on Windows only.
+// windows_ime_helper: what Windows lacks for Neovim and Linux has elsewhere (fcitx5-remote, the Caps Lock LED, a
+// compositor's window raise, symlinks). lua/features/windows_platform/windows_ime_helper.lua builds it on Windows only.
 //
-//   winctl ime-en           foreground IME to its alphanumeric mode
-//   winctl state            <caps><ime> once, 1 = on / native script
-//   winctl watch PID [MS]   <caps><ime> on each change until PID exits; stdin e, p, r = ime-en, pause, resume
-//   winctl raise PID        raise the window of PID or of its nearest ancestor that has one
-//   winctl version          compiler and architecture; the build runs it to prove every import loads
+//   windows_ime_helper ime-english                foreground IME to its alphanumeric mode
+//   windows_ime_helper input-state                <caps><ime> once, 1 = on / native script
+//   windows_ime_helper watch-input-state PID [MS] <caps><ime> on each change until PID exits;
+//                                                 stdin e, p, r = ime-english, pause, resume
+//   windows_ime_helper raise-window PID           raise the window of PID or of its nearest ancestor that has one
+//   windows_ime_helper version                    compiler and architecture; the build runs it to prove every
+//                                                 import loads
 //
 // Copied to NAME.exe beside NAME.shim, it runs the program the .shim names instead
 // (lua/features/external_programs/registered_programs.lua).
@@ -17,34 +19,34 @@
 // It reads no keystrokes, only Caps Lock and the IME's mode, polled rather than hooked: any event source for them
 // (a low-level keyboard hook, raw input) would see every key. Even that state is wiped once used.
 // Every function releases what it acquired and wipes what it filled on every path, through one Cleanup exit.
-// Style: scripts/.clang-format. Tests: tests/winctl/.
+// Style: native/.clang-format. Tests: tests/windows_ime_helper/.
 
 // Native x86_64 Windows only: stop before any Windows header is read.
 #if defined(__APPLE__)
-#error "winctl is a Windows program; this is a macOS target."
+#error "windows_ime_helper is a Windows program; this is a macOS target."
 #elif defined(__linux__)
-#error "winctl is a Windows program; this is a Linux target."
+#error "windows_ime_helper is a Windows program; this is a Linux target."
 #elif defined(__CYGWIN__) || defined(__MSYS__)
-#error "winctl is a native Windows program; Cygwin and MSYS emulate Unix."
+#error "windows_ime_helper is a native Windows program; Cygwin and MSYS emulate Unix."
 #elif !defined(_WIN32) || !defined(_WIN64)
-#error "winctl is a 64-bit Windows program; this target is not."
+#error "windows_ime_helper is a 64-bit Windows program; this target is not."
 #endif
 
 // ARM64EC defines _M_X64 too.
 #if !(defined(_M_X64) || defined(__x86_64__)) || defined(_M_ARM64EC) || defined(_M_ARM64) || defined(__aarch64__)
-#error "winctl targets x86_64 Windows only."
+#error "windows_ime_helper targets x86_64 Windows only."
 #endif
 
 // MSVC, or clang targeting the MSVC ABI (clang-cl, clang --target=x86_64-pc-windows-msvc); clang defines _MSC_VER
 // there too. MinGW (gcc, its clang, zig cc) is refused: another C runtime and other headers than the ones tested.
 #if defined(__MINGW32__) || defined(__MINGW64__)
-#error "winctl: MinGW is not supported; build with Visual Studio's cl, or clang targeting MSVC."
+#error "windows_ime_helper: MinGW is not supported; build with Visual Studio's cl, or clang targeting MSVC."
 #elif defined(_MSC_VER) && !defined(__clang__)
-#define WINCTL_COMPILER "msvc"
+#define WINDOWS_IME_HELPER_COMPILER "msvc"
 #elif defined(_MSC_VER) && defined(__clang__)
-#define WINCTL_COMPILER "clang"
+#define WINDOWS_IME_HELPER_COMPILER "clang"
 #else
-#error "winctl: unknown compiler; build with Visual Studio's cl, or clang targeting MSVC."
+#error "windows_ime_helper: unknown compiler; build with Visual Studio's cl, or clang targeting MSVC."
 #endif
 
 #define WIN32_LEAN_AND_MEAN
@@ -107,7 +109,7 @@
 // CreateProcess's limit, terminating null included.
 #define COMMAND_LINE_MAX_CHARS 32767
 
-#define SHIM_LOG_NAME L"winctl-shim.log"
+#define SHIM_LOG_NAME L"windows_ime_helper_shims.log"
 #define SHIM_LOG_MAX_BYTES (64 * 1024)
 
 typedef struct _PROCESS_LINK
@@ -369,7 +371,7 @@ static int WatchIndicatorState(_In_ DWORD ownerPid, _In_ DWORD intervalMs)
     owner = OpenProcess(SYNCHRONIZE, FALSE, ownerPid);
     if (owner == NULL)
     {
-        fwprintf(stderr, L"watch: process %lu not found (error %lu)\n", ownerPid, GetLastError());
+        fwprintf(stderr, L"watch-input-state: process %lu not found (error %lu)\n", ownerPid, GetLastError());
         return EXIT_FAILED;
     }
 
@@ -389,7 +391,7 @@ static int WatchIndicatorState(_In_ DWORD ownerPid, _In_ DWORD intervalMs)
 
         if (reader == NULL)
         {
-            fwprintf(stderr, L"watch: cannot read commands (error %lu)\n", GetLastError());
+            fwprintf(stderr, L"watch-input-state: cannot read commands (error %lu)\n", GetLastError());
             result = EXIT_FAILED;
             goto Cleanup;
         }
@@ -430,7 +432,7 @@ static int WatchIndicatorState(_In_ DWORD ownerPid, _In_ DWORD intervalMs)
         mode = InterlockedExchange(&gs_requestedMode, MODE_NONE);
         if (gs_isProtocolViolated)
         {
-            fwprintf(stderr, L"watch: unknown command on stdin\n");
+            fwprintf(stderr, L"watch-input-state: unknown command on stdin\n");
             result = EXIT_PROTOCOL;
             break;
         }
@@ -736,7 +738,7 @@ static int RaiseProcessLineage(_In_ DWORD processId)
 
     if (length <= 0)
     {
-        fwprintf(stderr, L"raise: cannot read the lineage of process %lu\n", processId);
+        fwprintf(stderr, L"raise-window: cannot read the lineage of process %lu\n", processId);
         goto Cleanup;
     }
 
@@ -745,7 +747,7 @@ static int RaiseProcessLineage(_In_ DWORD processId)
     SetLastError(ERROR_SUCCESS);
     if (!EnumWindows(MatchLineageWindow, (LPARAM)&query) && query.found == NULL && GetLastError() != ERROR_SUCCESS)
     {
-        fwprintf(stderr, L"raise: cannot list the windows (error %lu)\n", GetLastError());
+        fwprintf(stderr, L"raise-window: cannot list the windows (error %lu)\n", GetLastError());
         goto Cleanup;
     }
 
@@ -825,7 +827,7 @@ static DWORD FindNeovimCaller(_In_ int depth)
 
 static int RefuseCaller(void)
 {
-    fwprintf(stderr, L"winctl: runs only when Neovim starts it\n");
+    fwprintf(stderr, L"windows_ime_helper: runs only when Neovim starts it\n");
     return EXIT_NOT_NEOVIM;
 }
 
@@ -884,7 +886,7 @@ static const wchar_t *DescribeShimResult(_In_ SHIM_RESULT result)
 }
 
 // SHIM_OK and both paths when this copy is a shim (NAME.exe beside NAME.shim), SHIM_NOT_A_SHIM when it is
-// winctl itself; anything else is a failure: without its own path it cannot tell which it is.
+// windows_ime_helper itself; anything else is a failure: without its own path it cannot tell which it is.
 static SHIM_RESULT FindShimFile(_Out_writes_z_(capacity) wchar_t *self, _Out_writes_z_(capacity) wchar_t *shim,
                                 _In_ DWORD capacity, _Out_ DWORD *lastError)
 {
@@ -930,7 +932,7 @@ static SHIM_RESULT FindShimFile(_Out_writes_z_(capacity) wchar_t *self, _Out_wri
     attributes = GetFileAttributesW(shim);
     if (attributes == INVALID_FILE_ATTRIBUTES)
     {
-        // Missing is the plain winctl case; anything else (access denied, ...) leaves it undecided.
+        // Missing is the plain windows_ime_helper case; anything else (access denied, ...) leaves it undecided.
         *lastError = GetLastError();
         result = *lastError == ERROR_FILE_NOT_FOUND || *lastError == ERROR_PATH_NOT_FOUND ? SHIM_NOT_A_SHIM
                                                                                           : SHIM_CANNOT_OPEN;
@@ -1715,7 +1717,7 @@ static BOOL PrepareStdout(void)
 {
     if (_setmode(_fileno(stdout), _O_BINARY) == -1 || setvbuf(stdout, NULL, _IONBF, 0) != 0)
     {
-        fwprintf(stderr, L"winctl: cannot make stdout binary and unbuffered\n");
+        fwprintf(stderr, L"windows_ime_helper: cannot make stdout binary and unbuffered\n");
         return FALSE;
     }
 
@@ -1724,7 +1726,9 @@ static BOOL PrepareStdout(void)
 
 static int PrintUsage(void)
 {
-    fputs("usage: winctl ime-en | state | watch PID [MS] | raise PID | version\n", stderr);
+    fputs("usage: windows_ime_helper ime-english | input-state | watch-input-state PID [MS] | raise-window PID | "
+          "version\n",
+          stderr);
     return EXIT_USAGE;
 }
 
@@ -1746,8 +1750,8 @@ static BOOL IsCommand(_In_ int argc, _In_reads_opt_(argc) char **argv, _In_opt_z
     return strcmp(argv[1], name) == 0;
 }
 
-// tests/winctl/unit.c and fuzz.c include this file for its functions and bring their own entry point.
-#ifndef WINCTL_NO_MAIN
+// tests/windows_ime_helper/unit.c and fuzz.c include this file for its functions and bring their own entry point.
+#ifndef WINDOWS_IME_HELPER_NO_MAIN
 int main(int argc, char **argv)
 {
     wchar_t self[SHIM_PATH_MAX_CHARS] = { 0 };
@@ -1788,17 +1792,19 @@ int main(int argc, char **argv)
 
     if (IsCommand(argc, argv, "version", 2))
     {
-        exitCode = PrepareStdout() && printf("winctl %s x64\n", WINCTL_COMPILER) >= 0 ? EXIT_DONE : EXIT_FAILED;
+        exitCode = PrepareStdout() && printf("windows_ime_helper %s x64\n", WINDOWS_IME_HELPER_COMPILER) >= 0
+                       ? EXIT_DONE
+                       : EXIT_FAILED;
     }
-    else if (IsCommand(argc, argv, "ime-en", 2))
+    else if (IsCommand(argc, argv, "ime-english", 2))
     {
         exitCode = SetImeEnglish();
     }
-    else if (IsCommand(argc, argv, "state", 2))
+    else if (IsCommand(argc, argv, "input-state", 2))
     {
         exitCode = PrepareStdout() && PrintIndicatorState(QueryIndicatorState()) == 0 ? EXIT_DONE : EXIT_FAILED;
     }
-    else if (IsCommand(argc, argv, "watch", 3) || IsCommand(argc, argv, "watch", 4))
+    else if (IsCommand(argc, argv, "watch-input-state", 3) || IsCommand(argc, argv, "watch-input-state", 4))
     {
         ownerPid = ParseNumber(argv[2]);
         intervalMs = argc == 4 ? ParseNumber(argv[3]) : DEFAULT_INTERVAL_MS;
@@ -1809,7 +1815,7 @@ int main(int argc, char **argv)
         else if (ownerPid != caller)
         {
             // Only the Neovim that started it: watching another would outlive its caller.
-            fwprintf(stderr, L"watch: PID must be the Neovim that started winctl\n");
+            fwprintf(stderr, L"watch-input-state: PID must be the Neovim that started windows_ime_helper\n");
             exitCode = EXIT_USAGE;
         }
         else
@@ -1817,7 +1823,7 @@ int main(int argc, char **argv)
             exitCode = PrepareStdout() ? WatchIndicatorState(ownerPid, intervalMs) : EXIT_FAILED;
         }
     }
-    else if (IsCommand(argc, argv, "raise", 3))
+    else if (IsCommand(argc, argv, "raise-window", 3))
     {
         processId = ParseNumber(argv[2]);
         exitCode = processId != 0 ? RaiseProcessLineage(processId) : PrintUsage();

@@ -1,9 +1,10 @@
--- Windows only: scripts/winctl.c, the native helper behind the IME switch, the 한/EN and CAPS indicators, the window
--- raise and the tool shims. Built in the background into stdpath("data")/nvim-config/winctl, once per version of the
--- source, by Visual Studio's cl or clang targeting MSVC (the source refuses anything else); nothing is downloaded.
--- Nothing it hands back is trusted unchecked: a build that warns, links oddly or cannot load its imports is discarded
--- (it must answer `version` exactly), the program is re-checked before use, and a watcher that says anything but its
--- two digits is stopped. It runs only as Neovim's child and ends with it (scripts/winctl.c).
+-- Windows only: native/windows_ime_helper.c, the native helper behind the IME switch, the 한/EN and CAPS indicators, the
+-- window raise and the tool shims. Built in the background into stdpath("data")/nvim-config/windows_ime_helper, once
+-- per version of the source, by Visual Studio's cl or clang targeting MSVC (the source refuses anything else); nothing
+-- is downloaded. Nothing it hands back is trusted unchecked: a build that warns, links oddly or cannot load its imports
+-- is discarded (it must answer `version` exactly), the program is re-checked before use, and a watcher that says
+-- anything but its two digits is stopped. It runs only as Neovim's child and ends with it
+-- (native/windows_ime_helper.c).
 local M = {}
 
 local uv = vim.uv
@@ -14,12 +15,12 @@ local WIN = vim.fn.has("win32") == 1
 -- The repository is what comes before this file's lua/ directory, at whatever depth the module sits.
 local SRC = vim.fs.joinpath(
   vim.fs.normalize(debug.getinfo(1, "S").source:sub(2)):match("^(.*)/lua/") or vim.fn.stdpath("config"),
-  "scripts",
-  "winctl.c"
+  "native",
+  "windows_ime_helper.c"
 )
 
-local DIR = vim.fs.normalize(require("features.maintenance.local_storage").path("data", "winctl"))
-local EXE_NAME = "^winctl%-%x+%-%x+%.exe$"
+local DIR = vim.fs.normalize(require("features.maintenance.local_storage").path("data", "windows_ime_helper"))
+local EXE_NAME = "^windows_ime_helper%-%x+%-%x+%.exe$"
 local BUILD_TIMEOUT_MS = 120000
 local SELFTEST_TIMEOUT_MS = 5000
 local RECHECK_MS = 2000
@@ -91,11 +92,11 @@ local function stamp()
 end
 
 local function exe_for(s)
-  return vim.fs.joinpath(DIR, "winctl-" .. s .. ".exe")
+  return vim.fs.joinpath(DIR, "windows_ime_helper-" .. s .. ".exe")
 end
 
 local function log_for(s)
-  return vim.fs.joinpath(DIR, "winctl-" .. s .. ".log")
+  return vim.fs.joinpath(DIR, "windows_ime_helper-" .. s .. ".log")
 end
 
 -- Ours: a non-empty file named as a build, in DIR itself.
@@ -114,7 +115,7 @@ local function finish(exe, why)
   checked_at = uv.now()
 
   if not exe and why then
-    M.report("winctl: " .. why, vim.log.levels.ERROR)
+    M.report("windows_ime_helper: " .. why, vim.log.levels.ERROR)
   end
 
   local callbacks = waiting
@@ -132,9 +133,10 @@ end
 local function prune(keep)
   for name in vim.fs.dir(DIR) do
     local path = vim.fs.joinpath(DIR, name)
-    local owner = tonumber(name:match("^winctl%-%x+%-%x+%.(%d+)%.tmp%.exe$"))
+    local owner = tonumber(name:match("^windows_ime_helper%-%x+%-%x+%.(%d+)%.tmp%.exe$"))
 
-    if (name:match(EXE_NAME) and path ~= keep) or name == "winctl.obj" then
+    -- winctl-* and winctl.obj: what the helper's builds were named before it was windows_ime_helper.
+    if (name:match(EXE_NAME) and path ~= keep) or name == "windows_ime_helper.obj" or name:match("^winctl[%-.]") then
       os.remove(path)
     elseif owner and owner ~= vim.fn.getpid() and uv.kill(owner, 0) ~= 0 then
       os.remove(path)
@@ -156,7 +158,7 @@ end
 -- callbacks too.
 local function notify_later(message, level)
   local function show()
-    vim.notify(message, level, { title = "winctl" })
+    vim.notify(message, level, { title = "windows_ime_helper" })
   end
 
   vim.schedule(function()
@@ -196,11 +198,11 @@ function M.report(message, level)
   end
 end
 
--- A winctl run that did not end in 0, with what it said on stderr.
+-- A windows_ime_helper run that did not end in 0, with what it said on stderr.
 function M.report_exit(what, res)
   local said = type(res) == "table" and type(res.stderr) == "string" and vim.trim(res.stderr):match("[^\r\n]+") or nil
 
-  M.report(("winctl %s: %s%s"):format(tostring(what), describe(res), said and (": " .. said) or ""))
+  M.report(("windows_ime_helper %s: %s%s"):format(tostring(what), describe(res), said and (": " .. said) or ""))
 end
 
 function M.reports()
@@ -247,14 +249,14 @@ local function compile(s)
       vim.list_extend(transcript, { "$ " .. table.concat(cmd, " "), why })
       vim.list_extend(transcript, vim.split(((res and res.stdout) or "") .. ((res and res.stderr) or ""), "\n"))
       os.remove(tmp)
-      os.remove(vim.fs.joinpath(DIR, "winctl.obj"))
+      os.remove(vim.fs.joinpath(DIR, "windows_ime_helper.obj"))
 
       return try(i + 1)
     end
 
     local ok = pcall(vim.system, cmd, { cwd = DIR, text = true, timeout = BUILD_TIMEOUT_MS }, function(res)
       vim.schedule(function()
-        os.remove(vim.fs.joinpath(DIR, "winctl.obj"))
+        os.remove(vim.fs.joinpath(DIR, "windows_ime_helper.obj"))
 
         if res.code ~= 0 or not uv.fs_stat(tmp) then
           return failed("build failed: " .. describe(res), res)
@@ -262,7 +264,7 @@ local function compile(s)
 
         -- The program must load and answer exactly: an import that fails, a wrong machine or a wrong compiler
         -- shows here, not later in front of the user.
-        local want = ("winctl %s x64\n"):format(c.version)
+        local want = ("windows_ime_helper %s x64\n"):format(c.version)
         local started = pcall(
           vim.system,
           { tmp, "version" },
@@ -339,7 +341,7 @@ function M.path(opts)
   local s = stamp()
 
   if not s then
-    exe_path, failure = false, "scripts/winctl.c is missing"
+    exe_path, failure = false, "native/windows_ime_helper.c is missing"
 
     return nil, failure
   end
@@ -380,7 +382,7 @@ local function accept_output(pending, data)
 
   pending = (pending or "") .. (data or "")
   if #pending > 64 then
-    return lines, "", "watch: output without line ends"
+    return lines, "", "watch-input-state: output without line ends"
   end
 
   while true do
@@ -392,7 +394,7 @@ local function accept_output(pending, data)
 
     pending = rest
     if not line:match("^[01][01]$") then
-      return lines, "", "watch: unexpected output"
+      return lines, "", "watch-input-state: unexpected output"
     end
 
     lines[#lines + 1] = line
@@ -403,8 +405,8 @@ M._accept_output = accept_output
 M._valid_exe = valid_exe
 M._describe = describe
 
--- The one long-lived `winctl watch`: on_data gets each "<caps><ime>" line. Reused while it runs. Anything else on
--- its stdout means the two sides disagree, and the watcher is stopped rather than believed.
+-- The one long-lived `windows_ime_helper watch-input-state`: on_data gets each "<caps><ime>" line. Reused while it
+-- runs. Anything else on its stdout means the two sides disagree, and the watcher is stopped rather than believed.
 function M.watch(on_data)
   local exe = M.path()
 
@@ -422,14 +424,14 @@ function M.watch(on_data)
   local function reject(why)
     watch_failure = why
     pending = ""
-    M.report("winctl " .. why)
+    M.report("windows_ime_helper " .. why)
 
     if proc and not proc:is_closing() then
       pcall(proc.kill, proc, 15)
     end
   end
 
-  local is_spawned, started = pcall(vim.system, { exe, "watch", tostring(vim.fn.getpid()) }, {
+  local is_spawned, started = pcall(vim.system, { exe, "watch-input-state", tostring(vim.fn.getpid()) }, {
     stdin = true,
     stderr = true,
     text = true,
@@ -455,13 +457,13 @@ function M.watch(on_data)
 
     -- 0 is Neovim closing it, 15 this side stopping it; anything else is the watcher failing.
     if res.code ~= 0 and res.signal ~= 15 and not watch_failure then
-      watch_failure = "watch: " .. describe(res)
-      M.report_exit("watch", res)
+      watch_failure = "watch-input-state: " .. describe(res)
+      M.report_exit("watch-input-state", res)
     end
   end)
 
   if not is_spawned then
-    M.report("winctl watch: could not start: " .. tostring(started))
+    M.report("windows_ime_helper watch-input-state: could not start: " .. tostring(started))
   end
 
   proc = is_spawned and started or nil

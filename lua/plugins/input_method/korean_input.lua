@@ -7,17 +7,17 @@ return {
     vim.opt.langmap =
       "ㅁa,ㅠb,ㅊc,ㅇd,ㄷe,ㄹf,ㅎg,ㅗh,ㅑi,ㅓj,ㅏk,ㅣl,ㅡm,ㅜn,ㅐo,ㅔp,ㅂq,ㄱr,ㄴs,ㅅt,ㅕu,ㅍv,ㅈw,ㅌx,ㅛy,ㅋz,ㅃQ,ㅉW,ㄸE,ㄲR,ㅆT,ㅒO,ㅖP"
 
-    -- Windows: through the running indicator watcher's stdin when there is one, starting no process; a failure
-    -- of the command is reported in Neovim (lua/features/windows_platform/winctl.lua). Elsewhere the command runs as it
-    -- always did.
+    -- Windows: through the running indicator watcher's stdin when there is one, starting no process; a failure of the
+    -- command is reported in Neovim (lua/features/windows_platform/windows_ime_helper.lua). Elsewhere the command runs
+    -- as it always did.
     local win = vim.fn.has("win32") == 1
-    local send = win and require("features.windows_platform.winctl").send or nil
+    local send = win and require("features.windows_platform.windows_ime_helper").send or nil
 
     local function reset_on(cmd)
       local report = win
           and function(res)
             if res.code ~= 0 then
-              require("features.windows_platform.winctl").report_exit(
+              require("features.windows_platform.windows_ime_helper").report_exit(
                 vim.fs.basename(cmd[1]) .. " " .. (cmd[2] or ""),
                 res
               )
@@ -42,8 +42,8 @@ return {
     if cmd then
       reset_on(cmd)
     elseif vim.fn.has("win32") == 1 then
-      -- The first start builds winctl in the background; the switch begins once it lands.
-      require("features.windows_platform.winctl").on_ready(function()
+      -- The first start builds windows_ime_helper in the background; the switch begins once it lands.
+      require("features.windows_platform.windows_ime_helper").on_ready(function()
         local built = require("features.input_method.per_os_backends").english_command()
 
         if built then

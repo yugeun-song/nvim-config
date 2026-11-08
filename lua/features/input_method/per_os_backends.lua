@@ -10,12 +10,13 @@ function M.english_command()
       { "issw", "com.apple.keylayout.ABC" },
     }
   elseif vim.fn.has("win32") == 1 then
-    -- winctl turns the IME to its English mode and keeps the keyboard layout; im-select.exe switches layouts.
-    local winctl = require("features.windows_platform.winctl").path()
+    -- windows_ime_helper turns the IME to its English mode and keeps the keyboard layout; im-select.exe switches
+    -- layouts.
+    local ime_helper = require("features.windows_platform.windows_ime_helper").path()
 
     candidates = { { "im-select.exe", "1033" } }
-    if winctl then
-      table.insert(candidates, 1, { winctl, "ime-en" })
+    if ime_helper then
+      table.insert(candidates, 1, { ime_helper, "ime-english" })
     end
   elseif vim.fn.has("wsl") == 1 then
     candidates = { { "im-select.exe", "1033" } }
@@ -66,11 +67,11 @@ function M.indicators()
     return { im = im, caps_watch = watch }
   end
 
-  -- Windows: one winctl prints Caps Lock and the IME's mode as two digits, at start and on every change.
+  -- Windows: one windows_ime_helper prints Caps Lock and the IME's mode as two digits, at start and on every change.
   if vim.fn.has("win32") == 1 then
-    local winctl = require("features.windows_platform.winctl").path()
+    local ime_helper = require("features.windows_platform.windows_ime_helper").path()
 
-    return winctl and { watch = { winctl, "watch", tostring(vim.fn.getpid()) } } or {}
+    return ime_helper and { watch = { ime_helper, "watch-input-state", tostring(vim.fn.getpid()) } } or {}
   end
 
   if vim.fn.has("linux") == 0 then

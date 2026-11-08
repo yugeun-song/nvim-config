@@ -23,7 +23,7 @@ M.ENTRIES = {
   { "state", "reset_confirmation", "reset-confirmed", 'the confirmation a typed "reset" leaves for the reset' },
   { "state", "running_instances", "nvim-focus", "running Neovims with a UI, for scripts/open-at.lua" },
   { "run", "running_instances", "nvim-focus", "running Neovims with a UI, for scripts/open-at.lua" },
-  { "data", "winctl", "winctl", "the Windows helper, built here from scripts/winctl.c" },
+  { "data", "windows_ime_helper", "winctl", "the Windows IME helper, built here from native/windows_ime_helper.c" },
   { "data", "registered_program_shims", "shims", "one shim per registered program; last on PATH in Neovim" },
   { "data", "language_server_attach_rules.json", "lsp_filter/rules.json", "language server attach rules (<leader>cF)" },
   { "data", "alive_lsp", "alive-lsp", "the Common Lisp language server and its libraries" },

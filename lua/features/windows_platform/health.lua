@@ -7,7 +7,7 @@ function M.check()
   vim.health.start("Windows platform")
 
   if not status.WINDOWS then
-    status.unsupported("executable() memory and winctl", "they make up for what Windows lacks")
+    status.unsupported("executable() memory and the IME helper", "they make up for what Windows lacks")
 
     return
   end
@@ -21,13 +21,13 @@ function M.check()
     status.blocked("executable() and exepath() with a memory", "not installed by init.lua")
   end
 
-  local path, why = require("features.windows_platform.winctl").path({ build = false })
+  local path, why = require("features.windows_platform.windows_ime_helper").path({ build = false })
 
   if path then
-    status.available("winctl (IME, indicators, window raise, shims)", path)
+    status.available("windows_ime_helper (IME, indicators, window raise, shims)", path)
   else
-    status.blocked("winctl (IME, indicators, window raise, shims)", why, {
-      "Visual Studio's cl, or clang targeting MSVC, on PATH builds scripts/winctl.c in the background at startup",
+    status.blocked("windows_ime_helper (IME, indicators, window raise, shims)", why, {
+      "Visual Studio's cl, or clang targeting MSVC, on PATH builds native/windows_ime_helper.c in the background at startup",
     })
   end
 end

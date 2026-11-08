@@ -1,8 +1,9 @@
-// libFuzzer target for scripts/winctl.c's parsers, compiled together with it (WINCTL_NO_MAIN drops its own entry
-// point). The first byte picks the parser; the rest is its input. Any broken invariant aborts, which libFuzzer
-// reports with the input that did it. tests/winctl/run.ps1 builds it with AddressSanitizer and runs it.
-#define WINCTL_NO_MAIN
-#include "../../scripts/winctl.c"
+// libFuzzer target for native/windows_ime_helper.c's parsers, compiled together with it (WINDOWS_IME_HELPER_NO_MAIN
+// drops its own entry point). The first byte picks the parser; the rest is its input. Any broken invariant aborts,
+// which libFuzzer reports with the input that did it. tests/windows_ime_helper/run.ps1 builds it with AddressSanitizer
+// and runs it.
+#define WINDOWS_IME_HELPER_NO_MAIN
+#include "../../native/windows_ime_helper.c"
 
 #define FUZZ_WIDE_MAX 512
 #define FUZZ_NARROW_MAX 64

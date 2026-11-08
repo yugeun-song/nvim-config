@@ -294,11 +294,11 @@ end
 
 step("rumdl", "rumdl", fix and { "rumdl", "fmt", "." } or { "rumdl", "check", "." })
 
--- C (scripts/winctl.c and its tests): scripts/.clang-format, Microsoft-based.
+-- C (native/windows_ime_helper.c and its tests): native/.clang-format, Microsoft-based.
 local c_files = tracked("*.c")
 
 if #c_files > 0 then
-  local style = "--style=file:" .. vim.fs.joinpath(root, "scripts", ".clang-format")
+  local style = "--style=file:" .. vim.fs.joinpath(root, "native", ".clang-format")
 
   step(
     "clang-format",

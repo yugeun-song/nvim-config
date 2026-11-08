@@ -1,4 +1,4 @@
-# scripts/winctl.c; scripts/check_repository.lua holds the file to it. clang-format 21 or later.
+# native/windows_ime_helper.c; scripts/check_repository.lua holds the file to it. clang-format 21 or later.
 ---
 Language: Cpp
 BasedOnStyle: Microsoft

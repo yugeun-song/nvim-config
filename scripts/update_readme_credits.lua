@@ -37,7 +37,7 @@ local PROGRAMS = {
     "Visual Studio, Build Tools (MSVC, MSBuild, vswhere)",
     "https://visualstudio.microsoft.com",
     "Microsoft Software License Terms (proprietary)",
-    "the MSVC environment, compile databases, building scripts/winctl.c (Windows)",
+    "the MSVC environment, compile databases, building native/windows_ime_helper.c (Windows)",
   },
   {
     "NVIDIA CUDA Toolkit",

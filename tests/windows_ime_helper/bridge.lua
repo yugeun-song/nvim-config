@@ -1,12 +1,12 @@
--- lua/features/windows_platform/winctl.lua's own checks, with no winctl involved: what it accepts from a watcher, which
--- files it takes for its build, how it reads an exit status, how it reports, and that it does nothing at all off
--- Windows.
---   nvim -l tests/winctl/bridge.lua      (any system)
+-- lua/features/windows_platform/windows_ime_helper.lua's own checks, with no helper process involved: what it accepts
+-- from a watcher, which files it takes for its build, how it reads an exit status, how it reports, and that it does
+-- nothing at all off Windows.
+--   nvim -l tests/windows_ime_helper/bridge.lua      (any system)
 local repo = vim.fs.dirname(vim.fs.dirname(vim.fs.dirname(vim.fs.normalize(vim.fn.fnamemodify(arg[0], ":p")))))
 
 package.path = vim.fs.joinpath(repo, "lua", "?.lua") .. ";" .. package.path
 
-local winctl = require("features.windows_platform.winctl")
+local ime_helper = require("features.windows_platform.windows_ime_helper")
 local failures = 0
 local WIN = vim.fn.has("win32") == 1
 
@@ -15,7 +15,7 @@ local function check(ok, what)
   print((ok and "PASS " or "FAIL ") .. what)
 end
 
-local accept = winctl._accept_output
+local accept = ime_helper._accept_output
 local lines, rest, why
 
 lines, rest, why = accept("", "10\n")
@@ -40,25 +40,31 @@ check(why ~= nil and rest == "", "a line that never ends is refused")
 lines, rest, why = accept(nil, nil)
 check(#lines == 0 and rest == "" and not why, "nothing is nothing")
 
-local valid = winctl._valid_exe
+local valid = ime_helper._valid_exe
 
 check(not valid(nil) and not valid(42), "not a path")
-check(not valid("C:/elsewhere/winctl-1-2.exe"), "outside the build directory")
+check(not valid("C:/elsewhere/windows_ime_helper-1-2.exe"), "outside the build directory")
 check(
   not valid(
-    vim.fs.joinpath(require("features.maintenance.local_storage").path("data", "winctl"), "winctl-1-2.exe.missing")
+    vim.fs.joinpath(
+      require("features.maintenance.local_storage").path("data", "windows_ime_helper"),
+      "windows_ime_helper-1-2.exe.missing"
+    )
   ),
   "a name that is not a build"
 )
 
 check(
   not valid(
-    vim.fs.joinpath(require("features.maintenance.local_storage").path("data", "winctl"), "winctl-dead-beef.exe")
+    vim.fs.joinpath(
+      require("features.maintenance.local_storage").path("data", "windows_ime_helper"),
+      "windows_ime_helper-dead-beef.exe"
+    )
   ),
   "a build that does not exist"
 )
 
-local describe = winctl._describe
+local describe = ime_helper._describe
 
 check(describe({ code = 0 }):find("exit 0", 1, true) ~= nil, "exit 0")
 check(describe({ code = 3221225781 }):find("a DLL it imports is missing", 1, true) ~= nil, "a missing DLL is named")
@@ -67,10 +73,10 @@ check(describe({ code = 124 }) == "timed out", "a timeout")
 check(describe(nil):find("exit %-1") ~= nil, "no result at all")
 
 for _, cmd in ipairs({ "x", "ee", "", "\n", "E" }) do
-  check(winctl.send(cmd) == false, ("never sent: %q"):format(cmd))
+  check(ime_helper.send(cmd) == false, ("never sent: %q"):format(cmd))
 end
 
-check(winctl.send("e") == false, "no watcher, nothing sent")
+check(ime_helper.send("e") == false, "no watcher, nothing sent")
 
 local shown = {}
 
@@ -81,25 +87,29 @@ vim.notify = function(message)
   shown[#shown + 1] = message
 end
 
-winctl.report("bridge test: one")
-winctl.report("bridge test: one")
-winctl.report("bridge test: two")
-winctl.report_exit("raise", { code = 1, stderr = "raise: cannot read the lineage\nsecond line" })
-winctl.report(nil)
-winctl.report("")
+ime_helper.report("bridge test: one")
+ime_helper.report("bridge test: one")
+ime_helper.report("bridge test: two")
+ime_helper.report_exit("raise-window", { code = 1, stderr = "raise-window: cannot read the lineage\nsecond line" })
+ime_helper.report(nil)
+ime_helper.report("")
 vim.wait(100)
 
 check(#shown == 3, "each distinct failure shown once: " .. #shown)
-check(shown[3] and shown[3]:find("raise: cannot read the lineage", 1, true) ~= nil, "stderr's first line is shown")
-check(#winctl.reports() == 4, "all four kept for :checkhealth")
+check(
+  shown[3] and shown[3]:find("raise-window: cannot read the lineage", 1, true) ~= nil,
+  "stderr's first line is shown"
+)
+
+check(#ime_helper.reports() == 4, "all four kept for :checkhealth")
 
 if not WIN then
-  local path, reason = winctl.path()
+  local path, reason = ime_helper.path()
 
   check(path == nil and reason == "Windows only", "no helper off Windows")
-  check(winctl.watch(function() end) == nil, "no watcher off Windows")
+  check(ime_helper.watch(function() end) == nil, "no watcher off Windows")
   check(
-    not vim.uv.fs_stat(require("features.maintenance.local_storage").path("data", "winctl")),
+    not vim.uv.fs_stat(require("features.maintenance.local_storage").path("data", "windows_ime_helper")),
     "nothing built off Windows"
   )
 end

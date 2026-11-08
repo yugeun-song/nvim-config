@@ -1,7 +1,8 @@
-// Unit tests for scripts/winctl.c's parsers and checks, compiled together with it (WINCTL_NO_MAIN drops its own
-// entry point). tests/winctl/run.ps1 builds it with AddressSanitizer and runs it.
-#define WINCTL_NO_MAIN
-#include "../../scripts/winctl.c"
+// Unit tests for native/windows_ime_helper.c's parsers and checks, compiled together with it
+// (WINDOWS_IME_HELPER_NO_MAIN drops its own entry point). tests/windows_ime_helper/run.ps1 builds it with
+// AddressSanitizer and runs it.
+#define WINDOWS_IME_HELPER_NO_MAIN
+#include "../../native/windows_ime_helper.c"
 
 static int gs_checkCount = 0;
 static int gs_failureCount = 0;
@@ -182,7 +183,7 @@ static void TestFiles(void)
     int length;
 
     if (GetTempPathW(ARRAYSIZE(temp), temp) == 0 || GetModuleFileNameW(NULL, self, ARRAYSIZE(self)) == 0 ||
-        FAILED(StringCchPrintfW(dir, ARRAYSIZE(dir), L"%lswinctl-unit-%lu", temp, GetCurrentProcessId())) ||
+        FAILED(StringCchPrintfW(dir, ARRAYSIZE(dir), L"%lswindows_ime_helper-unit-%lu", temp, GetCurrentProcessId())) ||
         !CreateDirectoryW(dir, NULL))
     {
         Check(FALSE, "cannot set up the file tests");
@@ -302,8 +303,8 @@ static void TestFiles(void)
 static void TestMisc(void)
 {
     DWORD lineage[MAX_LINEAGE] = { 0 };
-    char *argv[] = { "winctl", "state", NULL };
-    char *argvWithNull[] = { "winctl", NULL };
+    char *argv[] = { "windows_ime_helper", "input-state", NULL };
+    char *argvWithNull[] = { "windows_ime_helper", NULL };
     wchar_t path[64] = { 0 };
     DWORD lastError = 0;
     int length;
@@ -318,10 +319,10 @@ static void TestMisc(void)
     Check(GetProcessLineage(GetCurrentProcessId(), lineage, MAX_LINEAGE + 1) == -1, "lineage capacity too big");
     Check(FindNeovimCaller(0) == 0 && FindNeovimCaller(MAX_LINEAGE) == 0, "caller depth out of range");
 
-    Check(IsCommand(2, argv, "state", 2), "command matches");
-    Check(!IsCommand(3, argv, "state", 2), "command count differs");
-    Check(!IsCommand(2, NULL, "state", 2), "command NULL argv");
-    Check(!IsCommand(2, argvWithNull, "state", 2), "command NULL argument");
+    Check(IsCommand(2, argv, "input-state", 2), "command matches");
+    Check(!IsCommand(3, argv, "input-state", 2), "command count differs");
+    Check(!IsCommand(2, NULL, "input-state", 2), "command NULL argv");
+    Check(!IsCommand(2, argvWithNull, "input-state", 2), "command NULL argument");
     Check(!IsCommand(2, argv, NULL, 2), "command NULL name");
 
     for (int result = SHIM_OK; result <= SHIM_BAD_ARGUMENT; ++result)

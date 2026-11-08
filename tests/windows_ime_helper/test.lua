@@ -1,20 +1,20 @@
--- scripts/winctl.c against what it must do and must refuse. winctl runs only as Neovim's child, so Neovim runs
--- the tests:  nvim -l tests/winctl/test.lua PATH\TO\winctl.exe
--- Windows only; elsewhere it says so and passes. Everything is written under a fresh temporary directory.
+-- native/windows_ime_helper.c against what it must do and must refuse. The helper runs only as Neovim's child, so
+-- Neovim runs the tests: nvim -l tests/windows_ime_helper/test.lua PATH\TO\windows_ime_helper.exe Windows only;
+-- elsewhere it says so and passes. Everything is written under a fresh temporary directory.
 if vim.fn.has("win32") == 0 then
-  print("SKIP winctl is Windows-only")
+  print("SKIP windows_ime_helper is Windows-only")
   os.exit(0)
 end
 
 local exe = arg[1] and vim.fs.normalize(vim.fn.fnamemodify(arg[1], ":p"))
 
 if not exe or not vim.uv.fs_stat(exe) then
-  io.stderr:write("usage: nvim -l tests/winctl/test.lua PATH\\TO\\winctl.exe\n")
+  io.stderr:write("usage: nvim -l tests/windows_ime_helper/test.lua PATH\\TO\\windows_ime_helper.exe\n")
   os.exit(2)
 end
 
 local failures = 0
-local root = vim.fs.normalize(vim.fn.tempname()) .. "-winctl"
+local root = vim.fs.normalize(vim.fn.tempname()) .. "-windows_ime_helper"
 local system32 = vim.fs.joinpath(vim.env.SystemRoot or "C:/Windows", "System32")
 local cmd_exe = vim.fs.joinpath(system32, "cmd.exe")
 
@@ -51,17 +51,17 @@ end
 
 local r = run({ exe, "version" })
 
-check(r.code == 0 and r.stdout:match("^winctl (%a+) x64\n$") ~= nil, ("version: %q"):format(r.stdout))
+check(r.code == 0 and r.stdout:match("^windows_ime_helper (%a+) x64\n$") ~= nil, ("version: %q"):format(r.stdout))
 
-r = run({ exe, "state" })
-check(r.code == 0 and r.stdout:match("^[01][01]\n$") ~= nil, ("state: %q"):format(r.stdout))
+r = run({ exe, "input-state" })
+check(r.code == 0 and r.stdout:match("^[01][01]\n$") ~= nil, ("input-state: %q"):format(r.stdout))
 
-r = run({ exe, "ime-en" })
-check(r.code == 0, "ime-en exit " .. r.code)
+r = run({ exe, "ime-english" })
+check(r.code == 0, "ime-english exit " .. r.code)
 
 -- As lua/plugins/input_method/korean_input.lua runs it: no stdout at all.
-r = vim.system({ exe, "ime-en" }, { stdout = false, stderr = false }):wait(5000)
-check(r.code == 0, "ime-en without a stdout: exit " .. r.code)
+r = vim.system({ exe, "ime-english" }, { stdout = false, stderr = false }):wait(5000)
+check(r.code == 0, "ime-english without a stdout: exit " .. r.code)
 
 local me = tostring(vim.fn.getpid())
 
@@ -69,30 +69,30 @@ for _, argv in ipairs({
   {},
   { "nosuch" },
   { "version", "extra" },
-  { "state", "x" },
-  { "watch" },
-  { "watch", "-5" },
-  { "watch", "+5" },
-  { "watch", "12x" },
-  { "watch", "" },
-  { "watch", "99999999999" },
-  { "watch", me, "5" },
-  { "watch", me, "70000" },
-  { "watch", me, "100", "extra" },
-  { "raise" },
-  { "raise", "0" },
-  { "raise", "1e3" },
+  { "input-state", "x" },
+  { "watch-input-state" },
+  { "watch-input-state", "-5" },
+  { "watch-input-state", "+5" },
+  { "watch-input-state", "12x" },
+  { "watch-input-state", "" },
+  { "watch-input-state", "99999999999" },
+  { "watch-input-state", me, "5" },
+  { "watch-input-state", me, "70000" },
+  { "watch-input-state", me, "100", "extra" },
+  { "raise-window" },
+  { "raise-window", "0" },
+  { "raise-window", "1e3" },
 }) do
   r = run(vim.list_extend({ exe }, argv))
   check(r.code == 2, ("usage for %q: exit %d"):format(table.concat(argv, " "), r.code))
 end
 
-r = run({ exe, "watch", tostring(vim.uv.os_getppid()) })
+r = run({ exe, "watch-input-state", tostring(vim.uv.os_getppid()) })
 check(r.code == 2, "watch of a process other than its caller refused: exit " .. r.code)
 
 -- watch: a report, pause, e, resume reports again, an unknown byte stops it with 3; EOF ends it with 0.
 local lines = {}
-local w = vim.system({ exe, "watch", me, "50" }, {
+local w = vim.system({ exe, "watch-input-state", me, "50" }, {
   stdin = true,
   stdout = function(_, data)
     for line in (data or ""):gmatch("[^\n]+") do
@@ -121,13 +121,13 @@ local wr = w:wait(3000)
 check(#lines >= 2 and lines[1]:match("^[01][01]$") and lines[2]:match("^[01][01]$"), "watch reports, again on resume")
 check(wr.code == 3, "watch stops on an unknown command: exit " .. tostring(wr.code))
 
-w = vim.system({ exe, "watch", me }, { stdin = true })
+w = vim.system({ exe, "watch-input-state", me }, { stdin = true })
 vim.wait(300)
 w:write(nil)
 wr = w:wait(3000)
 check(wr.code == 0, "watch ends when its stdin closes: exit " .. tostring(wr.code))
 
-r = run({ exe, "raise", me })
+r = run({ exe, "raise-window", me })
 check(r.code == 0 or r.code == 1, "raise runs and returns 0 or 1: exit " .. r.code)
 
 -- Not Neovim's child: a cmd.exe between refuses the subcommands.
