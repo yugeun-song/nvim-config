@@ -1,0 +1,66 @@
+# The tests that need a system this repository is not developed on: macOS, Linux natively, every desktop
+# distribution in its own official container (tests/stored_data_paths/docker.sh, podman), and Windows. Runs on every
+# push, on pull requests and by hand (Actions > tests > Run workflow).
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stored-data-paths-unix:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      # actions/checkout v5.1.0, pinned by commit.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      # The system's own Neovim for the layout checks; --release adds the official build (SHA-256 checked) for the
+      # module checks, which need 0.11 or later.
+      - name: Neovim from the system's package manager
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then brew install neovim; else sudo apt-get update && sudo apt-get install -y neovim; fi
+      - run: sh tests/stored_data_paths/run.sh --release
+
+  stored-data-paths-distributions:
+    runs-on: ubuntu-latest
+    # Gentoo resolves and fetches binary packages for a while.
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        distribution: [arch, debian, ubuntu, fedora, rocky, opensuse, void, gentoo, nixos]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      # Rootful: the runner's user has no cgroup delegation for the limits the containers run with. The VM is thrown
+      # away after the job.
+      - run: sudo --preserve-env=TMPDIR sh tests/stored_data_paths/docker.sh --engine podman ${{ matrix.distribution }}
+      - if: always()
+        run: sudo sh tests/stored_data_paths/docker.sh --engine podman --clean
+
+  stored-data-paths-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      # Neovim's own 0.12.2 build from its release, checked against the SHA-256 GitHub publishes for it (as run.sh
+      # --release does on Linux and macOS): no package manager between the project and the test.
+      - name: Neovim 0.12.2 (official build)
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP "nvim-win64.zip"
+          Invoke-WebRequest -Uri "https://github.com/neovim/neovim/releases/download/v0.12.2/nvim-win64.zip" -OutFile $zip
+          $expected = "23fe150edbcc976eabe55092e1e9d2e5e237afde69553d170e936f776b405d53"
+          $actual = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
+          if ($actual -ne $expected) { throw "nvim-win64.zip: SHA-256 $actual, GitHub publishes $expected" }
+          Expand-Archive $zip -DestinationPath $env:RUNNER_TEMP
+          "NVIM_EXE=$env:RUNNER_TEMP\nvim-win64\bin\nvim.exe" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+      - shell: pwsh
+        run: powershell -NoProfile -File tests\stored_data_paths\run.ps1 -Nvim $env:NVIM_EXE

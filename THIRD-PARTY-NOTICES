@@ -17,30 +17,32 @@ init.lua, lua/config/lazy.lua
     Modified from LazyVim/starter (https://github.com/LazyVim/starter).
     Apache License 2.0, see LICENSES/Apache-2.0.txt.
 
-lua/dashboard_header.lua (the system logos in `logos`)
+lua/features/appearance/dashboard_header.lua (the system logos in `logos`)
     The small builtin logos of fastfetch 2.70.0
     (https://github.com/fastfetch-cli/fastfetch), without their colour codes.
     MIT License, reproduced at the end of this file.
 
 lua/config/autocmds.lua (the augroup helper and the wrap_spell autocmd),
-lua/plugins/dap_languages.lua (the nvim-dap adapter and launch configurations)
+lua/plugins/debugging/other_language_debuggers.lua (the nvim-dap adapter and launch configurations)
     Adapted from LazyVim (https://github.com/LazyVim/LazyVim).
     Apache License 2.0, see LICENSES/Apache-2.0.txt.
 
-lua/plugins/hlslens.lua (the lens override and the search keys)
+lua/plugins/appearance/search_match_count.lua (the lens override and the search keys)
     Adapted from the README of nvim-hlslens by kevinhwang91
     (https://github.com/kevinhwang91/nvim-hlslens). BSD 3-Clause License,
     reproduced at the end of this file.
 
-lua/plugins/colorscheme.lua (kanagawa's transparent floats and gutter)
+lua/plugins/appearance/colorscheme.lua (kanagawa's transparent floats and gutter)
     The recipes in the README of kanagawa.nvim by Tommaso Laurenzi
     (https://github.com/rebelot/kanagawa.nvim). MIT License, reproduced at the
     end of this file.
 
-lua/plugins/discord_rpc.lua (the default CLIENT_ID and the "neovim" asset)
+lua/features/integrations/discord_rich_presence.lua (the default CLIENT_ID and the "neovim" asset)
     The public Discord application of presence.nvim by andweeb
-    (https://github.com/andweeb/presence.nvim). Discord serves the art; none of
-    it is shipped here.
+    (https://github.com/andweeb/presence.nvim): an identifier, not code, used as
+    it is by that plugin's users. Discord serves the art; none of it is shipped
+    here. vim.g.discord_rich_presence_client_id puts an application of one's own
+    (and its art) in its place.
 
 ---
 

@@ -1,7 +1,7 @@
 local script_dir = vim.fs.dirname(vim.fs.normalize(vim.fn.fnamemodify(arg[0], ":p")))
 
 package.path = vim.fs.joinpath(script_dir, "..", "lua", "?.lua") .. ";" .. package.path
-local remote_open = require("remote_open")
+local remote_open = require("features.editing.open_in_running_instance")
 
 local file = arg[1]
 local line = math.max(math.floor(tonumber(arg[2] or "") or 1), 1)

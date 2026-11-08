@@ -36,7 +36,7 @@ end
 local buf = vim.api.nvim_get_current_buf()
 
 pcall(function()
-  local structure = require("man_code.structure")
+  local structure = require("features.appearance.man_page_highlighting.structure")
 
   structure.highlight(buf)
   structure.close_calls(buf)
@@ -46,6 +46,6 @@ local lang = language_for(buf)
 
 if lang then
   pcall(function()
-    require("man_code").highlight(buf, lang)
+    require("features.appearance.man_page_highlighting.code_blocks").highlight(buf, lang)
   end)
 end

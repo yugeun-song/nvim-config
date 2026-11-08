@@ -1,0 +1,2 @@
+# LF everywhere, as .editorconfig and stylua expect, also in a Windows checkout with core.autocrlf.
+* text=auto eol=lf

@@ -1,0 +1,34 @@
+# scripts/winctl.c; scripts/check_repository.lua holds the file to it. clang-format 21 or later.
+---
+Language: Cpp
+BasedOnStyle: Microsoft
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+BreakBeforeBraces: Custom
+BraceWrapping:
+    AfterCaseLabel: false
+    AfterFunction: true
+    AfterControlStatement: Always
+    AfterStruct: true
+    AfterUnion: true
+    AfterEnum: true
+    AfterClass: true
+    AfterExternBlock: true
+    BeforeElse: true
+    BeforeCatch: true
+    BeforeWhile: false
+    IndentBraces: false
+InsertBraces: true
+Cpp11BracedListStyle: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+AllowShortEnumsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+PointerAlignment: Right
+ColumnLimit: 120
+# windows.h has to come before the headers that use its types.
+SortIncludes:
+    Enabled: false

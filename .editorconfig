@@ -14,5 +14,10 @@ trim_trailing_whitespace = false
 [*.{py,pyi}]
 indent_size = 4
 
+# scripts/winctl.c and its tests: four spaces, as scripts/.clang-format (Microsoft-based) formats them.
+[*.{c,h}]
+indent_size = 4
+tab_width = 4
+
 [{Makefile,*.mk,*.go}]
 indent_style = tab
