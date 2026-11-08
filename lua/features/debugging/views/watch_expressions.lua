@@ -451,7 +451,7 @@ function M.probe()
 
   local cfg = session.config or {}
 
-  if cfg.type ~= "gdb" and cfg.type ~= "gdb_kernel" then
+  if not require("features.debugging.sessions.session_profile").is_gdb_config(cfg) then
     state.globals, state.file = {}, nil
 
     return

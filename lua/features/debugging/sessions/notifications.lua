@@ -266,7 +266,7 @@ function M.setup(dap)
   -- gdb/kernel sessions only; a managed adapter keeps nvim-dap's own reporting.
   local function gated(fn)
     return function(session, ...)
-      if not require("features.debugging.sessions.session_profile").is_low_level(session) then
+      if not require("features.debugging.sessions.session_profile").is_gdb(session) then
         return
       end
 

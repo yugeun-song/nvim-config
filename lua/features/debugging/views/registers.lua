@@ -61,7 +61,7 @@ local ANNOTATE_PROBE = table.concat({
 local function collect_annotations(cb)
   local annotations, order = {}, {}
 
-  if not require("features.debugging.sessions.session_profile").is_low_level() then
+  if not require("features.debugging.sessions.session_profile").is_gdb() then
     cb(annotations, order)
 
     return

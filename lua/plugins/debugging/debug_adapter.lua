@@ -96,7 +96,7 @@ return {
           local dap = require("dap")
           local session = dap.session()
 
-          if not (session and require("features.debugging.sessions.session_profile").is_low_level(session)) then
+          if not (session and require("features.debugging.sessions.session_profile").is_gdb(session)) then
             dap.run_to_cursor()
 
             return

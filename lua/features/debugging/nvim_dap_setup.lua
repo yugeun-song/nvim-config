@@ -185,7 +185,7 @@ function M.dap_view_options()
     windows = {
       size = 0.34,
       position = "below",
-      terminal = { position = "left", hide = { "gdb", "gdb_kernel" } },
+      terminal = { position = "left", hide = { "gdb", "gdb_linux_kernel", "gdb_kernel" } },
     },
     virtual_text = { enabled = true },
     -- "open", not true: the panel stays up when the session ends so its
@@ -212,7 +212,7 @@ function M.setup()
   }
 
   -- The winbar of a gdb / Linux Kernel session; dbg.context only switches to it.
-  context.set_low_level_winbar({
+  context.set_gdb_winbar({
     sections = {
       "scopes",
       "watch",
@@ -271,7 +271,7 @@ function M.setup()
   end)
 
   -- Only a stop in a session with the panels jumps through the layout; other adapters keep nvim-dap's.
-  for _, adapter in ipairs({ "gdb", "gdb_kernel", "lldb" }) do
+  for _, adapter in ipairs({ "gdb", "gdb_linux_kernel", "gdb_kernel", "lldb" }) do
     dap.defaults[adapter].switchbuf = function(bufnr, line, column)
       require("features.debugging.views.layout").jump(bufnr, line, column)
     end
@@ -381,12 +381,12 @@ function M.setup()
 
   -- kbuildlab describes the kernel session (gdb, -iex lines that trust the tree's scripts/gdb, gdbtools facts,
   -- vmlinux), asked afresh at every start. Without kbuildlab there is no kernel session.
-  dap.adapters.gdb_kernel = function(callback, config)
+  dap.adapters.gdb_linux_kernel = function(callback, config)
     local notify = require("features.debugging.sessions.notifications")
     local kbl = config.kbl or {}
 
     if not (type(kbl.tree) == "string" and kbl.tree ~= "" and tonumber(kbl.port)) then
-      notify.error("This kernel configuration names no kbuildlab tree and port; start it with :DbgKernel")
+      notify.error("This Linux kernel configuration names no kbuildlab tree and port; start it with :DbgLinuxKernel")
 
       return
     end
@@ -453,6 +453,9 @@ function M.setup()
       })
     end)
   end
+
+  -- Launch configurations written before the adapter said which kernel call it gdb_kernel.
+  dap.adapters.gdb_kernel = dap.adapters.gdb_linux_kernel
 
   local c_configs = {
     {
@@ -602,7 +605,7 @@ function M.setup()
     pattern = "dap-repl",
     callback = function(ev)
       -- A managed adapter keeps nvim-dap's own REPL.
-      if not context.is_low_level() then
+      if not context.is_gdb() then
         return
       end
 
@@ -685,7 +688,7 @@ function M.setup()
     desc = "Keep the debugger panel highlights defined across colorscheme changes",
   })
 
-  local function low_level_session_running()
+  local function gdb_session_running()
     for _, s in pairs(dap.sessions() or {}) do
       if context.has_panels(s) then
         return true
@@ -862,7 +865,7 @@ function M.setup()
     pcall(function()
       -- GDB's DAP mishandles a negative instructionOffset and codelldb rejects the -0 a zero one encodes to,
       -- so only gdb starts the disassembly at the pc.
-      require("dap-disasm").set_memref(nil, context.is_low_level(session) and -1 or 16)
+      require("dap-disasm").set_memref(nil, context.is_gdb(session) and -1 or 16)
     end)
 
     pcall(function()
@@ -871,7 +874,7 @@ function M.setup()
       require("features.debugging.sessions.target_session").remember(session.config)
       if not context.has_panels(session) then
         -- DbgLayout may have built the panels with no session up.
-        if not low_level_session_running() then
+        if not gdb_session_running() then
           require("features.debugging.views.layout").drop_panels()
         end
 
@@ -879,7 +882,7 @@ function M.setup()
       end
 
       require("features.debugging.views.layout").enter()
-      if context.is_low_level(session) then
+      if context.is_gdb(session) then
         require("features.debugging.linux_kernel.kbuildlab_guests").after_attach(session)
       end
     end)
@@ -896,7 +899,7 @@ function M.setup()
 
   -- Losing the gdbstub does not terminate the DAP session, so say so.
   dap.listeners.after.event_initialized["dbg_watchdog"] = function(session)
-    if not context.is_kernel(session) then
+    if not context.is_linux_kernel(session) then
       return
     end
 
@@ -1027,7 +1030,7 @@ function M.setup()
   vim.api.nvim_create_autocmd("VimResized", {
     group = group,
     callback = function()
-      if not context.is_low_level() then
+      if not context.is_gdb() then
         return
       end
 
@@ -1043,7 +1046,7 @@ function M.setup()
   vim.api.nvim_create_autocmd({ "WinNew", "WinClosed" }, {
     group = group,
     callback = function()
-      if not context.is_low_level() then
+      if not context.is_gdb() then
         return
       end
 
@@ -1060,11 +1063,11 @@ function M.setup()
     require("features.debugging.linux_kernel.kbuildlab_guests").show_report()
   end, { desc = "Report the guests kbuildlab sees on this machine" })
 
-  vim.api.nvim_create_user_command("DbgKernel", function()
+  vim.api.nvim_create_user_command("DbgLinuxKernel", function()
     require("features.debugging.linux_kernel.kbuildlab_guests").start()
-  end, { desc = "Pick a kbuildlab guest and attach the kernel debugger" })
+  end, { desc = "Pick a kbuildlab guest and attach the Linux kernel debugger" })
 
-  vim.api.nvim_create_user_command("DbgKernelEarly", function()
+  vim.api.nvim_create_user_command("DbgLinuxKernelEarly", function()
     require("features.debugging.linux_kernel.kbuildlab_guests").start({ kgdb_auto = true })
   end, { desc = "Attach with the early-boot machinery armed (GDBTOOLS_AUTO=1)" })
 

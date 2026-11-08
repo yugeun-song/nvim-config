@@ -2,7 +2,21 @@
 -- default is "managed" so an unknown adapter never gets the gdb/kernel UI.
 local M = {}
 
-local PROFILE_BY_TYPE = { gdb_kernel = "linux_kernel", gdb = "native", lldb = "lldb" }
+-- gdb_kernel is gdb_linux_kernel's name from before it said which kernel, kept for launch.json files of that time.
+local PROFILE_BY_TYPE =
+  { gdb_linux_kernel = "linux_kernel", gdb_kernel = "linux_kernel", gdb = "native", lldb = "lldb" }
+
+-- Whether a launch configuration is a Linux kernel's (a kbuildlab guest over its gdbstub).
+function M.is_linux_kernel_config(cfg)
+  return PROFILE_BY_TYPE[(cfg or {}).type] == "linux_kernel"
+end
+
+-- Whether a launch configuration runs gdb: a program's, or a Linux kernel's.
+function M.is_gdb_config(cfg)
+  local profile = PROFILE_BY_TYPE[(cfg or {}).type]
+
+  return profile == "native" or profile == "linux_kernel"
+end
 
 function M.profile_of_config(cfg)
   cfg = cfg or {}
@@ -19,11 +33,11 @@ function M.of(session)
   return M.profile_of_config(session.config or {})
 end
 
-function M.is_kernel(s)
+function M.is_linux_kernel(s)
   return M.of(s) == "linux_kernel"
 end
 
-function M.is_low_level(s)
+function M.is_gdb(s)
   local p = M.of(s)
 
   return p == "linux_kernel" or p == "native"
@@ -35,7 +49,7 @@ end
 
 -- gdb and LLDB sessions share the panels that ask the adapter in plain DAP: registers, memory, disassembly.
 function M.has_panels(s)
-  return M.is_low_level(s) or M.is_lldb(s)
+  return M.is_gdb(s) or M.is_lldb(s)
 end
 
 function M.is_managed(s)
@@ -55,7 +69,7 @@ function M.block_if_managed(what, session)
 end
 
 function M.block_unless_gdb(what, session)
-  if not M.is_low_level(session) then
+  if not M.is_gdb(session) then
     require("features.debugging.sessions.notifications").info(
       (what or "This view") .. " needs a gdb session (C/C++ or Linux Kernel)."
     )
@@ -89,12 +103,12 @@ end
 
 -- gdb and LLDB sessions get the winbar rings the configuration layer injects; a
 -- managed one keeps nvim-dap-view's own.
-local low_level = nil
+local gdb_winbar = nil
 local lldb = nil
 local stock = nil
 
-function M.set_low_level_winbar(spec)
-  low_level = spec
+function M.set_gdb_winbar(spec)
+  gdb_winbar = spec
 end
 
 function M.set_lldb_winbar(spec)
@@ -190,7 +204,7 @@ function M.apply_winbar(session)
   end
 
   remember_stock(cfg)
-  local want = M.is_low_level(session) and low_level or M.is_lldb(session) and lldb or stock
+  local want = M.is_gdb(session) and gdb_winbar or M.is_lldb(session) and lldb or stock
   local filtered = put(cfg, want or stock)
 
   pcall(function()

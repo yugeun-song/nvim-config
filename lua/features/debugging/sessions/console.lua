@@ -147,7 +147,7 @@ function M.setup(dap)
   })
 
   dap.listeners.after.event_stopped["dbg_console"] = function(session)
-    if not require("features.debugging.sessions.session_profile").is_low_level(session) then
+    if not require("features.debugging.sessions.session_profile").is_gdb(session) then
       return
     end
 

@@ -21,7 +21,7 @@ local FIXED = {
 local ALWAYS = { "show architecture", "show endian" }
 
 local BY_KIND = {
-  kernel = { "lx-version", "kearly", "mmview" },
+  linux_kernel = { "lx-version", "kearly", "mmview" },
   userspace = { "checksec", "piebase", "info proc mappings" },
   bare = { "info files" },
 }
@@ -197,7 +197,7 @@ function M.step(kind)
   M.focus(session)
   local frame = session.current_frame
   -- Only gdb steps by instruction; a managed adapter's frames are never sourceless.
-  local sourceless = require("features.debugging.sessions.session_profile").is_low_level(session)
+  local sourceless = require("features.debugging.sessions.session_profile").is_gdb(session)
     and not (frame and frame.source and (frame.source.path or frame.source.sourceReference))
 
   local opts = nil
@@ -333,7 +333,7 @@ function M.render()
     row("kernel root", cfg.kernel_root)
   end
 
-  if cfg.type == "gdb_kernel" then
+  if require("features.debugging.sessions.session_profile").is_linux_kernel_config(cfg) then
     row("early boot", cfg.kgdb_auto and "GDBTOOLS_AUTO=1, kearly armed" or "inert, commands registered only")
   end
 

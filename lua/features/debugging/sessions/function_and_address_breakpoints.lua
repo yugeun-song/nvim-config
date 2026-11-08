@@ -313,7 +313,7 @@ function M.setup(dap)
     end
 
     status = {}
-    if context.is_low_level(session) then
+    if context.is_gdb(session) then
       guard_events(session)
     end
 
@@ -323,7 +323,7 @@ function M.setup(dap)
   -- gdb answers a breakpoint it cannot place yet with no line, and nvim-dap stamps that on the whole file;
   -- answers follow the request's order, so the line comes from the request.
   dap.listeners.before.setBreakpoints["dbg_breakpoints"] = function(session, err, response, request)
-    if err or not require("features.debugging.sessions.session_profile").is_low_level(session) then
+    if err or not require("features.debugging.sessions.session_profile").is_gdb(session) then
       return
     end
 

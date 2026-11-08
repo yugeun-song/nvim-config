@@ -84,7 +84,7 @@ end
 local function build(c)
   return {
     name = ("kernel %s @ %s"):format(c.label or "?", c.target or tostring(c.port)),
-    type = "gdb_kernel",
+    type = "gdb_linux_kernel",
     request = "attach",
     target = c.target,
     kbl = { tree = (c.id ~= nil and c.id ~= "") and c.id or c.tree, port = c.port },

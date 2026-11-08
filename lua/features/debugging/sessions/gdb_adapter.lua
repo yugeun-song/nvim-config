@@ -156,7 +156,7 @@ end
 
 function M.setup(dap)
   dap.listeners.before.event_initialized["dbg_adapter"] = function(session)
-    if require("features.debugging.sessions.session_profile").is_low_level(session) then
+    if require("features.debugging.sessions.session_profile").is_gdb(session) then
       M.attach(session)
     end
   end

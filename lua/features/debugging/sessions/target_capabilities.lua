@@ -143,7 +143,7 @@ end
 
 local function classify(caps)
   if caps.symbols.init_task or caps.symbols.linux_banner or caps.symbols.swapper_pg_dir then
-    return "kernel"
+    return "linux_kernel"
   end
 
   if caps.symbols.__libc_start_main or caps.symbols.environ or caps.symbols.main_arena then
@@ -171,7 +171,7 @@ function M.detect(session, cb)
 
   local cfg = session.config or {}
 
-  if cfg.type ~= "gdb" and cfg.type ~= "gdb_kernel" then
+  if not require("features.debugging.sessions.session_profile").is_gdb_config(cfg) then
     local caps = {
       backend = cfg.type,
       symbols = {},

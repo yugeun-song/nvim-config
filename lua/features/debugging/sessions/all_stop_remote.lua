@@ -257,11 +257,7 @@ function M.setup(dap)
   dap.listeners.before.event_initialized["dbg_allstop"] = function(session)
     local cfg = session.config or {}
 
-    if
-      require("features.debugging.sessions.session_profile").is_low_level(session)
-      and cfg.target
-      and cfg.target ~= ""
-    then
+    if require("features.debugging.sessions.session_profile").is_gdb(session) and cfg.target and cfg.target ~= "" then
       M.attach(session)
     end
   end

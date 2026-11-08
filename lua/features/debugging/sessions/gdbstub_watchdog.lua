@@ -103,7 +103,9 @@ function M.start(session)
   M.stop()
   local cfg = session and session.config or {}
 
-  if cfg.type ~= "gdb_kernel" or vim.fn.has("linux") == 0 then
+  if
+    not require("features.debugging.sessions.session_profile").is_linux_kernel_config(cfg) or vim.fn.has("linux") == 0
+  then
     return
   end
 

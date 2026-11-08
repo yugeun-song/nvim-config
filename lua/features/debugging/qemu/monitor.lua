@@ -65,7 +65,7 @@ function M.active(session)
 
   local cfg = session and session.config or {}
 
-  return cfg.type == "gdb_kernel"
+  return require("features.debugging.sessions.session_profile").is_linux_kernel_config(cfg)
 end
 
 local function monitor(session, cmd, cb)
