@@ -383,7 +383,12 @@ function safe(item)
     for _, kind in ipairs(storage.KINDS) do
       local ok, dir = pcall(vim.fn.stdpath, kind)
 
-      if ok and key(dir) == parent and (base == storage.NAME or storage.old_names(kind)[base]) then
+      if
+        ok
+        and type(dir) == "string"
+        and key(dir) == parent
+        and (base == storage.NAME or storage.old_names(kind)[base])
+      then
         return true, nil
       end
     end
@@ -404,7 +409,7 @@ function M.configuration_items()
   for _, kind in ipairs(storage.KINDS) do
     local ok, dir = pcall(vim.fn.stdpath, kind)
 
-    if ok then
+    if ok and type(dir) == "string" then
       local names = { [storage.NAME] = "this configuration's own files" }
 
       for name, holds in pairs(storage.old_names(kind)) do

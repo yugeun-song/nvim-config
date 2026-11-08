@@ -80,7 +80,7 @@ local function linters()
     if type(linter) == "function" then
       local made, value = pcall(linter)
 
-      linter = made and value or nil
+      linter = made and value or {}
     end
 
     local cmd = type(linter) == "table" and linter.cmd or nil

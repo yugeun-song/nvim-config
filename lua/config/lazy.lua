@@ -29,15 +29,19 @@ vim.opt.rtp:prepend(lazypath)
 -- keeps their directories on the runtimepath it resets, and the runtime's own stubs find them loaded.
 local early_packs = {}
 
+local function runtimepath()
+  return vim.opt.rtp:get() --[[@as string[] ]]
+end
+
 if vim.fn.has("win32") == 1 then
   local before = {}
 
-  for _, dir in ipairs(vim.opt.rtp:get()) do
+  for _, dir in ipairs(runtimepath()) do
     before[dir] = true
   end
 
   vim.cmd("silent! packadd matchit | silent! packadd netrw")
-  for _, dir in ipairs(vim.opt.rtp:get()) do
+  for _, dir in ipairs(runtimepath()) do
     if not before[dir] then
       early_packs[#early_packs + 1] = dir
     end

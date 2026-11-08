@@ -132,7 +132,9 @@ local function lazy_key_owners()
 
   for name, plugin in pairs(require("lazy.core.config").plugins) do
     for _, key in pairs((plugin._.handlers or {}).keys or {}) do
-      for _, mode in ipairs(type(key.mode) == "table" and key.mode or { key.mode or "n" }) do
+      local modes = (type(key.mode) == "table" and key.mode or { key.mode or "n" }) --[[@as string[] ]]
+
+      for _, mode in ipairs(modes) do
         owners[key_of(mode, key.lhs)] = name
       end
     end
@@ -165,8 +167,11 @@ local function collect(buf)
           source = (map.desc or ""):match("%-default$") and "Neovim" or "Lua, origin not recorded"
         end
 
-        if source == "lazy.nvim" and owners[key_of(m, map.lhs)] then
-          source, file, line = owners[key_of(m, map.lhs)] .. " (loads on use)", nil, nil
+        -- A stand-in lazy.nvim made: the plugin it loads is named, and lazy.nvim's own file is not where to go.
+        local owner = source == "lazy.nvim" and owners[key_of(m, map.lhs)] or nil
+
+        if owner then
+          source = owner .. " (loads on use)"
         end
 
         items[#items + 1] = {
@@ -175,8 +180,8 @@ local function collect(buf)
           lhs = vim.fn.keytrans(vim.keycode(map.lhs)),
           desc = desc,
           source = source .. scope,
-          file = file and vim.uv.fs_stat(file) and file or nil,
-          pos = line and line > 0 and { line, 0 } or nil,
+          file = not owner and file and vim.uv.fs_stat(file) and file or nil,
+          pos = not owner and line and line > 0 and { line, 0 } or nil,
         }
       end
     end

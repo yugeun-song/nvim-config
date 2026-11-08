@@ -228,9 +228,14 @@ local function luals()
     end
   end
 
+  -- The long form of the path: lua-language-server writes its builtin definitions under --metapath and does not
+  -- recognise them as its library when the path is an 8.3 short name (C:/Users/NETRUN~1/...), and then reports
+  -- every builtin as undefined.
   local tmp = vim.fn.tempname()
 
   vim.fn.mkdir(tmp, "p")
+  tmp = vim.uv.fs_realpath(tmp) or tmp
+
   local config = vim.fs.joinpath(tmp, "config.json")
   local result = vim.fs.joinpath(tmp, "check.json")
 

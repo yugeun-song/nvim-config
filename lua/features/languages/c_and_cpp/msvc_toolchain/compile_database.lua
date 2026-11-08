@@ -222,9 +222,9 @@ local function restart_clangd()
   end
 
   if vim.fn.exists(":lsp") == 2 then
-    pcall(vim.cmd, "lsp restart clangd")
+    pcall(vim.api.nvim_command, "lsp restart clangd")
   elseif vim.fn.exists(":LspRestart") == 2 then
-    pcall(vim.cmd, "LspRestart clangd")
+    pcall(vim.api.nvim_command, "LspRestart clangd")
   end
 end
 

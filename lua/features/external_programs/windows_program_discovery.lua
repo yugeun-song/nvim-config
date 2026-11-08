@@ -186,10 +186,10 @@ function M.run(names, cb)
       local found = {}
 
       for _, name in ipairs(names) do
-        local current = vim.fn.exepath(name)
+        local on_path = vim.fn.exepath(name)
         local hits = {}
 
-        current = current ~= "" and key(current) or nil
+        local current = on_path ~= "" and key(on_path) or nil
 
         local app = type(raw.apppaths) == "table" and raw.apppaths[name .. ".exe"]
 

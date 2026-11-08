@@ -41,7 +41,7 @@ local function mason_packages()
         status.unsupported(name, "no Mason build for " .. vim.uv.os_uname().machine)
       elseif need then
         status.blocked(name, ("not installed until %s is on PATH"):format(status.label(need)))
-      elseif at then
+      elseif gate and at then
         status.blocked(
           name,
           ("install failed on %s; Mason retries it from %s"):format(
