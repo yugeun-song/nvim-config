@@ -243,11 +243,21 @@ local function raw_tags(buf, word)
   return ok and tags or {}
 end
 
+-- One form for paths from tags, cscope and buffers: Windows writes the same file with either separator and in
+-- any case.
+local IS_WINDOWS = vim.fn.has("win32") == 1
+
+local function comparable(path)
+  path = vim.fs.normalize(vim.fn.fnamemodify(path, ":p"))
+
+  return IS_WINDOWS and path:lower() or path
+end
+
 -- Tags assembler could mean. Code cannot name a member, a C type or a C static of another file, nor
 -- another C file's #define, as no assembler includes a .c. A macro local to another assembler file can
 -- reach this one through an #include. A comment can name anything.
 local function tag_entries(buf, word, in_comment)
-  local file = vim.api.nvim_buf_get_name(buf)
+  local file = comparable(vim.api.nvim_buf_get_name(buf))
   local items = {}
 
   for _, tag in ipairs(raw_tags(buf, word)) do
@@ -257,7 +267,9 @@ local function tag_entries(buf, word, in_comment)
     local nameable = in_comment
       or not (tag.struct or tag.union or tag.class)
         and (in_assembler(path) or not C_TYPE_KINDS[tag.kind])
-        and (tag.static == 0 or path == file or in_assembler(path) or (tag.kind == "d" and not path:find("%.c$")))
+        and (tag.static == 0 or comparable(path) == file or in_assembler(path) or (tag.kind == "d" and not path:find(
+          "%.c$"
+        )))
 
     -- A tags file can name anything, and reading a device or a pipe would never end.
     if nameable and stat and stat.type == "file" then
@@ -368,7 +380,7 @@ local function merged(...)
 
   for _, list in ipairs({ ... }) do
     for _, item in ipairs(list) do
-      local place = vim.fn.fnamemodify(item.filename, ":p") .. ":" .. tostring(item.lnum)
+      local place = comparable(item.filename) .. ":" .. tostring(item.lnum)
 
       if not seen[place] then
         seen[place] = true
@@ -401,9 +413,9 @@ local function cscope_hits(find, word, buf)
     return hits
   end
 
-  local root = vim.fs.dirname(database) .. "/"
+  local root = comparable(vim.fs.dirname(database)):gsub("/?$", "/")
   local here = vim.tbl_filter(function(hit)
-    return vim.startswith(vim.fn.fnamemodify(hit.filename, ":p"), root)
+    return vim.startswith(comparable(hit.filename), root)
   end, hits)
 
   return #here > 0 and here or hits
@@ -433,7 +445,9 @@ local function included_files(code)
       and (line:match('^%s*#%s*include%s*["<]([^">]+)[">]') or line:match('^%s*%.include%s+"([^"]+)"'))
 
     if name then
-      tails[#tails + 1] = name:gsub("^[./]+", "")
+      local tail = name:gsub("\\", "/"):gsub("^[./]+", "")
+
+      tails[#tails + 1] = IS_WINDOWS and tail:lower() or tail
     end
   end
 
@@ -441,6 +455,8 @@ local function included_files(code)
 end
 
 local function among_files(path, tails)
+  path = comparable(path)
+
   for _, tail in ipairs(tails) do
     if path == tail or vim.endswith(path, "/" .. tail) then
       return true
@@ -456,7 +472,7 @@ local function macro_made(buf, word, defined_in)
   local pattern = whole_word(word)
 
   return vim.tbl_filter(function(ref)
-    if defined_in[vim.fn.fnamemodify(ref.filename, ":p")] then
+    if defined_in[comparable(ref.filename)] then
       return false
     end
 
@@ -565,7 +581,7 @@ local function definition_items(buf, word, cursor)
   local defined_in = {}
 
   for _, item in ipairs(defining) do
-    defined_in[item.filename] = true
+    defined_in[comparable(item.filename)] = true
   end
 
   -- A word that heads a statement is a mnemonic or a macro; no macro call makes it, and looking through

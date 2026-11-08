@@ -261,14 +261,18 @@ end
 
 local queries = {}
 
+-- Per language and query text. Asked only with that language's tree at hand, so a failure is the grammar's (a
+-- node type it lacks) and is kept too.
 local function query(lang, source)
-  if queries[lang] == nil then
+  local key = lang .. "\0" .. source
+
+  if queries[key] == nil then
     local ok, parsed = pcall(ts.query.parse, lang, source)
 
-    queries[lang] = ok and parsed
+    queries[key] = ok and parsed
   end
 
-  return queries[lang]
+  return queries[key]
 end
 
 local cur_win, cur_buf, top_row, bot_row

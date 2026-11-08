@@ -7,8 +7,8 @@
 -- program installed meanwhile is seen. A directory that changed is listed once and only the answers it can affect are
 -- dropped: a miss it now has a candidate for, a hit it held or now shadows. Some programs write into their own
 -- directory on PATH all the time (IncrediBuild's agent, every few seconds); that costs one listing instead of every
--- answer. A name with a directory in it, and a hit outside PATH (Windows also searches the current directory), go to
--- the real functions every time.
+-- answer. A name with a directory in it, and a hit outside PATH (with cmd.exe as 'shell', Neovim also searches the
+-- current directory), go to the real functions every time.
 local M = {}
 
 local uv = vim.uv

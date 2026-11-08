@@ -8,6 +8,8 @@ local state = {
   enabled = true,
   inline = nil,
   group = nil,
+  -- [bufnr][namespace] = true for the diagnostics a rule turned off, so they come back when it goes.
+  silenced = {},
 }
 
 local function default_registry()
@@ -32,6 +34,49 @@ local function detach_client(bufnr, client)
   end)
 end
 
+-- The client's diagnostic namespaces: pushed, pulled, and pulled per registration (named after the client).
+local function client_namespaces(client)
+  local found = {
+    [vim.lsp.diagnostic.get_namespace(client.id, false)] = true,
+    [vim.lsp.diagnostic.get_namespace(client.id, true)] = true,
+  }
+
+  local prefix = ("nvim.lsp.%s.%d."):format(client.name, client.id)
+
+  for name, ns in pairs(vim.api.nvim_get_namespaces()) do
+    if vim.startswith(name, prefix) then
+      found[ns] = true
+    end
+  end
+
+  return found
+end
+
+local function silence(bufnr, client)
+  local silenced = state.silenced[bufnr] or {}
+
+  state.silenced[bufnr] = silenced
+  for ns in pairs(client_namespaces(client)) do
+    silenced[ns] = true
+    pcall(vim.diagnostic.enable, false, { bufnr = bufnr, ns_id = ns })
+  end
+end
+
+local function unsilence(bufnr, client)
+  local silenced = state.silenced[bufnr]
+
+  if not silenced then
+    return
+  end
+
+  for ns in pairs(client_namespaces(client)) do
+    if silenced[ns] then
+      silenced[ns] = nil
+      pcall(vim.diagnostic.enable, true, { bufnr = bufnr, ns_id = ns })
+    end
+  end
+end
+
 local function apply(bufnr, client)
   if not state.enabled then
     return
@@ -51,8 +96,10 @@ local function apply(bufnr, client)
     end)
   elseif action == "diagnostics_off" then
     vim.schedule(function()
-      pcall(vim.diagnostic.enable, false, { bufnr = bufnr })
+      silence(bufnr, client)
     end)
+  else
+    unsilence(bufnr, client)
   end
 end
 
@@ -371,6 +418,14 @@ function M.setup(opts)
       end
     end,
     desc = "lsp_filter: reload registry on save",
+  })
+
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    group = state.group,
+    callback = function(args)
+      state.silenced[args.buf] = nil
+    end,
+    desc = "lsp_filter: forget what a wiped buffer had turned off",
   })
 end
 

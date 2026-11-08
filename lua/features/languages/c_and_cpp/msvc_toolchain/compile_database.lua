@@ -236,6 +236,13 @@ local function xml(s)
   return (s:gsub('[&"<>]', XML))
 end
 
+-- A path as an MSBuild item: % ; $ @ ' * ? would expand, split or glob it (MSBuild special characters).
+local function item_path(path)
+  return xml((path:gsub("/", "\\"):gsub("[%%;%$@'%*%?]", function(c)
+    return ("%%%02X"):format(c:byte())
+  end)))
+end
+
 -- CUDA: GetClCommandLines covers ClCompile only, and a .cu file is CudaCompile, which NVIDIA's build
 -- customization (BuildCustomizations\CUDA x.y.targets) resolves in InitializeCudaProjectProperties: the
 -- toolkit the project uses, the -gencode list, and the defines and include directories inherited from the host
@@ -276,11 +283,11 @@ local function traversal(projects, cuda, configuration, platform, cuda_targets)
   local lines = { "<Project>", "  <ItemGroup>" }
 
   for _, p in ipairs(projects) do
-    lines[#lines + 1] = ('    <P Include="%s" />'):format(xml(p:gsub("/", "\\")))
+    lines[#lines + 1] = ('    <P Include="%s" />'):format(item_path(p))
   end
 
   for _, p in ipairs(cuda) do
-    lines[#lines + 1] = ('    <Cu Include="%s" />'):format(xml(p:gsub("/", "\\")))
+    lines[#lines + 1] = ('    <Cu Include="%s" />'):format(item_path(p))
   end
 
   local props = ("Configuration=%s;Platform=%s"):format(configuration, platform)
@@ -299,7 +306,7 @@ local function traversal(projects, cuda, configuration, platform, cuda_targets)
     vim.list_extend(lines, {
       ('    <MSBuild Projects="@(Cu)" Targets="NvimCudaCompile" Properties="%s;ForceImportAfterCppTargets=%s" BuildInParallel="true" ContinueOnError="true">'):format(
         props,
-        xml(cuda_targets:gsub("/", "\\"))
+        item_path(cuda_targets)
       ),
       '      <Output TaskParameter="TargetOutputs" ItemName="Cl" />',
       "    </MSBuild>",
@@ -397,12 +404,26 @@ function M.generate(opts)
   local cuda = vim.tbl_filter(uses_cuda, projects)
   local started = uv.hrtime()
 
-  running[key(root)] = true
-  if #cuda > 0 then
-    vim.fn.writefile(CUDA_TARGETS, cuda_targets)
+  local function remove_temporary_files()
+    os.remove(proj)
+    os.remove(cuda_targets)
   end
 
-  vim.fn.writefile(traversal(projects, cuda, configuration, platform, cuda_targets), proj)
+  local written, why = pcall(function()
+    if #cuda > 0 then
+      vim.fn.writefile(CUDA_TARGETS, cuda_targets)
+    end
+
+    vim.fn.writefile(traversal(projects, cuda, configuration, platform, cuda_targets), proj)
+  end)
+
+  if not written then
+    remove_temporary_files()
+
+    return vim.notify("Could not write MSBuild's project: " .. tostring(why), vim.log.levels.ERROR, { title = "MSVC" })
+  end
+
+  running[key(root)] = true
   if not opts.auto then
     vim.notify(
       ("MSBuild: %d project(s), %s|%s..."):format(#projects, configuration, platform),
@@ -411,13 +432,20 @@ function M.generate(opts)
     )
   end
 
-  vim.system({ tool, proj, "-nologo", "-m", "-nr:false", "-t:Collect", "-getTargetResult:Collect" }, {
+  local started_msbuild, start_error = pcall(vim.system, {
+    tool,
+    proj,
+    "-nologo",
+    "-m",
+    "-nr:false",
+    "-t:Collect",
+    "-getTargetResult:Collect",
+  }, {
     text = true,
   }, function(res)
     vim.schedule(function()
       running[key(root)] = nil
-      os.remove(proj)
-      os.remove(cuda_targets)
+      remove_temporary_files()
 
       local ok, data = pcall(vim.json.decode, res.stdout or "")
       local result = ok and type(data) == "table" and data.TargetResults and data.TargetResults.Collect
@@ -446,7 +474,13 @@ function M.generate(opts)
 
       local db = vim.fs.joinpath(root, "compile_commands.json")
 
-      vim.fn.writefile({ vim.json.encode(entries) }, db)
+      -- A project directory may be read-only (a mounted share, a checkout of someone else's).
+      local wrote, write_error = pcall(vim.fn.writefile, { vim.json.encode(entries) }, db)
+
+      if not wrote then
+        return M.notify_when_ready("Could not write " .. db .. ": " .. tostring(write_error), vim.log.levels.ERROR)
+      end
+
       state = read_state()
       state[key(root)] = {
         db = vim.fs.normalize(db),
@@ -472,6 +506,12 @@ function M.generate(opts)
       restart_clangd()
     end)
   end)
+
+  if not started_msbuild then
+    running[key(root)] = nil
+    remove_temporary_files()
+    vim.notify("Could not start MSBuild: " .. tostring(start_error), vim.log.levels.ERROR, { title = "MSVC" })
+  end
 end
 
 local checked = {}

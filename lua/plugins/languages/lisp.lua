@@ -1,5 +1,3 @@
-local alive_root = require("features.maintenance.local_storage").path("data", "alive_lsp")
-
 local function ocicl_lint_parser(output, bufnr, cwd)
   return require("lint.parser").from_pattern(
     "^(.+):(%d+):(%d+): ([%w%-]+): (.+)$",
@@ -16,26 +14,28 @@ return {
   },
   {
     "neovim/nvim-lspconfig",
-    opts = {
-      servers = {
-        alive_lsp = {
-          enabled = vim.fn.executable("sbcl") == 1 and vim.uv.fs_stat(alive_root .. "/ocicl.csv") ~= nil,
-          mason = false,
-          cmd = { "sbcl", "--script", vim.fn.stdpath("config") .. "/scripts/alive_lsp_over_stdio.lisp", alive_root },
-          filetypes = { "lisp" },
-          root_dir = function(bufnr, on_dir)
-            if vim.api.nvim_buf_get_name(bufnr):match("%.el$") then
-              return
-            end
+    -- A function: sbcl and the server's directory are looked for when nvim-lspconfig loads, not at every startup.
+    opts = function(_, opts)
+      local alive_root = require("features.maintenance.local_storage").path("data", "alive_lsp")
 
-            on_dir(vim.fs.root(bufnr, function(name)
-              return name == "ocicl.csv" or name == ".git" or name:match("%.asd$") ~= nil
-            end))
-          end,
-          settings = { alive = { format = { indentWidth = 2 } } },
-        },
-      },
-    },
+      opts.servers = opts.servers or {}
+      opts.servers.alive_lsp = vim.tbl_deep_extend("force", opts.servers.alive_lsp or {}, {
+        enabled = vim.fn.executable("sbcl") == 1 and vim.uv.fs_stat(alive_root .. "/ocicl.csv") ~= nil,
+        mason = false,
+        cmd = { "sbcl", "--script", vim.fn.stdpath("config") .. "/scripts/alive_lsp_over_stdio.lisp", alive_root },
+        filetypes = { "lisp" },
+        root_dir = function(bufnr, on_dir)
+          if vim.api.nvim_buf_get_name(bufnr):match("%.el$") then
+            return
+          end
+
+          on_dir(vim.fs.root(bufnr, function(name)
+            return name == "ocicl.csv" or name == ".git" or name:match("%.asd$") ~= nil
+          end))
+        end,
+        settings = { alive = { format = { indentWidth = 2 } } },
+      })
+    end,
   },
   {
     "mfussenegger/nvim-lint",
