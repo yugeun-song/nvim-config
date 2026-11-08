@@ -728,7 +728,7 @@ function M.enable()
   end
 
   M.enabled = true
-  group = vim.api.nvim_create_augroup("ifdef_all", { clear = true })
+  group = vim.api.nvim_create_augroup("all_ifdef_branches", { clear = true })
   vim.api.nvim_create_autocmd("LspAttach", {
     group = group,
     callback = function(args)

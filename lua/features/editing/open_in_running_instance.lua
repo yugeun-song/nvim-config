@@ -299,7 +299,7 @@ function M.raise(pid)
 end
 
 function M.setup()
-  local group = vim.api.nvim_create_augroup("remote_open", { clear = true })
+  local group = vim.api.nvim_create_augroup("open_in_running_instance", { clear = true })
 
   vim.api.nvim_create_autocmd({ "UIEnter", "FocusGained" }, {
     group = group,

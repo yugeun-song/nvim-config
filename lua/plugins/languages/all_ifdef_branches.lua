@@ -1,5 +1,5 @@
 return {
-  "ifdef_all",
+  "all_ifdef_branches",
   virtual = true,
   -- With the first C-family buffer: its state-file watcher has nothing to do before one.
   ft = require("features.languages.c_and_cpp.all_ifdef_branches.filetypes"),

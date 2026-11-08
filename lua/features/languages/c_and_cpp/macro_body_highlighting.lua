@@ -2,7 +2,7 @@ local M = {}
 
 local api, ts = vim.api, vim.treesitter
 local byte, find, sub = string.byte, string.find, string.sub
-local ns = api.nvim_create_namespace("macro_highlight")
+local ns = api.nvim_create_namespace("macro_body_highlighting")
 local PLAIN = "MacroHighlightPlain"
 local family = { c = true, cpp = true, objc = true, cuda = true }
 local raw_family = { cpp = true, cuda = true }
@@ -1030,7 +1030,7 @@ end
 
 function M.setup()
   define_plain()
-  local group = api.nvim_create_augroup("macro_highlight", { clear = true })
+  local group = api.nvim_create_augroup("macro_body_highlighting", { clear = true })
 
   api.nvim_create_autocmd("ColorScheme", { group = group, callback = define_plain })
   api.nvim_create_autocmd("BufWipeout", {

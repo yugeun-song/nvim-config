@@ -5,7 +5,7 @@ local M = {}
 
 local uv = vim.uv
 
-local ns = vim.api.nvim_create_namespace("man_code")
+local ns = vim.api.nvim_create_namespace("man_page_code_blocks")
 
 -- man.lua paints roff's bold and italic at priority 4096; anything lower is
 -- covered by manBold inside a code block.

@@ -1,7 +1,7 @@
 -- Where Neovim, the plugins and Neovide keep what they write (lua/features/maintenance/stored_data_paths.lua). Listing
 -- has a key; the reset has none on purpose: only :ManagedPathsReset, which asks for "reset" to be typed.
 return {
-  "managed_paths",
+  "stored_data_paths",
   virtual = true,
   cmd = { "ManagedPaths", "ManagedPathsReset" },
   keys = {

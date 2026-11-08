@@ -1,5 +1,5 @@
 return {
-  "im_control",
+  "korean_input",
   virtual = true,
   -- The langmap and the English switch matter from the first key, which comes after the first screen.
   event = "VeryLazy",
@@ -27,7 +27,7 @@ return {
 
       -- The switch acts on the foreground window: an InsertLeave while another program has the focus (a timer, a
       -- --remote-send) would switch that program's IME. A terminal without focus reports stays "focused".
-      local group = vim.api.nvim_create_augroup("IMControl", { clear = true })
+      local group = vim.api.nvim_create_augroup("korean_input", { clear = true })
       local is_focused = true
 
       vim.api.nvim_create_autocmd("FocusLost", {
@@ -75,7 +75,7 @@ return {
     end
 
     -- foot's private IME mode: CSI ? 737769 h enables the input method, l disables it.
-    local foot_ime = vim.api.nvim_create_augroup("FootIME", { clear = true })
+    local foot_ime = vim.api.nvim_create_augroup("foot_terminal_input_method", { clear = true })
 
     local function foot_send(seq)
       pcall(vim.fn.chansend, vim.v.stderr, seq)

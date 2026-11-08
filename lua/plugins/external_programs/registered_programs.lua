@@ -1,7 +1,7 @@
 -- Registering a program by path (lua/features/external_programs/registered_programs.lua); loaded on first use. PATH
 -- gets the shims from init.lua.
 return {
-  "tool_paths",
+  "registered_programs",
   virtual = true,
   cmd = "ToolPath",
   keys = {

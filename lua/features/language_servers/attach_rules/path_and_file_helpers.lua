@@ -283,12 +283,12 @@ function M.find_upward(start, names)
 end
 
 function M.notify(msg, level)
-  vim.notify("[lsp_filter] " .. msg, level)
+  vim.notify("[attach rules] " .. msg, level)
 end
 
 function M.warn(msg)
   vim.schedule(function()
-    vim.notify("[lsp_filter] " .. tostring(msg), vim.log.levels.WARN)
+    vim.notify("[attach rules] " .. tostring(msg), vim.log.levels.WARN)
   end)
 end
 

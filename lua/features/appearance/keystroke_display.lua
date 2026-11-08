@@ -718,7 +718,7 @@ function M.setup(opts)
   end
 
   math.randomseed(os.time())
-  state.ns = vim.api.nvim_create_namespace("user_chkeys")
+  state.ns = vim.api.nvim_create_namespace("keystroke_display")
   setup_highlights()
   if config.enabled then
     vim.on_key(on_key, state.ns)

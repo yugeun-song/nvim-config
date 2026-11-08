@@ -868,7 +868,7 @@ function M.show()
   end
 
   local view = M.view()
-  local ns = vim.api.nvim_create_namespace("managed_paths")
+  local ns = vim.api.nvim_create_namespace("stored_data_paths")
   local targets = {}
   local win
 

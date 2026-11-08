@@ -2,7 +2,7 @@
 -- specs are read: the module, and the IME tools it asks for, load with the statusline.
 return {
   {
-    "imstate",
+    "input_method_state_indicator",
     virtual = true,
     event = "VeryLazy",
     config = function()

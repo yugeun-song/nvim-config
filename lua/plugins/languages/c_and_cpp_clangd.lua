@@ -14,7 +14,7 @@ local function private_tmp()
   ---@diagnostic disable-next-line: param-type-mismatch
   vim.fn.mkdir(dir, "p", tonumber("700", 8))
   vim.api.nvim_create_autocmd("VimLeavePre", {
-    group = vim.api.nvim_create_augroup("clangd_tmp", { clear = true }),
+    group = vim.api.nvim_create_augroup("clangd_temporary_files", { clear = true }),
     callback = function()
       pcall(vim.fs.rm, dir, { recursive = true, force = true })
     end,
@@ -110,7 +110,7 @@ return {
 
     -- A CUDA buffer whose compile command is nvcc's gets clang's instead.
     vim.api.nvim_create_autocmd("LspAttach", {
-      group = vim.api.nvim_create_augroup("cuda_clangd", { clear = true }),
+      group = vim.api.nvim_create_augroup("clangd_for_cuda", { clear = true }),
       callback = function(ev)
         local client = vim.lsp.get_client_by_id(ev.data.client_id)
 

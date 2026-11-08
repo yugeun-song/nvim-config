@@ -5,13 +5,13 @@ if vim.fn.has("win32") == 0 then
 end
 
 return {
-  "msvc_compiledb",
+  "msvc_compile_database",
   virtual = true,
   cmd = "MsvcCompileDb",
   ft = { "c", "cpp", "cuda" },
   config = function()
     local db = require("features.languages.c_and_cpp.msvc_toolchain.compile_database")
-    local group = vim.api.nvim_create_augroup("msvc_compiledb", { clear = true })
+    local group = vim.api.nvim_create_augroup("msvc_compile_database", { clear = true })
 
     vim.api.nvim_create_user_command("MsvcCompileDb", function(args)
       db.generate({ configuration = args.fargs[1], platform = args.fargs[2] })

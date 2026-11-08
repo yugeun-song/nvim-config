@@ -3,7 +3,7 @@
 
 local M = {}
 
-local ns = vim.api.nvim_create_namespace("man_structure")
+local ns = vim.api.nvim_create_namespace("man_page_structure")
 
 -- Above man.lua's 4096; the code pass at 5000 never overlaps a heading.
 local PRIORITY = 5200

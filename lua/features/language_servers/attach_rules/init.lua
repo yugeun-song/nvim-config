@@ -255,7 +255,7 @@ function M.add_current_dir()
     return
   end
 
-  vim.ui.select(items, { prompt = "lsp_filter: exclude which path?" }, function(choice)
+  vim.ui.select(items, { prompt = "Attach rules: exclude which path?" }, function(choice)
     if not choice then
       return
     end
@@ -265,7 +265,7 @@ function M.add_current_dir()
 end
 
 local function pick_action_then_add(within, servers)
-  vim.ui.select({ "disable", "diagnostics_off" }, { prompt = "lsp_filter: action?" }, function(action)
+  vim.ui.select({ "disable", "diagnostics_off" }, { prompt = "Attach rules: action?" }, function(action)
     if not action then
       return
     end
@@ -278,7 +278,9 @@ function M.add_advanced()
   local cur = vim.api.nvim_buf_get_name(0)
   local default_path = cur ~= "" and vim.fs.dirname(util.normalize(cur) or cur) or vim.fn.getcwd()
 
-  vim.ui.input({ prompt = "lsp_filter: path to exclude: ", default = default_path, completion = "dir" }, function(input)
+  local path_prompt = { prompt = "Attach rules: path to exclude: ", default = default_path, completion = "dir" }
+
+  vim.ui.input(path_prompt, function(input)
     if not input or input == "" then
       return
     end
@@ -291,7 +293,7 @@ function M.add_advanced()
       return
     end
 
-    vim.ui.select({ "clangd", "all servers", "custom..." }, { prompt = "lsp_filter: servers?" }, function(choice)
+    vim.ui.select({ "clangd", "all servers", "custom..." }, { prompt = "Attach rules: servers?" }, function(choice)
       if not choice then
         return
       end
@@ -301,7 +303,7 @@ function M.add_advanced()
       elseif choice == "all servers" then
         pick_action_then_add(within, "*")
       else
-        vim.ui.input({ prompt = "lsp_filter: server names (comma-separated): " }, function(csv)
+        vim.ui.input({ prompt = "Attach rules: server names (comma-separated): " }, function(csv)
           if not csv or csv == "" then
             return
           end
@@ -342,7 +344,7 @@ function M.list_current()
     names = rules.default_servers()
   end
 
-  local lines = { "lsp_filter: " .. (util.normalize(path) or path) }
+  local lines = { "Attach rules: " .. (util.normalize(path) or path) }
 
   for _, name in ipairs(names) do
     local action, source = rules.decide(path, name)
@@ -393,7 +395,7 @@ function M.setup(opts)
 
   rules.load(state.inline)
 
-  state.group = vim.api.nvim_create_augroup("lsp_filter", { clear = true })
+  state.group = vim.api.nvim_create_augroup("language_server_attach_rules", { clear = true })
   vim.api.nvim_create_autocmd("LspAttach", {
     group = state.group,
     callback = function(args)
@@ -405,7 +407,7 @@ function M.setup(opts)
         end
       end)
     end,
-    desc = "lsp_filter: gate LSP servers per path rules",
+    desc = "Attach rules: gate LSP servers per path rules",
   })
 
   vim.api.nvim_create_autocmd("BufWritePost", {
@@ -417,7 +419,7 @@ function M.setup(opts)
         M.reload()
       end
     end,
-    desc = "lsp_filter: reload registry on save",
+    desc = "Attach rules: reload registry on save",
   })
 
   vim.api.nvim_create_autocmd("BufWipeout", {
@@ -425,7 +427,7 @@ function M.setup(opts)
     callback = function(args)
       state.silenced[args.buf] = nil
     end,
-    desc = "lsp_filter: forget what a wiped buffer had turned off",
+    desc = "Attach rules: forget what a wiped buffer had turned off",
   })
 end
 

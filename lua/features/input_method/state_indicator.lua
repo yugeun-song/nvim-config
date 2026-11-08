@@ -183,7 +183,7 @@ function M.start()
     end
   end
 
-  local group = vim.api.nvim_create_augroup("IMState", { clear = true })
+  local group = vim.api.nvim_create_augroup("input_method_state_indicator", { clear = true })
 
   vim.api.nvim_create_autocmd("FocusLost", { group = group, callback = pause })
   vim.api.nvim_create_autocmd("FocusGained", { group = group, callback = run })

@@ -824,7 +824,7 @@ end
 -- Set up by the first buffer that needs it, which is already past its FileType: that one is attached here.
 function M.setup()
   vim.api.nvim_create_autocmd("FileType", {
-    group = vim.api.nvim_create_augroup("asm_navigation", { clear = true }),
+    group = vim.api.nvim_create_augroup("assembly_definition_navigation", { clear = true }),
     pattern = "asm",
     callback = function(args)
       attach(args.buf)

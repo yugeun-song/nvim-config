@@ -1,5 +1,5 @@
 local function setup()
-  local group = vim.api.nvim_create_augroup("UserLspDiagnostics", { clear = true })
+  local group = vim.api.nvim_create_augroup("line_diagnostics_on_cursor_hold", { clear = true })
   local close_id
 
   vim.api.nvim_create_autocmd("CursorHold", {
@@ -50,7 +50,7 @@ end
 
 return {
   {
-    "diagnostic_float",
+    "line_diagnostics_on_cursor_hold",
     virtual = true,
     event = "VeryLazy",
     config = setup,

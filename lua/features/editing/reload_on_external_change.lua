@@ -72,7 +72,7 @@ local function snacks_explorer_refresh()
 end
 
 function M.setup()
-  local group = vim.api.nvim_create_augroup("FsRefresh", { clear = true })
+  local group = vim.api.nvim_create_augroup("reload_on_external_change", { clear = true })
 
   vim.api.nvim_create_autocmd({ "BufEnter", "CursorHold" }, {
     group = group,

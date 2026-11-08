@@ -1,7 +1,7 @@
 local M = {}
 
 local api, ts = vim.api, vim.treesitter
-local ns = api.nvim_create_namespace("asm_highlight")
+local ns = api.nvim_create_namespace("assembly_syntax_highlighting")
 local START, PREFIXED, OPERANDS, STRING = 0, 1, 2, 3
 
 local function set(words)

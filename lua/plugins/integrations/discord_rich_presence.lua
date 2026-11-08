@@ -1,6 +1,6 @@
 -- Discord Rich Presence (lua/features/integrations/discord_rich_presence.lua): :DiscordRpcToggle, <leader>uP.
 return {
-  "discord_rpc",
+  "discord_rich_presence",
   virtual = true,
   -- Discord sees the presence once the first screen is drawn; nothing before it needs it.
   event = "VeryLazy",

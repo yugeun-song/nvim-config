@@ -465,7 +465,7 @@ local function start()
   S.status = "idle"
   S.last_attempt = 0
   S.errors = 0
-  augroup = vim.api.nvim_create_augroup("DiscordRpc", { clear = true })
+  augroup = vim.api.nvim_create_augroup("discord_rich_presence", { clear = true })
   vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter" }, {
     group = augroup,
     callback = guarded(request_update),
