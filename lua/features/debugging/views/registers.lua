@@ -251,6 +251,13 @@ local function paint(vars, annotations, general_order)
 
   if painted_generation ~= generation then
     painted_generation = generation
+    -- The branch under the pc can be judged now; the cursor stays where the user left it.
+    vim.schedule(function()
+      pcall(function()
+        require("features.debugging.views.disassembly").mark(nil, { keep_cursor = true })
+      end)
+    end)
+
     changed_set = {}
     for _, v in ipairs(vars) do
       if previous[v.name] ~= nil and previous[v.name] ~= v.value then
@@ -563,8 +570,10 @@ function M.render()
   end)
 end
 
+-- This stop's values, or none while the panel has not painted this stop (hidden, or its answer still on the way):
+-- a branch judged on an earlier stop's flags would be marked taken wrongly.
 function M.values()
-  return previous
+  return painted_generation == generation and previous or {}
 end
 
 function M.mark_stop()

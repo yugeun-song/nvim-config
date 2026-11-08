@@ -490,7 +490,8 @@ function M.clear()
   end
 end
 
-function M.mark(session)
+-- opts.keep_cursor: mark without moving the cursor (a repaint, a return to the window).
+function M.mark(session, opts)
   local buf = buffer()
 
   if not buf then
@@ -521,7 +522,7 @@ function M.mark(session)
 
       local win = vim.fn.bufwinid(buf)
 
-      if win ~= -1 then
+      if win ~= -1 and not (opts and opts.keep_cursor) then
         pcall(vim.api.nvim_win_set_cursor, win, { i, 0 })
       end
 
@@ -788,8 +789,9 @@ function M.setup()
         return
       end
 
+      -- Shown anew: to the pc. Entered again: the mark only, the cursor stays where the user left it.
       vim.schedule(function()
-        M.mark()
+        M.mark(nil, { keep_cursor = ev.event == "WinEnter" })
       end)
     end,
     desc = "Mark the instruction the program counter is on whenever the disassembly is shown",

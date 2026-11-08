@@ -506,6 +506,10 @@ function M.setup()
       target = function()
         local t = vim.trim(vim.fn.input("gdbstub (socket path, host:port or :port): ", ":1234"))
 
+        if t == "" then
+          return require("dap").ABORT
+        end
+
         if t:match("^%d+$") then
           t = ":" .. t
         end
@@ -797,11 +801,22 @@ function M.setup()
         require("dap-disasm").refresh()
       end)
 
+      -- A fallback when no disassemble request follows (nothing new to fetch); the listener below marks as soon
+      -- as the instructions are in, however slow the target.
       vim.defer_fn(function()
         pcall(function()
           require("features.debugging.views.disassembly").mark(session)
         end)
       end, 250)
+    end)
+  end
+
+  -- nvim-dap-disasm replaces its whole buffer on each answer, which drops the marks: drawn again after it.
+  dap.listeners.after.disassemble["dbg_pc"] = function(session)
+    vim.schedule(function()
+      pcall(function()
+        require("features.debugging.views.disassembly").mark(session, { keep_cursor = true })
+      end)
     end)
   end
 
@@ -1037,6 +1052,8 @@ function M.setup()
     desc = "Never leave a debug adapter behind when Neovim exits",
   })
 
+  local resize_timer
+
   vim.api.nvim_create_autocmd("VimResized", {
     group = group,
     callback = function()
@@ -1044,11 +1061,18 @@ function M.setup()
         return
       end
 
-      vim.schedule(function()
-        pcall(function()
-          require("features.debugging.views.layout").apply()
+      -- Once the resizing stops: dragging an edge fires this for every cell.
+      resize_timer = resize_timer or assert(vim.uv.new_timer())
+      resize_timer:stop()
+      resize_timer:start(
+        100,
+        0,
+        vim.schedule_wrap(function()
+          pcall(function()
+            require("features.debugging.views.layout").apply()
+          end)
         end)
-      end)
+      )
     end,
     desc = "Re-measure the debugger layout against the terminal's cell grid",
   })

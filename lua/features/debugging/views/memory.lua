@@ -355,7 +355,14 @@ local function annotate_then(base, raw, done)
   end, { session = session })
 end
 
-local function do_read(addr)
+-- Bumped by every read: an answer for an older one is dropped (two quick ]] would draw out of order).
+local read_generation = 0
+
+local function is_current(generation)
+  return generation == read_generation
+end
+
+local function do_read(addr, generation)
   local session, why = panel.stopped_session()
 
   if not session then
@@ -368,6 +375,10 @@ local function do_read(addr)
 
   session:request("readMemory", { memoryReference = addr, count = count }, function(err, res)
     vim.schedule(function()
+      if not is_current(generation) then
+        return
+      end
+
       if err or not res or not res.data then
         fail(
           "failed",
@@ -390,13 +401,15 @@ local function do_read(addr)
 
       state.addr = res.address or addr
       annotate_then(state.addr, raw, function()
-        render_rows(state.addr, raw, false)
+        if is_current(generation) then
+          render_rows(state.addr, raw, false)
+        end
       end)
     end)
   end)
 end
 
-local function do_read_phys(addr)
+local function do_read_phys(addr, generation)
   local session, why = panel.stopped_session()
 
   if not session then
@@ -409,6 +422,10 @@ local function do_read_phys(addr)
 
   qemumon.qemu_read_phys(session, addr, count, function(raw, err)
     vim.schedule(function()
+      if not is_current(generation) then
+        return
+      end
+
       if not raw then
         fail("failed", "Physical read failed at " .. addr .. ": " .. tostring(err))
 
@@ -459,15 +476,20 @@ end
 local function read_at(addr)
   local session = panel.stopped_session()
 
+  read_generation = read_generation + 1
+
+  local generation = read_generation
+
+  state.wanted = addr
   if not session then
-    do_read(addr)
+    do_read(addr, generation)
 
     return
   end
 
   if state.source.kind == "phys" then
     state.phys = true
-    do_read_phys(addr)
+    do_read_phys(addr, generation)
 
     return
   end
@@ -475,7 +497,7 @@ local function read_at(addr)
   if state.force or not qemumon.active(session) then
     state.force = false
     state.phys = false
-    do_read(addr)
+    do_read(addr, generation)
 
     return
   end
@@ -483,12 +505,16 @@ local function read_at(addr)
   -- The whole window: a device region under any part of it takes qemu down.
   qemumon.qemu_check_range(session, addr, window_bytes(), function(verdict, why)
     vim.schedule(function()
+      if not is_current(generation) then
+        return
+      end
+
       if verdict == "ram" then
         state.phys = false
-        do_read(addr)
+        do_read(addr, generation)
       elseif verdict == "phys_ram" then
         state.phys = true
-        do_read_phys(addr)
+        do_read_phys(addr, generation)
       else
         state.addr = addr
         refuse(addr, verdict, why)
@@ -626,12 +652,14 @@ function M.page(delta)
     return
   end
 
-  if not state.addr then
+  local from = state.wanted or state.addr
+
+  if not from then
     return
   end
 
   state.source = { kind = state.source.kind, expr = nil }
-  read_at(hexadd(state.addr, step))
+  read_at(hexadd(from, step))
 end
 
 function M.on_stopped()
@@ -657,33 +685,47 @@ function M.follow()
   local hexstart = 2 + #rowaddr + 2
   local cellw = state.group * 2 + 1
   local cell = math.max(0, math.floor((col - hexstart) / cellw))
-  local byteoff = math.floor((cell * state.group) / 8) * 8
   local session = panel.stopped_session()
 
   if not session then
     return
   end
 
-  session:request("readMemory", { memoryReference = hexadd(rowaddr, byteoff), count = 8 }, function(err, res)
-    vim.schedule(function()
-      if err or not res or not res.data then
-        return
-      end
+  -- The pointer as the target holds it: its size from the program (sizeof(void *); 8 where that cannot be asked,
+  -- as in a frame of another language) and the byte order the panel shows.
+  local function follow_with(size)
+    local byteoff = math.floor((cell * state.group) / size) * size
 
-      local raw = vim.base64.decode(res.data)
-      local hi, lo = 0, 0
+    session:request("readMemory", { memoryReference = hexadd(rowaddr, byteoff), count = size }, function(err, res)
+      vim.schedule(function()
+        local ok, raw = pcall(vim.base64.decode, not err and res and res.data or "")
 
-      for k = 7, 4, -1 do
-        hi = hi * 256 + (raw:byte(k + 1) or 0)
-      end
+        if not ok or #raw < size then
+          return
+        end
 
-      for k = 3, 0, -1 do
-        lo = lo * 256 + (raw:byte(k + 1) or 0)
-      end
+        local digits = {}
 
-      M.show_expr(string.format("0x%08x%08x", hi, lo), state.source.kind)
+        for k = 1, size do
+          digits[k] = ("%02x"):format(raw:byte(state.little and size - k + 1 or k))
+        end
+
+        M.show_expr("0x" .. table.concat(digits), state.source.kind)
+      end)
     end)
-  end)
+  end
+
+  local frame = session.current_frame
+
+  session:request(
+    "evaluate",
+    { expression = "sizeof(void *)", context = "watch", frameId = frame and frame.id },
+    function(err, res)
+      local size = not err and res and tonumber(res.result)
+
+      follow_with((size == 4 or size == 8) and size or 8)
+    end
+  )
 end
 
 function M.pin(label)

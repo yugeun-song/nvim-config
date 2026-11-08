@@ -109,11 +109,13 @@ function M.start(session)
     return
   end
 
-  local _, port = split_target(cfg.target)
+  local host, port = split_target(cfg.target)
 
   state.session, state.target = session, cfg.target
-  if not port then
-    return -- unparseable target still gets the message-based half
+  -- Unparseable, or on another host or network namespace (absent from this one's port table): the message-based
+  -- half only.
+  if not port or not (host == "localhost" or host == "::1" or tostring(host):match("^127%.")) then
+    return
   end
 
   local timer = assert(vim.uv.new_timer())

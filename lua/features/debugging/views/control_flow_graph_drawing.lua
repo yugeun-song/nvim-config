@@ -53,6 +53,30 @@ local EDGE_PRIORITY = {
 
 local BOX_PRIORITY = 140
 
+-- The characters of s, one cell each.
+local function characters(s)
+  local out, starts = {}, vim.str_utf_pos(s)
+
+  for i, start in ipairs(starts) do
+    out[i] = s:sub(start, (starts[i + 1] or #s + 1) - 1)
+  end
+
+  return out
+end
+
+-- The byte offset of each character of s, and #s after the last: [k + 1] is where character k starts.
+local function cell_offsets(s)
+  local out = {}
+
+  for i, start in ipairs(vim.str_utf_pos(s)) do
+    out[i] = start - 1
+  end
+
+  out[#out + 1] = #s
+
+  return out
+end
+
 local function blank(rows, cols)
   local grid = {}
 
@@ -357,16 +381,17 @@ function M.render(data, _, detail)
 
     -- Terminator in the top border: readable without finding the last row.
     if box.title ~= "" then
-      local tx = x + w - 2 - vim.fn.strchars(box.title)
+      local title = characters(box.title)
+      local tx = x + w - 2 - #title
 
-      for i = 1, vim.fn.strchars(box.title) do
-        put(grid, yy, tx + i - 1, vim.fn.strcharpart(box.title, i - 1, 1))
+      for i, ch in ipairs(title) do
+        put(grid, yy, tx + i - 1, ch)
       end
     end
 
     for i, line in ipairs(box.body) do
-      for cidx = 1, vim.fn.strchars(line) do
-        put(grid, yy + i, x + 1 + cidx, vim.fn.strcharpart(line, cidx - 1, 1))
+      for cidx, ch in ipairs(characters(line)) do
+        put(grid, yy + i, x + 1 + cidx, ch)
       end
     end
 
@@ -554,15 +579,19 @@ function M.render(data, _, detail)
     table.remove(lines)
   end
 
-  -- Extmark columns are byte offsets; the grid is cells.
+  -- Extmark columns are byte offsets; the grid is cells. Each line's offsets are found once.
   local out_hl = {}
+  local offsets = {}
 
   for _, h in ipairs(hl) do
     local line = lines[h[1]]
 
     if line then
-      local s = vim.fn.byteidx(line, math.min(h[2] - 1, vim.fn.strchars(line)))
-      local e = vim.fn.byteidx(line, math.min(h[3] - 1, vim.fn.strchars(line)))
+      offsets[h[1]] = offsets[h[1]] or cell_offsets(line)
+
+      local starts = offsets[h[1]]
+      local s = starts[math.max(0, math.min(h[2] - 1, #starts - 1)) + 1]
+      local e = starts[math.max(0, math.min(h[3] - 1, #starts - 1)) + 1]
 
       if s and e and s >= 0 and e > s then
         out_hl[#out_hl + 1] = { h[1] - 1, s, e, h[4], h[5] }

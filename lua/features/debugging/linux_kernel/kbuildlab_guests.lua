@@ -16,11 +16,20 @@ function M.candidates(cb)
       return cb(nil, why)
     end
 
-    for _, c in ipairs(rows) do
-      c.busy = c.dbg and c.dbg:match("^attached") ~= nil
+    -- Rows as kbuildlab describes them; anything else is not a guest.
+    local guests = {}
+
+    for _, c in ipairs(type(rows) == "table" and rows or {}) do
+      if type(c) == "table" then
+        local pid = tonumber(c.pid)
+
+        c.pid = pid and math.floor(pid) or 0
+        c.busy = type(c.dbg) == "string" and c.dbg:match("^attached") ~= nil
+        guests[#guests + 1] = c
+      end
     end
 
-    cb(rows)
+    cb(guests)
   end)
 end
 
@@ -141,8 +150,15 @@ function M.load_firmware_symbols(session, done)
     return done()
   end
 
-  require("features.debugging.sessions.gdb_query").run("add-symbol-file " .. cfg.fwsym .. " -o 0", function()
-    session.dbg_firmware_symbols = cfg.fwsym
+  -- Quoted for gdb's argument parser: a path may hold spaces.
+  local quoted = '"' .. cfg.fwsym:gsub("\\", "\\\\"):gsub('"', '\\"') .. '"'
+
+  require("features.debugging.sessions.gdb_query").run("add-symbol-file " .. quoted .. " -o 0", function(text)
+    -- Only what gdb loaded is removed later (remove-symbol-file at the next boot stage).
+    if text then
+      session.dbg_firmware_symbols = cfg.fwsym
+    end
+
     done()
   end, { session = session })
 end

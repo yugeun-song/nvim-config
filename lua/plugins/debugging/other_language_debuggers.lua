@@ -12,7 +12,7 @@ local function mason_bin(name)
 end
 
 return {
-  ---------------------------------------------------------------- python
+  -- Python
   {
     "mfussenegger/nvim-dap",
     optional = true,
@@ -35,7 +35,7 @@ return {
     },
   },
 
-  ---------------------------------------------------------------- javascript / typescript
+  -- JavaScript and TypeScript
   {
     "mfussenegger/nvim-dap",
     optional = true,
@@ -120,7 +120,7 @@ return {
     end,
   },
 
-  ---------------------------------------------------------------- elixir
+  -- Elixir
   {
     "mfussenegger/nvim-dap",
     optional = true,
@@ -161,7 +161,7 @@ return {
     end,
   },
 
-  ---------------------------------------------------------------- rust
+  -- Rust
   {
     "mrcjkb/rustaceanvim",
     ft = { "rust" },

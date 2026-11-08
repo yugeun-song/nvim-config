@@ -49,9 +49,13 @@ local function pages_of(hex, count)
   return out
 end
 
+local queue, is_checking, queue_generation = {}, false, 0
+
 function M.invalidate()
   cache = {}
   ncpu = nil
+  -- A check left unanswered by the last stop must not hold the next stop's checks.
+  queue, is_checking, queue_generation = {}, false, queue_generation + 1
 end
 
 function M.active(session)
@@ -104,7 +108,7 @@ local function cpu_count(session, cb)
   end)
 end
 
-function M.qemu_check(session, addr, cb)
+local function check_now(session, addr, cb)
   if not M.active(session) then
     cb("ram", "guard disabled")
 
@@ -226,6 +230,36 @@ function M.qemu_check(session, addr, cb)
   cpu_count(session, function(n)
     sweep(0, n)
   end)
+end
+
+local function run_next()
+  local job = table.remove(queue, 1)
+
+  if not job then
+    is_checking = false
+
+    return
+  end
+
+  is_checking = true
+
+  local generation = queue_generation
+
+  check_now(job.session, job.addr, function(verdict, why)
+    pcall(job.cb, verdict, why)
+    if generation == queue_generation then
+      run_next()
+    end
+  end)
+end
+
+-- One check at a time: each may point the monitor at another core (shared gdbstub state) and points it back before
+-- it answers; two at once would translate on each other's core.
+function M.qemu_check(session, addr, cb)
+  queue[#queue + 1] = { session = session, addr = addr, cb = cb }
+  if not is_checking then
+    run_next()
+  end
 end
 
 -- A window runs to 8 KiB and can cross into a device page after the first. The
