@@ -52,11 +52,11 @@ Each tool comes from PATH, else Mason's `bin`; a missing tool prints `skip`. A F
 |---|---|---|
 | `sh tests/stored_data_paths/run.sh [--release] [--flatpak ID] [NVIM...]` | Linux, macOS | variants default, xdg, appname, appname-nested, flatpak-sim, overlap, nested; then the reset's question, piped (nothing removed) and typed through `script(1)` (removed). `--release` adds the official 0.12.2 build, SHA-256 checked; `--installed` the user's real layout, only inside `docker.sh`'s own containers; `KEEP_ROOT=1` keeps the root. |
 | `sh tests/stored_data_paths/docker.sh [--engine podman\|docker] [DISTRIBUTION...]` | Linux with podman or docker | `run.sh --release --installed` as a new user in each distribution's official image with its own Neovim, the repository read-only: arch, debian, ubuntu, fedora, rocky, opensuse, void, gentoo, nixos by default; flatpak on request (`--privileged`). `--clean` removes the containers it left, `--clean-images` the images it pulled. Logs: `$TMPDIR/nvim-paths-docker/<run>/`. |
-| `powershell -File tests\stored_data_paths\run.ps1 [-Nvim nvim] [-KeepRoot]` | Windows | the same variants without flatpak-sim; only the piped answer, since typing needs a console |
+| `powershell -ExecutionPolicy Bypass -File tests\stored_data_paths\run.ps1 [-Nvim nvim] [-KeepRoot]` | Windows | the same variants without flatpak-sim; only the piped answer, since typing needs a console |
 
 ### Windows IME helper
 
-`powershell -File tests\windows_ime_helper\run.ps1 [-FuzzSeconds 60] [-Nvim nvim]` builds and runs every test in a temporary directory and prints PASS or FAIL per step:
+`powershell -ExecutionPolicy Bypass -File tests\windows_ime_helper\run.ps1 [-FuzzSeconds 60] [-Nvim nvim]` builds and runs every test in a temporary directory and prints PASS or FAIL per step:
 
 - clang-format with `native/.clang-format`;
 - `cl /W4 /WX /sdl /analyze`, clang `-Wall -Wextra -Werror` and `--analyze`;

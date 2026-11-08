@@ -53,7 +53,13 @@ try {
     $dir = Join-Path $root $variant
     Set-Variant $dir $variant | Out-Null
     $env:PATHS_TEST_ROOT = $dir; $env:PATHS_TEST_MODE = "module"; $env:PATHS_TEST_VARIANT = $variant; $env:PATHS_TEST_FILE = $check
-    & $Nvim --headless --clean -c $runCheck 2>&1 | ForEach-Object { Add-Result "$_" }
+    $lines = @(& $Nvim --headless --clean -c $runCheck 2>&1 | ForEach-Object { Add-Result "$_" })
+    $code = $LASTEXITCODE
+    # A Neovim that crashed, or a check that ended before testing anything, fails without a FAIL line of its own.
+    if (-not ($lines -match '^FAIL ')) {
+      if ($code -ne 0) { Add-Result "FAIL [$variant] Neovim ended with code $code" }
+      elseif (-not ($lines -match '^(PASS|SKIP) ')) { Add-Result "FAIL [$variant] Neovim ended without a result" }
+    }
   }
 
   # The reset's question: a "reset" piped in is not an answer.
@@ -62,8 +68,10 @@ try {
   $sentinel = Join-Path $h "AppData\Local\nvim-data\lazy\plugin\init.lua"
   New-Item -ItemType Directory -Force (Split-Path $sentinel) | Out-Null
   Set-Content $sentinel "x"
-  "reset" | & $Nvim -l $reset 2>&1 | Out-Null
-  if (Test-Path $sentinel) { Add-Result 'PASS [gate] "reset" piped in: kept' } else { Add-Result 'FAIL [gate] "reset" piped in: removed' }
+  $said = ("reset" | & $Nvim -l $reset 2>&1 | Out-String)
+  if (-not (Test-Path $sentinel)) { Add-Result 'FAIL [gate] "reset" piped in: removed' }
+  elseif ($said -notmatch 'Nothing was removed') { Add-Result "FAIL [gate] the refusal of a piped answer never showed; it showed: $said" }
+  else { Add-Result 'PASS [gate] "reset" piped in: kept' }
 } finally {
   foreach ($n in $names) { [Environment]::SetEnvironmentVariable($n, $saved[$n]) }
   if ($KeepRoot) { "root: $root" } elseif (Test-Path $root) { cmd /c rmdir /s /q "$root" }
@@ -73,4 +81,5 @@ $passed = @($results | Where-Object { $_ -match '^PASS ' }).Count
 $failed = @($results | Where-Object { $_ -match '^FAIL ' }).Count
 $skipped = @($results | Where-Object { $_ -match '^SKIP ' }).Count
 "== $passed passed, $failed failed, $skipped skipped"
-if ($failed -gt 0) { exit 1 }
+# Nothing that passed is no success either: a harness that tested nothing must not look green.
+if ($failed -gt 0 -or $passed -eq 0) { exit 1 }

@@ -259,7 +259,9 @@ local function luals()
     "--check_out_path=" .. result,
   })
 
-  local ok, decoded = pcall(vim.json.decode, table.concat(vim.fn.readfile(result), "\n"))
+  local ok, decoded = pcall(function()
+    return vim.json.decode(table.concat(vim.fn.readfile(result), "\n"))
+  end)
 
   if not ok or type(decoded) ~= "table" then
     failed = true

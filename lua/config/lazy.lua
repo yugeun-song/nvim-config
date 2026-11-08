@@ -15,8 +15,11 @@ if not (vim.uv or vim.loop).fs_stat(lazypath) then
     vim.fn.getchar()
     os.exit(1)
   end
+end
 
-  -- The first start after :ManagedPathsReset: say what it removed once the UI is up.
+-- The first start after :ManagedPathsReset says what it did, or why it did nothing, once the UI is up. One stat
+-- at every start; the module loads only when the reset left its flag.
+if (vim.uv or vim.loop).fs_stat(require("features.maintenance.local_storage").path("state", "reset_report_unread")) then
   pcall(function()
     require("features.maintenance.stored_data_paths").announce_report()
   end)
@@ -94,11 +97,13 @@ require("lazy").setup({
 -- until Neovim loses focus.
 if vim.fn.has("win32") == 1 then
   local IDLE_MS = 5000
+  -- One namespace for every wait: the checks come one at a time, an hour apart.
+  local ns = vim.api.nvim_create_namespace("lazy_update_check_when_idle")
 
   local function when_idle(fn)
     return function(...)
       local args, done = { ... }, false
-      local ns = vim.api.nvim_create_namespace("")
+      local focus_lost
       local timer = assert(vim.uv.new_timer())
       local fire
 
@@ -110,6 +115,8 @@ if vim.fn.has("win32") == 1 then
         done = true
         vim.on_key(nil, ns)
         timer:close()
+        -- Gone already when it was the one that fired; otherwise one would be left behind per hourly check.
+        pcall(vim.api.nvim_del_autocmd, focus_lost)
         fn(unpack(args))
       end
 
@@ -136,7 +143,7 @@ if vim.fn.has("win32") == 1 then
         end
       end, ns)
 
-      vim.api.nvim_create_autocmd("FocusLost", { once = true, callback = run })
+      focus_lost = vim.api.nvim_create_autocmd("FocusLost", { once = true, callback = run })
       arm()
     end
   end

@@ -138,7 +138,19 @@ run_check() { # label, nvim, variant
     # shellcheck disable=SC2030 # local to this subshell on purpose: one variant's settings never leak into the next
     export PATHS_TEST_ROOT="$dir" PATHS_TEST_MODE=module PATHS_TEST_VARIANT="$3" PATHS_TEST_FILE="$CHECK"
     "$2" --headless --clean -c "$RUN_CHECK" </dev/null 2>&1
-  ) | sed "s|^|$1 |" | tee -a "$LOG"
+    echo "$?" >"$dir/exit_code"
+  ) | sed "s|^|$1 |" | tee -a "$LOG" "$dir/out.txt"
+
+  # A Neovim that crashed, or a check that ended before testing anything, fails without a FAIL line of its own.
+  if ! grep -qE '(^| )FAIL ' "$dir/out.txt"; then
+    code=$(cat "$dir/exit_code" 2>/dev/null || echo none)
+
+    if [ "$code" != 0 ]; then
+      say "$1 FAIL [$3] Neovim ended with code $code"
+    elif ! grep -qE '(^| )(PASS|SKIP) ' "$dir/out.txt"; then
+      say "$1 FAIL [$3] Neovim ended without a result"
+    fi
+  fi
 }
 
 # script(1) gives the command a terminal and types what comes on its stdin, as a person at that terminal would.
@@ -181,12 +193,26 @@ run_gate() { # label, nvim
           done
           printf '%s\n' "$answer"
         } | in_pty "$cmd" >"$out" 2>&1
+        echo "$?" >"$dir/pty_status"
       fi
     )
 
-    if [ "$answer" != piped ] && ! grep -q 'Type "reset"' "$out"; then
+    if [ "$answer" != piped ] && [ "$(cat "$dir/pty_status" 2>/dev/null)" = 77 ]; then
       say "$1 SKIP [gate] no pseudo-terminal here (script(1) from util-linux, or macOS's)"
       return
+    fi
+
+    # What the script says matters as much as what it leaves: the refusal of a piped answer, and the question.
+    if [ "$answer" = piped ]; then
+      shown='Nothing was removed' expected_text="the refusal of a piped answer"
+    else
+      shown='Type "reset"' expected_text="the question"
+    fi
+
+    if ! grep -q "$shown" "$out"; then
+      say "$1 FAIL [gate] $answer: $expected_text never showed; it showed:"
+      sed 's/^/    | /' "$out" | tee -a "$LOG"
+      continue
     fi
 
     case "$answer" in
@@ -275,4 +301,5 @@ failed=$(grep -cE '(^| )FAIL ' "$LOG")
 skipped=$(grep -cE '(^| )SKIP ' "$LOG")
 
 echo "== $passed passed, $failed failed, $skipped skipped"
-[ "$failed" -eq 0 ]
+# Nothing that passed is no success either: a harness that tested nothing must not look green.
+[ "$failed" -eq 0 ] && [ "$passed" -gt 0 ]

@@ -233,9 +233,11 @@ for name in $names; do
   image_present "$image" || echo "$image" >>"$PULLED"
   echo "== $name ($image) as $current"
 
+  # label=disable: on an SELinux host (Fedora, RHEL) the container cannot read the repository's mount otherwise, and
+  # relabelling it (:z) would change the user's checkout.
   # shellcheck disable=SC2086 # opts is a word list on purpose
   "$engine" run --rm --name "$current" --label "$LABEL" --label "org.nvim-config.run=$RUN" \
-    --pull=missing --security-opt no-new-privileges --pids-limit 4096 $opts \
+    --pull=missing --security-opt no-new-privileges --security-opt label=disable --pids-limit 4096 $opts \
     -e SETUP="$setup" -e ARGS="$args" -v "$REPO:/cfg:ro" "$image" sh -c "$INNER" >"$log" 2>&1
   rc=$?
   current=""

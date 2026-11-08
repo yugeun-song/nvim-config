@@ -241,7 +241,7 @@ local function handle_frame(op, payload)
   if op == 1 then
     local ok, msg = pcall(vim.json.decode, payload)
 
-    if ok and msg and msg.cmd == "DISPATCH" and msg.evt == "READY" then
+    if ok and type(msg) == "table" and msg.cmd == "DISPATCH" and msg.evt == "READY" then
       S.status = "ready"
       S.errors = 0
       if S.connect_timer then

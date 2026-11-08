@@ -17,8 +17,9 @@ The configuration writes for itself only into `nvim-config` inside `stdpath(kind
 | state | `open_folder_history` | folders opened (Projects) |
 | state | `colorscheme_choice` | the default colorscheme confirmed in `<leader>uC` |
 | state | `reset_report.txt` | what the last reset removed |
+| state | `reset_report_unread` | the last reset's report, until a start has shown it |
 | state | `reset_confirmation` | the confirmation a typed `reset` leaves for the reset |
-| run, else state | `running_instances` | running Neovims with a UI, for `scripts/open-at.lua` |
+| run, else state | `running_instances` | running Neovims with a UI, for `scripts/open-at.lua` (run: in a directory per `NVIM_APPNAME`) |
 | data | `windows_ime_helper` | the Windows IME helper's builds |
 | data | `registered_program_shims` | one shim per registered program |
 | data | `language_server_attach_rules.json` | language server attach rules |
@@ -46,14 +47,14 @@ Its first lines say what decided that layout: `NVIM_APPNAME`, each `XDG_*_HOME` 
 
 ## Back to a fresh clone
 
-The reset has no key, on purpose. `:ManagedPathsReset` shows the list and asks for `reset` to be typed, quits as `:confirm qa` does, and once this Neovim (and the Neovide around it) has exited, removes every line marked `remove` through `nvim -l scripts/reset_to_fresh_clone.lua`. The next start installs the plugins, Mason's packages and the parsers again and says what was removed. `:ManagedPathsReset configuration` removes only this configuration's own files.
+The reset has no key, on purpose. `:ManagedPathsReset` shows the list and asks for `reset` to be typed, quits as `:confirm qa` does, and once this Neovim (and the Neovide around it) has exited, removes every line marked `remove` through `nvim -l scripts/reset_to_fresh_clone.lua`. The next start installs the plugins, Mason's packages and the parsers again and says what was removed, or why nothing was. `:ManagedPathsReset configuration` removes only this configuration's own files.
 
 - It refuses while another Neovim with a UI runs.
 - Only `reset` typed at the prompt removes anything: keys already waiting (a mapping, a macro, typeahead) are set aside, there is no default or completion, and the answer leaves no history. The script removes only with the one-time confirmation that prompt leaves.
 - A directory is renamed before it is removed, so one a running program still holds (Windows refuses the rename) stays whole rather than half gone, and is reported.
 - Never removed: the configuration itself (with `lazy-lock.json`) and any Neovim directory inside it, Neovide's settings link (remove it by hand), anything outside the paths listed.
 
-From a terminal, with every Neovim closed, `nvim -l scripts/reset_to_fresh_clone.lua` lists and asks the same. No flag skips the question, and an answer from a pipe or a file is not taken.
+From a terminal, with every Neovim closed, `nvim -l scripts/reset_to_fresh_clone.lua` lists and asks the same. No flag skips the question, and an answer from a pipe or a file is not taken; mintty (Git Bash, MSYS2) hands programs a pipe, not a console, so use Windows Terminal there, or `:ManagedPathsReset`.
 
 ## Keys and commands
 

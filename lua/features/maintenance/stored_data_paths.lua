@@ -199,11 +199,12 @@ local function project_items()
   local ok, db = pcall(require, "features.languages.c_and_cpp.msvc_toolchain.compile_database")
 
   for _, rec in ipairs(ok and db.databases and db.databases() or {}) do
-    local st = uv.fs_stat(rec.db)
+    local st = uv.fs_lstat(rec.db)
 
     if st then
-      -- Rewritten since (by CMake, say): no longer this configuration's file.
-      local ours = not rec.generated or st.mtime.sec <= rec.generated + 5
+      -- Rewritten since (by CMake, say), replaced by a link, or recorded without the time it was written: not
+      -- provably this configuration's file.
+      local ours = st.type == "file" and type(rec.generated) == "number" and st.mtime.sec <= rec.generated + 5
 
       items[#items + 1] = {
         group = "In projects (:MsvcCompileDb)",
@@ -212,7 +213,7 @@ local function project_items()
         action = ours and "remove" or "keep",
         kind = "project",
         note = ours and "generated from " .. vim.fs.basename(rec.project or "?")
-          or "rewritten after :MsvcCompileDb wrote it; left alone",
+          or "not provably the one :MsvcCompileDb wrote; left alone",
       }
     end
   end
@@ -397,11 +398,16 @@ function safe(item)
     for _, kind in ipairs(storage.KINDS) do
       local ok, dir = pcall(vim.fn.stdpath, kind)
 
+      if key(path) == key(storage.location(kind)) then
+        return true, nil
+      end
+
+      -- "run" holds every NVIM_APPNAME's directory: only this one's, above, is the reset's.
       if
         ok
         and type(dir) == "string"
         and key(dir) == parent
-        and (base == storage.NAME or storage.old_names(kind)[base])
+        and (base == storage.NAME and kind ~= "run" or storage.old_names(kind)[base])
       then
         return true, nil
       end
@@ -431,7 +437,7 @@ function M.configuration_items()
       end
 
       for name, note in pairs(names) do
-        local path = norm(vim.fs.joinpath(dir, name))
+        local path = norm(name == storage.NAME and storage.location(kind) or vim.fs.joinpath(dir, name))
 
         if not seen[key(path)] and exists(path) then
           seen[key(path)] = true
@@ -752,6 +758,11 @@ function M.report_file()
   return require("features.maintenance.local_storage").path("state", "reset_report.txt")
 end
 
+-- Left by the reset beside its report; the next start shows the report and removes it.
+function M.report_unread_flag()
+  return require("features.maintenance.local_storage").path("state", "reset_report_unread")
+end
+
 -- Other running Neovims of this configuration: those with a UI record themselves
 -- (lua/features/editing/open_in_running_instance.lua); one started headless is not seen.
 ---@param ignore? integer[]
@@ -763,18 +774,12 @@ function M.other_instances(ignore)
   end
 
   local ok, ro = pcall(require, "features.editing.open_in_running_instance")
-  local dir = ok and ro.focus_dir and ro.focus_dir()
   local found = {}
 
-  if not dir then
-    return found
-  end
-
-  for name in vim.fs.dir(dir) do
-    local pid = tonumber(name)
-
-    if pid and not skip[pid] and uv.kill(pid, 0) == 0 then
-      found[#found + 1] = pid
+  -- targets() keeps only the records whose Neovim still answers at its address.
+  for _, target in ipairs(ok and ro.targets and ro.targets() or {}) do
+    if not skip[target.pid] then
+      found[#found + 1] = target.pid
     end
   end
 
@@ -1055,11 +1060,13 @@ function M.reset(scope)
   vim.notify("Reset cancelled: Neovim did not quit", vim.log.levels.WARN, { title = "Managed paths" })
 end
 
--- After a reset Neovim starts as a fresh clone; config/lazy.lua calls this as it installs lazy.nvim again.
+-- The first start after a reset says what it did, or why it did nothing; config/lazy.lua calls this when the
+-- reset left its flag.
 function M.announce_report()
   local report = M.report_file()
   local ok, lines = pcall(vim.fn.readfile, report)
 
+  os.remove(M.report_unread_flag())
   if not ok or #lines == 0 then
     return
   end

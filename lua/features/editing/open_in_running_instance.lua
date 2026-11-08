@@ -28,8 +28,25 @@ local function record()
   end
 end
 
+-- Whether a Neovim answers at addr: a record outlives a Neovim that was killed (no VimLeavePre), and Windows reuses
+-- its process id for any other program.
+local function answers(addr)
+  local mode = addr:find("^[%w%.%-]+:%d+$") and "tcp" or "pipe"
+  local ok, channel = pcall(vim.fn.sockconnect, mode, addr, { rpc = true })
+
+  if not ok or channel == 0 then
+    return false
+  end
+
+  pcall(vim.fn.chanclose, channel)
+
+  return true
+end
+
+-- The running Neovims of this configuration with a UI, the last focused first. Stale records are removed.
 function M.targets()
   local dir, found = M.focus_dir(), {}
+  local own = vim.uv.os_getpid()
 
   for name in vim.fs.dir(dir) do
     local pid = tonumber(name)
@@ -40,7 +57,11 @@ function M.targets()
       local ok, lines = pcall(vim.fn.readfile, path)
 
       if stat and ok and lines[1] and lines[1] ~= "" then
-        found[#found + 1] = { addr = lines[1], pid = pid, mtime = stat.mtime.sec * 1e9 + stat.mtime.nsec }
+        if pid == own or answers(lines[1]) then
+          found[#found + 1] = { addr = lines[1], pid = pid, mtime = stat.mtime.sec * 1e9 + stat.mtime.nsec }
+        else
+          vim.uv.fs_unlink(path)
+        end
       end
     elseif pid then
       vim.uv.fs_unlink(path)

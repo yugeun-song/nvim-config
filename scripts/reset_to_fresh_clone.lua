@@ -37,7 +37,9 @@ local function report(head, lines)
   local file = mp.report_file()
 
   vim.fn.mkdir(vim.fs.dirname(file), "p")
-  pcall(vim.fn.writefile, vim.list_extend({ head }, lines or {}), file)
+  if pcall(vim.fn.writefile, vim.list_extend({ head }, lines or {}), file) then
+    pcall(vim.fn.writefile, {}, mp.report_unread_flag())
+  end
 end
 
 if #after > 0 then
