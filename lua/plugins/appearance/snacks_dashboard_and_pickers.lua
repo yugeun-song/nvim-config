@@ -36,10 +36,12 @@ return {
           files = {
             hidden = true,
             ignored = true,
+            exclude = { ".cache" },
           },
           grep = {
             hidden = true,
             ignored = true,
+            exclude = { ".cache" },
           },
         },
       },
