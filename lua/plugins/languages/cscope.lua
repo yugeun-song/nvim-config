@@ -35,6 +35,12 @@ return {
 
       ---@diagnostic disable-next-line: duplicate-set-field
       cscope.get_result = function(op_n, op_s, symbol, hide_log)
+        local file = vim.bo.buftype == "" and vim.api.nvim_buf_get_name(0) or ""
+        local from = file ~= "" and vim.fs.dirname(file) or vim.fn.getcwd()
+        local database = vim.fs.find("cscope.out", { upward = true, path = from })[1]
+
+        vim.g.cscope_maps_db_file = database and database .. "::@" or nil
+
         local rc, hits = get_result(op_n, op_s, symbol, hide_log)
 
         if op_s ~= "g" or not hits then

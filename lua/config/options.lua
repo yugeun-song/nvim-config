@@ -4,7 +4,7 @@ opt.number = true
 opt.relativenumber = false
 opt.modeline = false
 opt.whichwrap:append("h,l,<,>,[,]")
-opt.tags = "./tags;,tags;"
+opt.tags = "./tags;"
 opt.swapfile = false
 opt.spelllang = { "en", "cjk" }
 vim.o.guicursor = "n-v-c:block,i-ci-ve:ver25,r-cr:hor20,o:hor50,a:blinkwait700-blinkoff400-blinkon250-Cursor/lCursor"

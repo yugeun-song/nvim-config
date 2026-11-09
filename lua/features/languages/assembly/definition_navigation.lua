@@ -392,8 +392,7 @@ local function merged(...)
   return items
 end
 
--- cscope answers from every database of the session; another tree's definitions are not this tree's.
-local function cscope_hits(find, word, buf)
+local function cscope_hits(find, word)
   local ok, cscope = pcall(require, "cscope")
 
   if not ok then
@@ -402,23 +401,7 @@ local function cscope_hits(find, word, buf)
 
   local ran, _, hits = pcall(cscope.get_result, cscope.op_s_n[find], find, word, true)
 
-  if not ran or not hits then
-    return {}
-  end
-
-  local database =
-    vim.fs.find("cscope.out", { upward = true, path = vim.fs.dirname(vim.api.nvim_buf_get_name(buf)) })[1]
-
-  if not database then
-    return hits
-  end
-
-  local root = comparable(vim.fs.dirname(database)):gsub("/?$", "/")
-  local here = vim.tbl_filter(function(hit)
-    return vim.startswith(comparable(hit.filename), root)
-  end, hits)
-
-  return #here > 0 and here or hits
+  return ran and hits or {}
 end
 
 -- A word on a line whose operation is no assembler macro is an instruction's operand. Only with tags to
@@ -502,7 +485,7 @@ local function macro_made(buf, word, defined_in)
     local macro = line:match("^%s*(_*%u[%u%d_]*)%s*%(")
 
     return macro ~= nil and line:find(pattern, #macro + 1) ~= nil
-  end, cscope_hits("s", word, buf))
+  end, cscope_hits("s", word))
 end
 
 -- Nothing that may be a real definition is dropped: a tier stops the search only when it cannot be
@@ -536,7 +519,7 @@ local function definition_items(buf, word, cursor)
   end
 
   local word_pattern = whole_word(word)
-  local hits = M.real_definitions(cscope_hits("g", word, buf), word)
+  local hits = M.real_definitions(cscope_hits("g", word), word)
   local includes = included_files(code)
 
   -- Outside assembler, spelling proves less: .name = is a C initializer, and C assigns as assembler defines.
