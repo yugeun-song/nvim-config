@@ -37,9 +37,7 @@ local COMPILERS = {
         "cl",
         "/nologo",
         -- The object beside the build's own temporary .exe: another Neovim may be building at the same time.
-        "/Fo"
-          .. out:sub(1, -5)
-          .. ".obj",
+        "/Fo" .. out:sub(1, -5) .. ".obj",
         "/O2",
         "/MT",
         "/W4",
