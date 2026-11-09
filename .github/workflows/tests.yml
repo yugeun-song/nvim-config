@@ -1,5 +1,5 @@
 # The tests that need a system this repository is not developed on: macOS, Linux natively, every desktop
-# distribution in its own official container (tests/stored_data_paths/docker.sh, podman), and Windows. Runs on every
+# distribution in its own official container (tests/managed_paths/docker.sh, podman), and Windows. Runs on every
 # push and by hand (Actions > tests > Run workflow). A failure leaves its output as an error annotation too
 # (.github/scripts/report_failure_as_annotation.sh), readable without signing in.
 name: tests
@@ -29,7 +29,7 @@ jobs:
           if [ "$RUNNER_OS" = macOS ]; then brew install neovim; else sudo apt-get update && sudo apt-get install -y neovim; fi
       - name: Path tests
         run: |
-          sh tests/stored_data_paths/run.sh --release > "$RUNNER_TEMP/paths.log" 2>&1 && status=0 || status=$?
+          sh tests/managed_paths/run.sh --release > "$RUNNER_TEMP/paths.log" 2>&1 && status=0 || status=$?
           cat "$RUNNER_TEMP/paths.log"
           if [ "$status" -ne 0 ]; then
             sh .github/scripts/report_failure_as_annotation.sh "path tests on ${{ matrix.os }}" "$RUNNER_TEMP/paths.log"
@@ -50,7 +50,7 @@ jobs:
       # away after the job.
       - name: Path tests in ${{ matrix.distribution }}
         run: |
-          sudo --preserve-env=TMPDIR sh tests/stored_data_paths/docker.sh --engine podman ${{ matrix.distribution }} \
+          sudo --preserve-env=TMPDIR sh tests/managed_paths/docker.sh --engine podman ${{ matrix.distribution }} \
             && status=0 || status=$?
           if [ "$status" -ne 0 ]; then
             log=$(ls -t "${TMPDIR:-/tmp}"/nvim-paths-docker/*/${{ matrix.distribution }}.log 2>/dev/null | head -n 1)
@@ -58,7 +58,7 @@ jobs:
             exit "$status"
           fi
       - if: always()
-        run: sudo sh tests/stored_data_paths/docker.sh --engine podman --clean
+        run: sudo sh tests/managed_paths/docker.sh --engine podman --clean
 
   stored-data-paths-windows:
     runs-on: windows-latest
@@ -81,7 +81,7 @@ jobs:
         shell: pwsh
         run: |
           $log = Join-Path $env:RUNNER_TEMP "paths.log"
-          powershell -NoProfile -File tests\stored_data_paths\run.ps1 -Nvim $env:NVIM_EXE *> $log
+          powershell -NoProfile -File tests\managed_paths\run.ps1 -Nvim $env:NVIM_EXE *> $log
           $status = $LASTEXITCODE
           Get-Content $log
           $failed = Select-String -Path $log -Pattern '^FAIL' -Quiet

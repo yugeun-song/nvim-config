@@ -266,7 +266,7 @@ hi("@constant.macro.cpp", { fg = p.purple })
 hi("@function.macro.c", { fg = p.indigo })
 hi("@function.macro.cpp", { fg = p.indigo })
 
--- Assembly: tree-sitter-asm keeps comments and strings; lua/features/languages/assembly/syntax_highlighting.lua colours
+-- Assembly: tree-sitter-asm keeps comments and strings; lua/features/lang/asm/syntax_highlighting.lua colours
 -- the rest.
 hi("@string.asm", { fg = p.green })
 

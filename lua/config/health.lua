@@ -1,6 +1,6 @@
 -- :checkhealth config: what every feature stands on. Each feature checks itself next to its code
 -- (lua/features/*/health.lua, :checkhealth features.*); :FeatureStatus runs both.
-local status = require("features.feature_status")
+local status = require("features.util.feature_status")
 
 local M = {}
 

@@ -10,7 +10,7 @@ The rules every change follows, and how to check and test one.
 ## Naming and style
 
 - Names say what a thing does and are intuitive first. Long is fine; a name that is already clear is not lengthened.
-- Lua files and modules are snake_case and named by purpose: `lua/features/<purpose>/<what_it_does>.lua` ([structure](structure.md)).
+- Lua files and modules are snake_case and named by what they do, in LazyVim's categories: a spec at `lua/plugins/<category>/<name>.lua`, its code at `lua/features/<category>/<name>.lua` or in `lua/features/<category>/<name>/` ([structure](structure.md)).
 - Comments are compact and appear only where the code alone is unclear or a judgment was made; they say why.
 - One comment syntax per file; in C that is `//`.
 - Lua: StyLua (`stylua.toml`: 2 spaces, 120 columns). A blank line follows a statement that spans several lines and a run of `local` declarations, and precedes `return`.
@@ -40,19 +40,19 @@ Each tool comes from PATH, else Mason's `bin`; a missing tool prints `skip`. A F
 
 ## Credits
 
-`nvim -l scripts/update_credits.lua --write` rewrites the block between `<!-- credits:start -->` and `<!-- credits:end -->` in [credits](credits.md): plugins from `lazy-lock.json` and their LICENSE files, Mason packages from `mason_packages.lua`, LazyVim's defaults and Mason's registry, and the script's own lists (code taken in, programs run, the closing notes). `--check` fails when the block is out of date. Without the plugins installed or Mason's registry downloaded it prints `skipped`.
+`nvim -l scripts/update_credits.lua --write` rewrites the block between `<!-- credits:start -->` and `<!-- credits:end -->` in [credits](credits.md): plugins from `lazy-lock.json` and their LICENSE files, Mason packages from `lua/plugins/lsp/mason.lua`, LazyVim's defaults and Mason's registry, and the script's own lists (code taken in, programs run, the closing notes). `--check` fails when the block is out of date. Without the plugins installed or Mason's registry downloaded it prints `skipped`.
 
 ## Tests
 
 ### Stored data paths
 
-`tests/stored_data_paths/check.lua` holds each Neovim to its directory rules and `lua/features/maintenance/stored_data_paths.lua` to what it lists and what a reset removes and keeps. Every variant runs in a throwaway root that `HOME` and every directory point into; nothing outside it is removed.
+`tests/managed_paths/check.lua` holds each Neovim to its directory rules and `lua/features/util/managed_paths.lua` to what it lists and what a reset removes and keeps. Every variant runs in a throwaway root that `HOME` and every directory point into; nothing outside it is removed.
 
 | Command | System | Runs |
 |---|---|---|
-| `sh tests/stored_data_paths/run.sh [--release] [--flatpak ID] [NVIM...]` | Linux, macOS | variants default, xdg, appname, appname-nested, flatpak-sim, overlap, nested; then the reset's question, piped (nothing removed) and typed through `script(1)` (removed). `--release` adds the official 0.12.2 build, SHA-256 checked; `--installed` the user's real layout, only inside `docker.sh`'s own containers; `KEEP_ROOT=1` keeps the root. |
-| `sh tests/stored_data_paths/docker.sh [--engine podman\|docker] [DISTRIBUTION...]` | Linux with podman or docker | `run.sh --release --installed` as a new user in each distribution's official image with its own Neovim, the repository read-only: arch, debian, ubuntu, fedora, rocky, opensuse, void, gentoo, nixos by default; flatpak on request (`--privileged`). `--clean` removes the containers it left, `--clean-images` the images it pulled. Logs: `$TMPDIR/nvim-paths-docker/<run>/`. |
-| `powershell -ExecutionPolicy Bypass -File tests\stored_data_paths\run.ps1 [-Nvim nvim] [-KeepRoot]` | Windows | the same variants without flatpak-sim; only the piped answer, since typing needs a console |
+| `sh tests/managed_paths/run.sh [--release] [--flatpak ID] [NVIM...]` | Linux, macOS | variants default, xdg, appname, appname-nested, flatpak-sim, overlap, nested; then the reset's question, piped (nothing removed) and typed through `script(1)` (removed). `--release` adds the official 0.12.2 build, SHA-256 checked; `--installed` the user's real layout, only inside `docker.sh`'s own containers; `KEEP_ROOT=1` keeps the root. |
+| `sh tests/managed_paths/docker.sh [--engine podman\|docker] [DISTRIBUTION...]` | Linux with podman or docker | `run.sh --release --installed` as a new user in each distribution's official image with its own Neovim, the repository read-only: arch, debian, ubuntu, fedora, rocky, opensuse, void, gentoo, nixos by default; flatpak on request (`--privileged`). `--clean` removes the containers it left, `--clean-images` the images it pulled. Logs: `$TMPDIR/nvim-paths-docker/<run>/`. |
+| `powershell -ExecutionPolicy Bypass -File tests\managed_paths\run.ps1 [-Nvim nvim] [-KeepRoot]` | Windows | the same variants without flatpak-sim; only the piped answer, since typing needs a console |
 
 ### Windows IME helper
 

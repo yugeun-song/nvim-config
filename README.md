@@ -4,13 +4,13 @@ A [LazyVim](https://www.lazyvim.org/)-based Neovim configuration for Linux kerne
 
 ## Highlights
 
-- **C and the kernel**: clangd, cscope and `tags` tuned for big trees; indentation from `.editorconfig` or `.clang-format`, no autoformat; every `#if` branch on request; assembly, linker scripts and device trees highlighted; CUDA and Visual Studio projects in clangd. [Languages](docs/features/languages.md)
-- **Debugger on `gdb -i dap`** for programs, QEMU user mode and Linux kernels behind a QEMU gdbstub, with registers, memory, disassembly and control-flow panels; LLDB on macOS and Windows; Python, Rust, JS/TS and Elixir through their own adapters. [Debugging](docs/features/debugging.md)
-- **Attach rules** turn a language server off per file or directory. [Language servers](docs/features/language_servers.md)
-- **Korean input**: English on leaving Insert mode, `한`/`EN` and Caps Lock in the statusline, a Dubeolsik `langmap`. [Input method](docs/features/input_method.md)
-- **Open Folder** in yazi with sessions, and files sent into the running Neovim from other programs. [Editing](docs/features/editing.md)
-- **`spaceduck-remix`**, a dashboard with the system's logo, the ChKeys keystroke display, a Neovide profile. [Appearance](docs/features/appearance.md)
-- **Self-describing**: `<leader>sK` lists every key; `:FeatureStatus` shows every feature as available, not supported here, or blocked and why; `:ManagedPaths` shows where everything is kept. [Help](docs/features/help.md), [maintenance](docs/features/maintenance.md)
+- **C and the kernel**: clangd, cscope and `tags` tuned for big trees; indentation from `.editorconfig` or `.clang-format`, no autoformat; every `#if` branch on request; assembly, linker scripts and device trees highlighted; CUDA and Visual Studio projects in clangd. [Languages](docs/features/lang.md)
+- **Debugger on `gdb -i dap`** for programs, QEMU user mode and Linux kernels behind a QEMU gdbstub, with registers, memory, disassembly and control-flow panels; LLDB on macOS and Windows; Python, Rust, JS/TS and Elixir through their own adapters. [Debugging](docs/features/dap.md)
+- **Attach rules** turn a language server off per file or directory. [Language servers](docs/features/lsp.md#attach-rules)
+- **Korean input**: English on leaving Insert mode, `한`/`EN` and Caps Lock in the statusline, a Dubeolsik `langmap`. [Korean input](docs/features/editor.md#korean-input)
+- **Open Folder** in yazi with sessions, and files sent into the running Neovim from other programs. [Editor](docs/features/editor.md#editing)
+- **`spaceduck-remix`**, a dashboard with the system's logo, the ChKeys keystroke display, a Neovide profile. [UI](docs/features/ui.md)
+- **Self-describing**: `<leader>sK` lists every key; `:FeatureStatus` shows every feature as available, not supported here, or blocked and why; `:ManagedPaths` shows where everything is kept. [Key cheat sheet](docs/features/editor.md#key-cheat-sheet), [utilities](docs/features/util.md)
 
 ## Supported systems
 
@@ -49,7 +49,7 @@ The first start installs the plugins, parsers and Mason packages; restart once, 
 | Document | Contents |
 |---|---|
 | [installation](docs/installation.md) | requirements per feature and per system, first start, Neovide |
-| [features](docs/structure.md#purposes) | one page per purpose: what it does, keys and commands, what it needs, per-system support |
+| [features](docs/structure.md#categories) | one page per LazyVim category (ui, editor, lang, lsp, dap, util): what it does, keys and commands, what it needs, per-system support |
 | [keymaps](docs/keymaps.md) | every key this configuration adds |
 | [structure](docs/structure.md) | layout, why it is laid out so, where its files are kept, lazy loading |
 | [development](docs/development.md) | rules, `scripts/check_repository.lua`, tests, CI |

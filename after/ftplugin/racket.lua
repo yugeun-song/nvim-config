@@ -2,4 +2,4 @@
 vim.keymap.set("i", "'", "'", { buffer = true })
 vim.keymap.set("i", "`", "`", { buffer = true })
 
-require("features.languages.lisp.repl").map_keys("racket", "REPL: save, run the module and enter it")
+require("features.lang.lisp.repl").map_keys("racket", "REPL: save, run the module and enter it")

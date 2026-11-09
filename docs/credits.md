@@ -7,11 +7,11 @@ The configuration's own files are 0BSD ([`LICENSE`](../LICENSE)); files taken fr
 Code and assets taken into this repository (notices in `THIRD-PARTY-NOTICES`):
 
 - [LazyVim starter](https://github.com/LazyVim/starter) (Apache-2.0): `init.lua`, `lua/config/lazy.lua`, `stylua.toml`.
-- [LazyVim](https://github.com/LazyVim/LazyVim) (Apache-2.0): parts of `lua/config/autocmds.lua` and `lua/plugins/debugging/other_language_debuggers.lua`.
+- [LazyVim](https://github.com/LazyVim/LazyVim) (Apache-2.0): parts of `lua/config/autocmds.lua`, `lua/plugins/lang/python.lua` and `lua/plugins/lang/typescript.lua`.
 - [spaceduck](https://github.com/pineapplegiant/spaceduck) by Guillermo Rodriguez (MIT): the palette and terminal colours of `colors/spaceduck-remix.lua`, an unofficial derivative.
-- [nvim-hlslens](https://github.com/kevinhwang91/nvim-hlslens) by kevinhwang91 (BSD-3-Clause): the lens override and search keys in `lua/plugins/appearance/search_match_count.lua`.
-- [kanagawa.nvim](https://github.com/rebelot/kanagawa.nvim) by Tommaso Laurenzi (MIT): the float and gutter recipes in `lua/plugins/appearance/colorscheme.lua`.
-- [fastfetch](https://github.com/fastfetch-cli/fastfetch) (MIT): the system logos in `lua/features/appearance/dashboard_header.lua`.
+- [nvim-hlslens](https://github.com/kevinhwang91/nvim-hlslens) by kevinhwang91 (BSD-3-Clause): the lens override and search keys in `lua/plugins/ui/search_count.lua`.
+- [kanagawa.nvim](https://github.com/rebelot/kanagawa.nvim) by Tommaso Laurenzi (MIT): the float and gutter recipes in `lua/plugins/colorscheme.lua`.
+- [fastfetch](https://github.com/fastfetch-cli/fastfetch) (MIT): the system logos in `lua/features/ui/dashboard.lua`.
 - [Simple Icons](https://simpleicons.org) (CC0-1.0): the logos' brand colours.
 - [presence.nvim](https://github.com/andweeb/presence.nvim) by andweeb: the public Discord application ID and its `neovim` art.
 
@@ -68,7 +68,7 @@ Plugins (`lazy-lock.json`; author from the LICENSE, else the repository owner):
 | [ts-comments.nvim](https://github.com/folke/ts-comments.nvim) | folke | Apache-2.0 |
 | [which-key.nvim](https://github.com/folke/which-key.nvim) | folke | Apache-2.0 |
 
-Mason packages (`lua/plugins/external_programs/mason_packages.lua` and LazyVim's defaults):
+Mason packages (the specs in `lua/plugins/` and LazyVim's defaults):
 
 | Package | License |
 |---|---|

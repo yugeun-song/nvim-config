@@ -1,4 +1,4 @@
--- Neovim back to a fresh clone of this configuration (lua/features/maintenance/stored_data_paths.lua says what
+-- Neovim back to a fresh clone of this configuration (lua/features/util/managed_paths.lua says what
 -- that removes).
 --   nvim -l scripts/reset_to_fresh_clone.lua
 --       lists where everything is; in a terminal it then asks for "reset" to be typed and removes only on that.
@@ -11,7 +11,7 @@ local script_dir = vim.fs.dirname(vim.fs.normalize(vim.fn.fnamemodify(arg[0], ":
 
 package.path = vim.fs.joinpath(script_dir, "..", "lua", "?.lua") .. ";" .. package.path
 
-local mp = require("features.maintenance.stored_data_paths")
+local mp = require("features.util.managed_paths")
 
 local after, token, scope = {}, nil, "all"
 

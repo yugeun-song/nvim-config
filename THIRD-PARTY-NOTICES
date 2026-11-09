@@ -17,27 +17,28 @@ init.lua, lua/config/lazy.lua
     Modified from LazyVim/starter (https://github.com/LazyVim/starter).
     Apache License 2.0, see LICENSES/Apache-2.0.txt.
 
-lua/features/appearance/dashboard_header.lua (the system logos in `logos`)
+lua/features/ui/dashboard.lua (the system logos in `logos`)
     The small builtin logos of fastfetch 2.70.0
     (https://github.com/fastfetch-cli/fastfetch), without their colour codes.
     MIT License, reproduced at the end of this file.
 
 lua/config/autocmds.lua (the augroup helper and the wrap_spell autocmd),
-lua/plugins/debugging/other_language_debuggers.lua (the nvim-dap adapter and launch configurations)
+lua/plugins/lang/python.lua (the nvim-dap-python setup and its keys),
+lua/plugins/lang/typescript.lua (the js-debug adapters and launch configurations)
     Adapted from LazyVim (https://github.com/LazyVim/LazyVim).
     Apache License 2.0, see LICENSES/Apache-2.0.txt.
 
-lua/plugins/appearance/search_match_count.lua (the lens override and the search keys)
+lua/plugins/ui/search_count.lua (the lens override and the search keys)
     Adapted from the README of nvim-hlslens by kevinhwang91
     (https://github.com/kevinhwang91/nvim-hlslens). BSD 3-Clause License,
     reproduced at the end of this file.
 
-lua/plugins/appearance/colorscheme.lua (kanagawa's transparent floats and gutter)
+lua/plugins/colorscheme.lua (kanagawa's transparent floats and gutter)
     The recipes in the README of kanagawa.nvim by Tommaso Laurenzi
     (https://github.com/rebelot/kanagawa.nvim). MIT License, reproduced at the
     end of this file.
 
-lua/features/integrations/discord_rich_presence.lua (the default CLIENT_ID and the "neovim" asset)
+lua/features/util/discord_rich_presence.lua (the default CLIENT_ID and the "neovim" asset)
     The public Discord application of presence.nvim by andweeb
     (https://github.com/andweeb/presence.nvim): an identifier, not code, used as
     it is by that plugin's users. Discord serves the art; none of it is shipped

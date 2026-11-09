@@ -1,4 +1,4 @@
--- lua/features/windows_platform/windows_ime_helper.lua's own checks, with no helper process involved: what it accepts
+-- lua/features/util/windows/ime_helper.lua's own checks, with no helper process involved: what it accepts
 -- from a watcher, which files it takes for its build, how it reads an exit status, how it reports, and that it does
 -- nothing at all off Windows.
 --   nvim -l tests/windows_ime_helper/bridge.lua      (any system)
@@ -6,7 +6,7 @@ local repo = vim.fs.dirname(vim.fs.dirname(vim.fs.dirname(vim.fs.normalize(vim.f
 
 package.path = vim.fs.joinpath(repo, "lua", "?.lua") .. ";" .. package.path
 
-local ime_helper = require("features.windows_platform.windows_ime_helper")
+local ime_helper = require("features.util.windows.ime_helper")
 local failures = 0
 local WIN = vim.fn.has("win32") == 1
 
@@ -47,7 +47,7 @@ check(not valid("C:/elsewhere/windows_ime_helper-1-2.exe"), "outside the build d
 check(
   not valid(
     vim.fs.joinpath(
-      require("features.maintenance.local_storage").path("data", "windows_ime_helper"),
+      require("features.util.storage").path("data", "windows_ime_helper"),
       "windows_ime_helper-1-2.exe.missing"
     )
   ),
@@ -57,7 +57,7 @@ check(
 check(
   not valid(
     vim.fs.joinpath(
-      require("features.maintenance.local_storage").path("data", "windows_ime_helper"),
+      require("features.util.storage").path("data", "windows_ime_helper"),
       "windows_ime_helper-dead-beef.exe"
     )
   ),
@@ -109,7 +109,7 @@ if not WIN then
   check(path == nil and reason == "Windows only", "no helper off Windows")
   check(ime_helper.watch(function() end) == nil, "no watcher off Windows")
   check(
-    not vim.uv.fs_stat(require("features.maintenance.local_storage").path("data", "windows_ime_helper")),
+    not vim.uv.fs_stat(require("features.util.storage").path("data", "windows_ime_helper")),
     "nothing built off Windows"
   )
 end

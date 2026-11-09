@@ -20,24 +20,23 @@ end
 vim.opt.rtp:prepend(lazypath)
 
 -- Windows only: matchit and netrw before the runtimepath fills, lazy's update checks when idle
--- (lua/features/windows_platform/lazy_nvim_on_windows.lua).
-local on_windows = vim.fn.has("win32") == 1 and require("features.windows_platform.lazy_nvim_on_windows") or nil
+-- (lua/features/util/windows/lazy_nvim.lua).
+local on_windows = vim.fn.has("win32") == 1 and require("features.util.windows.lazy_nvim") or nil
 local early_packs = on_windows and on_windows.load_early_packs() or {}
 
 require("lazy").setup({
   spec = {
     { "LazyVim/LazyVim", import = "lazyvim.plugins" },
-    -- One directory per purpose; lazy.nvim imports a directory's files, not its subdirectories.
-    { import = "plugins.appearance" },
-    { import = "plugins.editing" },
-    { import = "plugins.help" },
-    { import = "plugins.input_method" },
-    { import = "plugins.languages" },
-    { import = "plugins.language_servers" },
-    { import = "plugins.debugging" },
-    { import = "plugins.external_programs" },
-    { import = "plugins.maintenance" },
-    { import = "plugins.integrations" },
+    -- lazy.nvim imports the files of a directory, not its subdirectories: lua/plugins/*.lua, then one directory per
+    -- LazyVim category.
+    { import = "plugins" },
+    { import = "plugins.ui" },
+    { import = "plugins.editor" },
+    { import = "plugins.lang" },
+    { import = "plugins.dap" },
+    { import = "plugins.util" },
+    -- Last: its Windows gate filters Mason's list after every other spec has added to it.
+    { import = "plugins.lsp" },
   },
   defaults = {
     -- Every plugin of this configuration loads on its own trigger (event, ft, cmd, keys); one without a trigger

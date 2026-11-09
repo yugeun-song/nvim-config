@@ -10,7 +10,7 @@
 | not supported on this system | the system cannot do it, and why | info |
 | blocked | supported, but something is missing or wrong: what, and what to do | warning |
 
-`:checkhealth config` checks the core alone (Neovim 0.12, the plugins, `git`, `rg`, `fd`); `:checkhealth features.<purpose>` checks one purpose, such as `:checkhealth features.debugging`.
+`:checkhealth config` checks the core alone (Neovim 0.12, the plugins, `git`, `rg`, `fd`); `:checkhealth features.<category>` checks one category (`ui`, `editor`, `lang`, `lsp`, `dap`, `util`), such as `:checkhealth features.dap`.
 
 ## Where to look
 

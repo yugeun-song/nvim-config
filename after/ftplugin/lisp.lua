@@ -5,5 +5,5 @@ vim.keymap.set("i", "`", "`", { buffer = true })
 vim.b.autoformat = false
 
 if not vim.api.nvim_buf_get_name(0):match("%.el$") then
-  require("features.languages.lisp.repl").map_keys("sbcl", "REPL: evaluate buffer")
+  require("features.lang.lisp.repl").map_keys("sbcl", "REPL: evaluate buffer")
 end

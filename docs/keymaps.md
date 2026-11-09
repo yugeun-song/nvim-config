@@ -6,18 +6,18 @@ The keys this configuration adds to LazyVim's. `<leader>` is Space and `<localle
 
 | Key | Action | Feature |
 |---|---|---|
-| `<leader>sK` | Every key, mapped and built-in | [help](features/help.md) |
-| `<leader>fo` | Open Folder in yazi (only with `yazi` installed) | [editing](features/editing.md#open-folder) |
-| `<leader>fp` | Projects: opened folders and git roots of recent files | [editing](features/editing.md#open-folder) |
-| `<leader>ba` | All buffers in a picker | [appearance](features/appearance.md) |
-| `<leader>uR` | Reload changed files, refresh the explorers | [editing](features/editing.md#changes-on-disk) |
-| `<leader>uK` | Toggle the ChKeys keystroke display | [appearance](features/appearance.md) |
-| `<leader>uP` | Toggle Discord Rich Presence | [integrations](features/integrations.md) |
-| `<leader>uX` | Tool paths: what each program resolves to; register one by path | [external programs](features/external_programs.md#programs-registered-by-path) |
-| `<leader>uM` | Managed paths: where everything is kept (the reset has no key) | [maintenance](features/maintenance.md) |
-| `n` `N` `*` `#` `g*` `g#` | Search, with the `[current/total]` index | [appearance](features/appearance.md) |
-| `h` `l` `<Left>` `<Right>` | In leading spaces, step by `shiftwidth` (arrows in Insert mode too) | [editing](features/editing.md) |
-| `<CR>` in mini.files | Open a file and close the explorer, or enter a directory | [editing](features/editing.md) |
+| `<leader>sK` | Every key, mapped and built-in | [help](features/editor.md#key-cheat-sheet) |
+| `<leader>fo` | Open Folder in yazi (only with `yazi` installed) | [editing](features/editor.md#open-folder) |
+| `<leader>fp` | Projects: opened folders and git roots of recent files | [editing](features/editor.md#open-folder) |
+| `<leader>ba` | All buffers in a picker | [appearance](features/ui.md) |
+| `<leader>uR` | Reload changed files, refresh the explorers | [editing](features/editor.md#changes-on-disk) |
+| `<leader>uK` | Toggle the ChKeys keystroke display | [appearance](features/ui.md) |
+| `<leader>uP` | Toggle Discord Rich Presence | [integrations](features/util.md#discord-rich-presence) |
+| `<leader>uX` | Tool paths: what each program resolves to; register one by path | [external programs](features/util.md#programs-registered-by-path) |
+| `<leader>uM` | Managed paths: where everything is kept (the reset has no key) | [maintenance](features/util.md#managed-paths) |
+| `n` `N` `*` `#` `g*` `g#` | Search, with the `[current/total]` index | [appearance](features/ui.md) |
+| `h` `l` `<Left>` `<Right>` | In leading spaces, step by `shiftwidth` (arrows in Insert mode too) | [editing](features/editor.md#editing) |
+| `<CR>` in mini.files | Open a file and close the explorer, or enter a directory | [editing](features/editor.md#editing) |
 
 ## C and kernel navigation
 
@@ -37,7 +37,7 @@ The keys this configuration adds to LazyVim's. `<leader>` is Space and `<localle
 | `gd`, `K` | In assembler: definition and hover |
 | `<leader>uB` | Toggle all `#if` branches |
 
-Details: [languages](features/languages.md#c-and-c).
+Details: [languages](features/lang.md#c-and-c).
 
 ## Language server attach rules
 
@@ -51,7 +51,7 @@ Details: [languages](features/languages.md#c-and-c).
 | `<leader>cFr` | Reload the rules |
 | `<leader>cFt` | Toggle every rule for this session |
 
-Details: [language servers](features/language_servers.md).
+Details: [language servers](features/lsp.md#attach-rules).
 
 ## Debugging
 
@@ -78,7 +78,7 @@ Details: [language servers](features/language_servers.md).
 | `<leader>dPt` / `<leader>dPc` | Debug the Python test method / class under the cursor |
 | `<leader>dPr` | Pick a cargo target to debug (`:RustLsp debuggables`) |
 
-Panel keys and commands: [debugging](features/debugging.md#panels).
+Panel keys and commands: [debugging](features/dap.md#panels).
 
 ## Languages
 
@@ -94,7 +94,7 @@ Panel keys and commands: [debugging](features/debugging.md#panels).
 | `<localleader>i` | Common Lisp, Racket | Interrupt (Ctrl-C); in sbcl, type `abort` to return to the top level |
 | `<localleader>q` | Common Lisp, Racket | Quit the REPL |
 
-Details: [languages](features/languages.md#common-lisp).
+Details: [languages](features/lang.md#common-lisp).
 
 ## Neovide
 

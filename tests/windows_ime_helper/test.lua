@@ -59,7 +59,7 @@ check(r.code == 0 and r.stdout:match("^[01][01]\n$") ~= nil, ("input-state: %q")
 r = run({ exe, "ime-english" })
 check(r.code == 0, "ime-english exit " .. r.code)
 
--- As lua/plugins/input_method/korean_input.lua runs it: no stdout at all.
+-- As lua/plugins/editor/korean_input.lua runs it: no stdout at all.
 r = vim.system({ exe, "ime-english" }, { stdout = false, stderr = false }):wait(5000)
 check(r.code == 0, "ime-english without a stdout: exit " .. r.code)
 

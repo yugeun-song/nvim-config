@@ -1,5 +1,5 @@
 // windows_ime_helper: what Windows lacks for Neovim and Linux has elsewhere (fcitx5-remote, the Caps Lock LED, a
-// compositor's window raise, symlinks). lua/features/windows_platform/windows_ime_helper.lua builds it on Windows only.
+// compositor's window raise, symlinks). lua/features/util/windows/ime_helper.lua builds it on Windows only.
 //
 //   windows_ime_helper ime-english                foreground IME to its alphanumeric mode
 //   windows_ime_helper input-state                <caps><ime> once, 1 = on / native script
@@ -10,7 +10,7 @@
 //                                                 import loads
 //
 // Copied to NAME.exe beside NAME.shim, it runs the program the .shim names instead
-// (lua/features/external_programs/registered_programs.lua).
+// (lua/features/util/tool_paths/init.lua).
 // Runs only for Neovim: its parent must be nvim.exe (a shim's, an ancestor within a few levels, for :terminal),
 // and watch serves only that parent. It ends with Neovim: watch waits on Neovim's process and its stdin pipe, and
 // Neovim (libuv) keeps its children in a kill-on-close job.
@@ -1482,7 +1482,7 @@ static HANDLE GetValidStdHandle(_In_ DWORD which)
     return handle == INVALID_HANDLE_VALUE ? NULL : handle;
 }
 
-// Neovim watches this file beside the shims (lua/features/external_programs/registered_programs.lua) and shows each new
+// Neovim watches this file beside the shims (lua/features/util/tool_paths/init.lua) and shows each new
 // line: a shim runs for other programs, whose stderr Neovim may never see. Past SHIM_LOG_MAX_BYTES it starts over, so
 // it cannot grow without bound, and it is written only if it is a disk file.
 static void LogShimFailure(_In_opt_z_ const wchar_t *shim, _In_opt_z_ const wchar_t *message)

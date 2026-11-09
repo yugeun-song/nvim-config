@@ -69,11 +69,11 @@ local CLOSING = {
 
 local ADAPTED = {
   "[LazyVim starter](https://github.com/LazyVim/starter) (Apache-2.0): `init.lua`, `lua/config/lazy.lua`, `stylua.toml`.",
-  "[LazyVim](https://github.com/LazyVim/LazyVim) (Apache-2.0): parts of `lua/config/autocmds.lua` and `lua/plugins/debugging/other_language_debuggers.lua`.",
+  "[LazyVim](https://github.com/LazyVim/LazyVim) (Apache-2.0): parts of `lua/config/autocmds.lua`, `lua/plugins/lang/python.lua` and `lua/plugins/lang/typescript.lua`.",
   "[spaceduck](https://github.com/pineapplegiant/spaceduck) by Guillermo Rodriguez (MIT): the palette and terminal colours of `colors/spaceduck-remix.lua`, an unofficial derivative.",
-  "[nvim-hlslens](https://github.com/kevinhwang91/nvim-hlslens) by kevinhwang91 (BSD-3-Clause): the lens override and search keys in `lua/plugins/appearance/search_match_count.lua`.",
-  "[kanagawa.nvim](https://github.com/rebelot/kanagawa.nvim) by Tommaso Laurenzi (MIT): the float and gutter recipes in `lua/plugins/appearance/colorscheme.lua`.",
-  "[fastfetch](https://github.com/fastfetch-cli/fastfetch) (MIT): the system logos in `lua/features/appearance/dashboard_header.lua`.",
+  "[nvim-hlslens](https://github.com/kevinhwang91/nvim-hlslens) by kevinhwang91 (BSD-3-Clause): the lens override and search keys in `lua/plugins/ui/search_count.lua`.",
+  "[kanagawa.nvim](https://github.com/rebelot/kanagawa.nvim) by Tommaso Laurenzi (MIT): the float and gutter recipes in `lua/plugins/colorscheme.lua`.",
+  "[fastfetch](https://github.com/fastfetch-cli/fastfetch) (MIT): the system logos in `lua/features/ui/dashboard.lua`.",
   "[Simple Icons](https://simpleicons.org) (CC0-1.0): the logos' brand colours.",
   "[presence.nvim](https://github.com/andweeb/presence.nvim) by andweeb: the public Discord application ID and its `neovim` art.",
 }
@@ -171,13 +171,45 @@ local function plugin_rows()
   return rows
 end
 
+-- Every list a mason.nvim spec of lua/plugins/ gives in a table (a language's file, formatting.lua, linting.lua,
+-- dap/core.lua, lsp/mason.lua); the spec files load as lazy.nvim loads them.
+local function configured_mason_names(names)
+  package.path = table.concat({ root .. "/lua/?.lua", root .. "/lua/?/init.lua", package.path }, ";")
+
+  local function walk(spec)
+    if type(spec) ~= "table" then
+      return
+    end
+
+    if spec[1] == "mason-org/mason.nvim" and type(spec.opts) == "table" then
+      for _, name in ipairs(spec.opts.ensure_installed or {}) do
+        if not vim.list_contains(names, name) then
+          names[#names + 1] = name
+        end
+      end
+    end
+
+    for _, child in ipairs(spec) do
+      walk(child)
+    end
+
+    walk(spec.dependencies)
+  end
+
+  for path in vim.fs.dir(vim.fs.joinpath(root, "lua", "plugins"), { depth = 2 }) do
+    if path:sub(-4) == ".lua" then
+      walk(dofile(vim.fs.joinpath(root, "lua", "plugins", path)))
+    end
+  end
+end
+
 local function mason_names()
-  local spec = dofile(vim.fs.joinpath(root, "lua", "plugins", "external_programs", "mason_packages.lua"))
-  local names = vim.deepcopy(spec.opts.ensure_installed)
+  local names = {}
   local lazyvim = read(vim.fs.joinpath(data, "lazy", "LazyVim", "lua", "lazyvim", "plugins", "lsp", "init.lua")) or ""
   local at = lazyvim:find('"mason-org/mason.nvim"', 1, true)
   local list = at and lazyvim:match("ensure_installed%s*=%s*(%b{})", at)
 
+  configured_mason_names(names)
   for name in (list or ""):gmatch('"([^"]+)"') do
     if not vim.list_contains(names, name) then
       names[#names + 1] = name
@@ -240,10 +272,7 @@ local function section()
   vim.list_extend(out, { "", "Plugins (`lazy-lock.json`; author from the LICENSE, else the repository owner):", "" })
   vim.list_extend(out, { "| Plugin | Author | License |", "|---|---|---|" })
   vim.list_extend(out, plugins)
-  vim.list_extend(
-    out,
-    { "", "Mason packages (`lua/plugins/external_programs/mason_packages.lua` and LazyVim's defaults):", "" }
-  )
+  vim.list_extend(out, { "", "Mason packages (the specs in `lua/plugins/` and LazyVim's defaults):", "" })
 
   vim.list_extend(out, { "| Package | License |", "|---|---|" })
   vim.list_extend(out, mason)
