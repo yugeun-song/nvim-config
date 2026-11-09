@@ -88,10 +88,8 @@ local specs = {
   {
     "dhananjaylatkar/cscope_maps.nvim",
     dependencies = { "nvim-telescope/telescope.nvim" },
-    -- Windows opens a file without loading this and Telescope (about 22 ms there): its commands and keys load it,
-    -- and so does a tree with a cscope.out, through :Cs in lua/config/autocmds.lua.
-    event = vim.fn.has("win32") == 0 and { "BufReadPre", "BufNewFile" } or nil,
-    cmd = vim.fn.has("win32") == 1 and { "Cs", "Cscope", "Cstag" } or nil,
+    -- Its commands and keys load it, and so does gd in assembler asking for cscope's answers (require loads it).
+    cmd = { "Cs", "Cscope", "Cstag" },
     keys = {
       { "<leader>is", [[<cmd>exe "Cscope find s " . expand("<cword>")<cr>]], desc = "Cscope: Find Symbol" },
       { "<leader>ig", [[<cmd>exe "Cscope find g " . expand("<cword>")<cr>]], desc = "Cscope: Find Global Def" },

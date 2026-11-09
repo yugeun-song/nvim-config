@@ -176,7 +176,6 @@ Style and tests: [development](../development.md#windows-ime-helper).
 - **Program lookups** (`executable_lookup_cache.lua`): Windows' `executable()` and `exepath()` try every PATHEXT extension in every PATH directory, about 10 ms a name with forty directories. Lua callers, `vim.system()` and the plugins included, get the answer from `stdpath("cache")/nvim-config/executable_lookup_cache.json`, kept per PATH with each directory's mtime and checked again every two seconds, so a program installed meanwhile is seen. A changed directory drops only the answers it can affect.
 - **matchit and netrw** load before lazy.nvim fills the runtimepath: `:packadd` resolves every entry, about 20 ms more apiece on a full one.
 - **lazy.nvim's update checks** start git once per plugin, and Windows holds the editor about 5 ms per process; they wait until no key has come for 5 s outside a terminal, or until Neovim loses focus.
-- **cscope_maps** loads on its commands and keys, or for a tree with a `cscope.out`, instead of with every file.
 
 Elsewhere on Windows: [MSVC environment, compile databases, `--query-driver`](lang.md#msvc-toolchain), [LLDB beside gdb](dap.md#choosing-gdb-and-lldb), [Mason's install gate](lsp.md#mason-packages), [program discovery](#programs-registered-by-path).
 
