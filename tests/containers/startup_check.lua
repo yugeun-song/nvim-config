@@ -23,6 +23,7 @@ local function watch_notify()
 
     return current(msg, level, opts)
   end
+
   vim.notify = wrapped
 end
 
@@ -45,6 +46,11 @@ for _, file in ipairs(vim.split(os.getenv("STARTUP_FILES") or "", ":", { trimemp
 
   if ok then
     say("PASS", "opens " .. vim.fs.basename(file) .. " (" .. vim.bo.filetype .. ")")
+    settle(300)
+    say(
+      vim.treesitter.highlighter.active[vim.api.nvim_get_current_buf()] and "PASS" or "FAIL",
+      "tree-sitter highlights " .. vim.fs.basename(file)
+    )
   else
     say("FAIL", "opening " .. vim.fs.basename(file) .. ": " .. tostring(err))
   end
@@ -58,6 +64,7 @@ settle(2500)
 local ok_health, health_err = pcall(function()
   vim.cmd("checkhealth config features.*")
 end)
+
 local health = ok_health and vim.api.nvim_buf_get_lines(0, 0, -1, false) or {}
 local old_neovim = vim.fn.has("nvim-0.12") == 0
 local failed_checks = 0
@@ -117,9 +124,11 @@ end
 vim.wait(3000, function()
   return #vim.lsp.get_clients() == 0
 end, 50)
+
 pcall(function()
   require("persistence").stop()
 end)
+
 io.stdout:write("\n", table.concat(lines, "\n"), "\n")
 io.stdout:flush()
 vim.cmd("qall!")

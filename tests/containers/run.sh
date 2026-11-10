@@ -208,7 +208,7 @@ done
 RUN=$(date +%Y%m%d-%H%M%S)-$$
 LOGS="$STATE/logs/$RUN"
 # The lockfile and the layout of a prepared image: a change to either prepares again.
-LOCK=$( (sha256sum "$REPO/lazy-lock.json" 2>/dev/null || shasum -a 256 "$REPO/lazy-lock.json") | cut -c1-16)-3
+LOCK=$( (sha256sum "$REPO/lazy-lock.json" 2>/dev/null || shasum -a 256 "$REPO/lazy-lock.json") | cut -c1-16)-4
 HOST="$STATE/host/$LOCK"
 mkdir -p "$LOGS"
 
@@ -277,6 +277,15 @@ host_prepare() {
       return 1
     }
 
+    # The restore's parser downloads outlive it (curl, tar): up to a minute to end, then stopped. Only processes
+    # naming this host directory match.
+    waited=0
+    while pgrep -u "$(id -u)" -f "$HOST/xdg" >/dev/null 2>&1 && [ "$waited" -lt 60 ]; do
+      sleep 1
+      waited=$((waited + 1))
+    done
+    pkill -u "$(id -u)" -f "$HOST/xdg" 2>/dev/null
+
     if command -v tree-sitter >/dev/null 2>&1 && { command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1; }; then
       # The configuration lists the parsers; a Neovim without it builds them afresh. The restore above starts
       # LazyVim's own install, which +qa cuts off half-done (ENOTEMPTY). A parser missing from an image makes LazyVim
@@ -299,6 +308,9 @@ host_prepare() {
         echo "FAIL [host] the parsers did not all build (log: $LOGS/host-parsers.log)"
         return 1
       }
+      # nvim-treesitter links each language's queries into its checkout by an absolute host path: copied instead.
+      queries="$HOST/xdg/data/nvim/site/queries"
+      cp -RL "$queries" "$queries.copy" && rm -rf "$queries" && mv "$queries.copy" "$queries" || return 1
     else
       echo "SKIP [host] no tree-sitter CLI or C compiler: the containers start without parsers"
     fi
