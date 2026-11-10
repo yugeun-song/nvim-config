@@ -400,13 +400,18 @@ for name in $names; do
     }
     # The image this tag named before is this script's own; replaced rather than left dangling.
     "$engine" rmi "$prepared" >/dev/null 2>&1
-    "$engine" commit --change "LABEL $LABEL" --change "LABEL org.nvim-config.test.lock=$LOCK" "$current" "$prepared" \
-      >>"$log" 2>&1
+    # The tag moves with each release; the label records the build the image was prepared from.
+    base="$image@$("$engine" image inspect -f '{{.Digest}}' "$image" 2>/dev/null)"
+    "$engine" commit --change "LABEL $LABEL" --change "LABEL org.nvim-config.test.lock=$LOCK" \
+      --change "LABEL org.nvim-config.test.base=$base" "$current" "$prepared" >>"$log" 2>&1
     "$engine" rm -f "$current" >/dev/null 2>&1
     current=""
   else
     echo "== $name: reuse $prepared"
   fi
+
+  base=$("$engine" image inspect -f '{{ index .Config.Labels "org.nvim-config.test.base" }}' "$prepared" 2>/dev/null)
+  echo "base image: ${base:-unknown (prepared before digests were recorded)}" >>"$log"
 
   current=$tester
   rm_flag=--rm
@@ -421,8 +426,8 @@ for name in $names; do
 
   grep -E '(^| )(FAIL) ' "$log" | head -n 20
   summary="$summary
-$(printf '%-9s %s  %s' "$name" "$(grep -E '^== [0-9]+ passed' "$log" | tail -n 1)" \
-    "$(grep -o 'NVIM v[0-9][0-9.]*' "$log" | sort -u | tr '\n' ' ')")"
+$(printf '%-9s %s  %s %s' "$name" "$(grep -E '^== [0-9]+ passed' "$log" | tail -n 1)" \
+    "$(grep -o 'NVIM v[0-9][0-9.]*' "$log" | sort -u | tr '\n' ' ')" "$(printf '%s' "${base##*sha256:}" | cut -c1-12)")"
   [ "$rc" -eq 0 ] || status=1
 done
 
