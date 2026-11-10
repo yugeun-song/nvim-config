@@ -2,7 +2,7 @@
 return {
   "discord_rich_presence",
   virtual = true,
-  -- Discord sees the presence once the first screen is drawn; nothing before it needs it.
+  -- Every session, without a key or a file to wait for, and nothing on the first screen needs it.
   event = "VeryLazy",
   config = function()
     require("features.util.discord_rich_presence").setup()

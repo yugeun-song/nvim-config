@@ -4,11 +4,18 @@ return {
   {
     "korean_input",
     virtual = true,
-    -- The langmap and the English switch matter from the first key, which comes after the first screen. The
-    -- indicators' module, and the IME tools it asks for, load with it, not while the specs are read.
-    event = "VeryLazy",
+    -- At startup: keys typed while Neovim starts run before VeryLazy, and the langmap must map them too.
+    lazy = false,
     config = function()
       require("features.editor.korean_input").setup()
+    end,
+  },
+  {
+    -- The statusline marks: lualine itself comes with VeryLazy, and their readers start processes.
+    "korean_input_indicators",
+    virtual = true,
+    event = "VeryLazy",
+    config = function()
       require("features.editor.korean_input.indicator").start()
     end,
   },

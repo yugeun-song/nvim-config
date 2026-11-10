@@ -89,6 +89,10 @@ What the configuration writes for itself lives in one directory, `nvim-config`, 
 ## Lazy loading
 
 - `defaults.lazy = true` in `lua/config/lazy.lua`: every plugin this configuration adds states its trigger (`event`, `ft`, `cmd`, `keys`; a colorscheme loads on `:colorscheme`); one without a trigger would never load. LazyVim's own plugins carry theirs.
-- The configuration's own features are lazy.nvim `virtual` specs (nothing installed, nothing on the runtimepath) with a trigger, so their modules load on first use: `:ManagedPaths` and `<leader>uM` load `managed_paths.lua`, `<leader>uK` the keystroke display, the first C-family buffer the C features, `VeryLazy` the IME switch.
+- The configuration's own features are lazy.nvim `virtual` specs (nothing installed, nothing on the runtimepath) with a trigger, so their modules load on first use: `:ManagedPaths` and `<leader>uM` load `managed_paths.lua`, `<leader>uK` the keystroke display, the first C-family buffer the C features, the first search hlslens.
+- Which trigger:
+  1. **At start**: what the first screen shows, what the first key needs (keys typed during startup run before `VeryLazy`), or what must see an earlier event. Example: the Korean langmap.
+  2. **A precise trigger** (`ft`, `cmd`, `keys`, events such as `LazyFile`, `DiagnosticChanged`): the default, for whatever only some sessions or actions use.
+  3. **`VeryLazy`**: only what every session runs unasked while neither the first screen nor the first key needs it: Discord presence, the statusline's IME marks, the language servers and gitsigns (`lua/plugins/util/after_first_screen.lua`; a C file's first screen 91 to 63 ms).
 - The exception is markview.nvim (`lazy = false`): its README asks not to lazy-load it, since it defers its own work and lazy-loading slows the first preview. neov-ime.nvim also loads at start, and only under Neovide (`cond`).
 - Windows-only work is behind `has("win32")` and costs Linux and macOS nothing: a Windows-only spec is not added to the list elsewhere ([Windows platform](features/util.md#windows-platform)).

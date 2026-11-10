@@ -111,7 +111,7 @@ Korean input without leaving Normal mode in Hangul.
 
 ### Keys and commands
 
-None: the switch and the indicators run by themselves from `VeryLazy`. ChKeys shows `한` too ([UI](ui.md)).
+None. The langmap and the switch load at start, so keys typed during startup are mapped; the indicators start with the statusline (`VeryLazy`). ChKeys shows `한` too ([UI](ui.md)).
 
 ### What it needs
 

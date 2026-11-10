@@ -52,7 +52,8 @@ end
 return {
   {
     "kevinhwang91/nvim-hlslens",
-    event = "VeryLazy",
+    -- With the first search: / or ? (an autocmd pattern's bare ? would match : too), or the keys below.
+    event = { { event = "CmdlineEnter", pattern = { "/", "\\?" } } },
     opts = {
       calm_down = false,
       nearest_only = true,

@@ -63,7 +63,8 @@ return {
   {
     "line_diagnostics",
     virtual = true,
-    event = "VeryLazy",
+    -- With the first diagnostic, from a language server or a linter.
+    event = "DiagnosticChanged",
     config = setup,
   },
   {
