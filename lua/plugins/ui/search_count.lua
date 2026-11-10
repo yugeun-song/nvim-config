@@ -63,7 +63,7 @@ return {
       require("hlslens").setup(opts)
       vim.api.nvim_create_autocmd("CmdlineLeave", {
         group = vim.api.nvim_create_augroup("hlslens_incsearch", { clear = true }),
-        pattern = { "/", "?" },
+        pattern = { "/", "\\?" },
         callback = function()
           pcall(function()
             require("hlslens").start()
