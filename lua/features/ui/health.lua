@@ -30,8 +30,10 @@ function M.check()
     })
   end
 
-  if status.find("neovide") then
-    status.available("Neovide settings and IME", vim.g.neovide and "running in Neovide" or "neovide installed")
+  if vim.g.neovide then
+    status.available("Neovide settings and IME", "running in Neovide")
+  elseif status.find("neovide") then
+    status.available("Neovide settings and IME", "neovide installed")
   else
     status.blocked("Neovide settings and IME", "neovide is not installed", { "https://neovide.dev/" })
   end

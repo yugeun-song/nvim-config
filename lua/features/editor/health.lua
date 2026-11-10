@@ -123,14 +123,51 @@ local function editing()
   end
 end
 
+local function neovide_preedit()
+  if vim.g.neovide then
+    if status.plugin_installed("neov-ime.nvim") then
+      status.available("IME preedit in Neovide (neov-ime)")
+    else
+      status.blocked("IME preedit in Neovide (neov-ime)", "the plugin is not installed", { ":Lazy install" })
+    end
+  end
+end
+
 local function korean_input()
   status.available("Korean langmap (Normal-mode keys typed in 한글 work)")
 
   local backends = require("features.editor.korean_input.backends")
-  local cmd = backends.english_command({ build = false })
 
-  if cmd then
-    status.available("English on leaving Insert", table.concat(cmd, " "))
+  if backends.remote() then
+    status.unsupported(
+      "English on leaving Insert, IME and Caps Lock in the statusline over SSH",
+      "they would read and switch the remote host's IME and keyboard"
+    )
+
+    neovide_preedit()
+
+    return
+  end
+
+  -- The first tool whose input method answers, as the switch picks it.
+  local working, silent = nil, {}
+
+  for _, cmd in ipairs(backends.english_commands({ build = false })) do
+    if backends.answers(cmd) == false then
+      silent[#silent + 1] = cmd[1]
+    elseif not working then
+      working = cmd
+    end
+  end
+
+  if working then
+    status.available("English on leaving Insert", table.concat(working, " "))
+  elseif #silent > 0 then
+    status.blocked(
+      "English on leaving Insert",
+      table.concat(silent, ", ") .. " installed, but its input method does not answer",
+      { "start fcitx5, fcitx or ibus" }
+    )
   else
     local advice = status.MACOS and "macism, im-select or issw"
       or status.WINDOWS and "Visual Studio's cl or clang targeting MSVC (builds native/windows_ime_helper.c), or im-select.exe"
@@ -162,7 +199,11 @@ local function korean_input()
   elseif status.LINUX or status.MACOS then
     local sources = backends.indicators()
 
-    if sources.im then
+    if sources.im and backends.answers(sources.im.cmd) == false then
+      status.blocked("IME in the statusline", "fcitx5 does not answer fcitx5-remote: the indicator stays hidden", {
+        "start fcitx5 (ibus and fcitx have no indicator)",
+      })
+    elseif sources.im then
       status.available("IME in the statusline", table.concat(sources.im.cmd, " "))
     else
       status.blocked(
@@ -183,13 +224,7 @@ local function korean_input()
     status.unsupported("IME and Caps Lock in the statusline", "they read fcitx5 and a sysfs LED, or macOS tools")
   end
 
-  if vim.g.neovide then
-    if status.plugin_installed("neov-ime.nvim") then
-      status.available("IME preedit in Neovide (neov-ime)")
-    else
-      status.blocked("IME preedit in Neovide (neov-ime)", "the plugin is not installed", { ":Lazy install" })
-    end
-  end
+  neovide_preedit()
 end
 
 local function key_cheat_sheet()

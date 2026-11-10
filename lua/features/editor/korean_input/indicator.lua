@@ -4,11 +4,13 @@ local M = {}
 
 local uv = vim.uv
 
-local sources = require("features.editor.korean_input.backends").indicators()
+local backends = require("features.editor.korean_input.backends")
+local sources = backends.indicators()
 local im, caps_path, caps_watch = sources.im, sources.caps, sources.caps_watch
 local both = sources.watch
 
-local state = { im = "en", caps = "" }
+-- im is "" until the input method answers.
+local state = { im = "", caps = "" }
 
 local function set(key, value)
   if state[key] ~= value then
@@ -18,7 +20,9 @@ local function set(key, value)
 end
 
 local function set_im(hangul)
-  if hangul then
+  if hangul == nil then
+    set("im", "")
+  elseif hangul then
     set("im", "한")
   else
     set("im", state.caps ~= "" and "EN" or "en")
@@ -27,22 +31,44 @@ end
 
 local function set_caps(on)
   set("caps", on and "󰬈 CAPS" or "")
-  if im and state.im ~= "한" then
+  if state.im == "en" or state.im == "EN" then
     set_im(false)
   end
 end
 
-local caps_busy, im_busy = false, false
+local caps_busy, im_busy, finding = false, false, false
+
+-- A replugged keyboard gets another LED node (inputN): look it up again.
+local function find_caps()
+  if finding then
+    return
+  end
+
+  finding = true
+  vim.schedule(function()
+    finding = false
+    caps_path = backends.caps_led()
+    if not caps_path then
+      set_caps(false)
+    end
+  end)
+end
 
 local function read_caps()
   if caps_busy then
     return
   end
 
+  if not caps_path then
+    return find_caps()
+  end
+
   caps_busy = true
   uv.fs_open(caps_path, "r", 438, function(err, fd)
     if err or not fd then
       caps_busy = false
+      caps_path = nil
+      find_caps()
 
       return
     end
@@ -59,24 +85,47 @@ local function read_caps()
   end)
 end
 
+-- A read overlapping a switch may report the old mode: none starts during one, and an overlapping one reruns.
+local switching, generation = 0, 0
+
 local function read_im()
-  if im_busy or not im then
+  if im_busy or not im or switching > 0 then
     return
   end
 
   im_busy = true
-  local ok = pcall(vim.system, im.cmd, { text = true }, function(res)
+  local started = generation
+
+  local function on_exit(res)
     im_busy = false
-    if res.code == 0 then
-      vim.schedule(function()
-        set_im(im.hangul(res.stdout or ""))
-      end)
+    if started ~= generation then
+      return read_im()
     end
-  end)
+
+    if res.code == 0 then
+      set_im(im.hangul(res.stdout or ""))
+    else
+      set_im(nil)
+    end
+  end
+
+  local ok = pcall(vim.system, im.cmd, { text = true }, vim.schedule_wrap(on_exit))
 
   if not ok then
     im_busy = false
+    set_im(nil)
   end
+end
+
+function M.switch_started()
+  switching = switching + 1
+  generation = generation + 1
+end
+
+function M.switch_finished()
+  switching = math.max(switching - 1, 0)
+  generation = generation + 1
+  read_im()
 end
 
 local watcher = nil
@@ -233,6 +282,9 @@ function M.statusline_components()
       end,
       color = function()
         return { fg = state.im == "한" and "#ff9e64" or "#7aa2f7", gui = "bold" }
+      end,
+      cond = function()
+        return state.im ~= ""
       end,
       padding = { left = 1, right = 1 },
     }

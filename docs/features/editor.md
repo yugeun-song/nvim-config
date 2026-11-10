@@ -29,7 +29,7 @@ clang-format takes a `.clang-format` or `_clang-format` found upward; without on
 
 ### Changes on disk
 
-Every 2 s while Neovim has focus, and on `BufEnter` and `CursorHold`, the buffers without unsaved changes are checked in Normal mode and reload with a notification. A buffer with unsaved changes is left to LazyVim's check on `FocusGained` and to `:checktime`, which ask (W12) rather than take the next key as the answer. An open mini.files re-reads a directory it shows when that changes on disk, unless it holds edits not yet synchronized. `:FsRefresh` (`<leader>uR`) also re-scans every snacks explorer.
+Every 2 s while Neovim has focus, and on `BufEnter` and `CursorHold`, buffers that reload without a question reload in Normal mode with a notification. A buffer that would ask or pause (unsaved changes, a new or deleted file, `noautoread`) waits for `FocusGained` or `:checktime`. Snacks' `bigfile` buffers are not polled. An open mini.files re-reads a directory it shows when that changes on disk, unless it holds edits not yet synchronized. `:FsRefresh` (`<leader>uR`) also re-scans every snacks explorer.
 
 ### Open Folder
 
@@ -46,7 +46,9 @@ Without `yazi` on PATH, neither the dashboard entry nor `<leader>fo` exists; Pro
 
 A Neovim or Neovide with a UI records its RPC address (`v:servername`) under `running_instances/<pid>` in this configuration's `stdpath("run")` directory (`stdpath("state")` without `$XDG_RUNTIME_DIR`) when its UI attaches or gains focus, and removes it on exit.
 
-`nvim -l scripts/open-at.lua FILE [LINE [COLUMN]]` sends `:drop FILE` to the most recently focused instance, puts the cursor on LINE and COLUMN, and raises the window of its nearest ancestor that owns one. With no instance it starts `neovide -- +LINE FILE`. Nothing listens on TCP.
+`nvim -l scripts/open-at.lua FILE [LINE [COLUMN]]` sends FILE to the most recently focused instance, puts the cursor on LINE and COLUMN, and raises the window of its nearest ancestor that owns one. FILE opens with `:drop` in an editing window (current, else last used; never a float, terminal, explorer or picker), or in a new window at the right. With no instance it starts `neovide -- +LINE FILE`. Nothing listens on TCP.
+
+The raise goes by process id: the windows of one kitty process or foot server share it, so a sibling may come forward, and inside tmux none does.
 
 | Desktop | Window raise through |
 |---|---|
@@ -84,7 +86,7 @@ Korean input without leaving Normal mode in Hangul.
 ### What it does
 
 - **`langmap`** maps the Dubeolsik jamo to their QWERTY keys, so Normal-mode keys typed in 한글 work.
-- **English on leaving Insert.** On `InsertLeave` and `FocusGained` the IME is set to English, never to Korean, and never while another program has the focus (the switch acts on the foreground window), by the first tool found:
+- **English on leaving Insert.** On `InsertLeave` and `FocusGained` the IME is set to English, never to Korean, and never while another program has the focus (the switch acts on the foreground window). Tools are tried in order; a failing one hands over to the next, and the last working one goes first:
 
   | System | Tools, in order |
   |---|---|
@@ -94,8 +96,8 @@ Korean input without leaving Normal mode in Hangul.
   | WSL | `im-select.exe 1033` |
 
   On Windows the switch is a line to the running indicator watcher's stdin, starting no process.
-- **foot**: its private IME mode sequence keeps the IME on only in Insert mode.
-- **Statusline**: `󰬈 CAPS` while Caps Lock is on, and `한`, `EN` (Caps Lock on) or `en`. `vim.g.caps_state` and `vim.g.im_state` hold the same. Every reader pauses while Neovim is unfocused.
+- **foot**: its private IME mode sequence (through `nvim_ui_send`) keeps the IME on only in Insert mode.
+- **Statusline**: `󰬈 CAPS` while Caps Lock is on, and `한`, `EN` (Caps Lock on) or `en`; no IME mark while the input method does not answer. `vim.g.caps_state` and `vim.g.im_state` hold the same. Every reader pauses while Neovim is unfocused.
 
   | System | Caps Lock | IME |
   |---|---|---|
@@ -130,6 +132,8 @@ None: the switch and the indicators run by themselves from `VeryLazy`. ChKeys sh
 | Caps Lock indicator | yes | yes | yes |
 
 WSL counts as Linux, with the switch through `im-select.exe`. `langmap` assumes the Dubeolsik layout.
+
+Over SSH (`SSH_CONNECTION` or `SSH_TTY`) the switch and the indicators are off: they would act on the remote host's IME. foot's sequence still works.
 
 ## Key cheat sheet
 

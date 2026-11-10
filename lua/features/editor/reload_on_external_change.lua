@@ -6,20 +6,32 @@ local POLL_INTERVAL_MS = 2000
 
 local minifiles_dirty = {}
 
--- Buffers without unsaved changes only, and only in Normal mode: a changed file under unsaved edits asks (W12),
--- and a question popping up unasked takes the next key as its answer ("l" loads the file over the edits). Those are
--- left to LazyVim's check on FocusGained, when the user is looking, and to :checktime.
+-- Buffers of files that did not exist yet: checktime would ask (W13) once they appear.
+local new_files = {}
+
+-- Only buffers that reload without a question or a message; an unasked question would take the next key. The
+-- others wait for FocusGained or :checktime.
 local function checktime()
   if vim.fn.getcmdwintype() ~= "" or vim.api.nvim_get_mode().mode ~= "n" then
     return
   end
 
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    local autoread = vim.bo[buf].autoread
+
+    if autoread == nil then
+      autoread = vim.go.autoread
+    end
+
     if
       vim.api.nvim_buf_is_loaded(buf)
       and vim.bo[buf].buftype == ""
       and not vim.bo[buf].modified
+      and autoread
+      and vim.bo[buf].filetype ~= "bigfile"
+      and not new_files[buf]
       and vim.api.nvim_buf_get_name(buf) ~= ""
+      and vim.uv.fs_stat(vim.api.nvim_buf_get_name(buf))
     then
       pcall(vim.cmd.checktime, buf)
     end
@@ -73,6 +85,33 @@ end
 
 function M.setup()
   local group = vim.api.nvim_create_augroup("reload_on_external_change", { clear = true })
+
+  -- Buffers loaded before setup missed BufNewFile.
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    local name = vim.api.nvim_buf_get_name(buf)
+
+    if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buftype == "" and name ~= "" and not vim.uv.fs_stat(name) then
+      new_files[buf] = true
+    end
+  end
+
+  vim.api.nvim_create_autocmd("BufNewFile", {
+    group = group,
+    callback = function(args)
+      new_files[args.buf] = true
+    end,
+    desc = "Keep the poll off a buffer whose file does not exist yet",
+  })
+
+  vim.api.nvim_create_autocmd({ "BufReadPost", "BufWritePost", "BufUnload" }, {
+    group = group,
+    callback = function(args)
+      if args.event ~= "BufWritePost" or args.match == vim.api.nvim_buf_get_name(args.buf) then
+        new_files[args.buf] = nil
+      end
+    end,
+    desc = "A read or written file is no longer new",
+  })
 
   vim.api.nvim_create_autocmd({ "BufEnter", "CursorHold" }, {
     group = group,

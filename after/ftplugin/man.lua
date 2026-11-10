@@ -4,8 +4,7 @@ vim.opt_local.signcolumn = vim.go.signcolumn
 vim.opt_local.cursorline = false
 vim.opt_local.scrolloff = 4
 
--- Parser language by section. A suffix such as 3p or 3type is still C; any
--- other suffix names its own language.
+-- Parser language by section number; none for 1, 6 and 8 (commands).
 local SECTION_LANG = {
   ["0"] = "c",
   ["2"] = "c",
@@ -16,21 +15,30 @@ local SECTION_LANG = {
   ["9"] = "c",
 }
 
+-- Suffixes naming another language; the rest (3p, 3ssl, 3x) are C libraries.
+local SUFFIX_LANG = { am = "awk", perl = "perl", pm = "perl", tcl = "tcl" }
+
+-- The suffix's grammar if installed, else the section's.
 local function language_for(buf)
-  local sect = tostring(vim.b[buf].man_sect or "")
-  local suffix = sect:match("^%d+(%a+)$")
+  local num, suffix = tostring(vim.b[buf].man_sect or ""):match("^(%d)%d*(%a*)$")
 
-  if suffix then
-    local lang = suffix:lower()
-
-    if lang == "p" or lang == "type" or lang == "const" or lang == "head" or lang == "attr" then
-      return "c"
-    end
-
-    return lang
+  if not num then
+    return nil
   end
 
-  return SECTION_LANG[sect:sub(1, 1)]
+  suffix = suffix:lower()
+  if suffix ~= "" then
+    local lang = SUFFIX_LANG[suffix] or suffix
+    local ok, loaded = pcall(vim.treesitter.language.add, lang)
+
+    if ok and loaded then
+      return lang
+    elseif SUFFIX_LANG[suffix] then
+      return nil
+    end
+  end
+
+  return SECTION_LANG[num]
 end
 
 local buf = vim.api.nvim_get_current_buf()

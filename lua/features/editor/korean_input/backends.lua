@@ -1,7 +1,16 @@
 local M = {}
 
--- opts.build = false: report the Windows helper only if it is built (the health check), never start a build.
-function M.english_command(opts)
+-- Over SSH these tools would act on the remote host's IME.
+function M.remote()
+  return (vim.env.SSH_CONNECTION or "") ~= "" or (vim.env.SSH_TTY or "") ~= ""
+end
+
+-- Installed switch commands, preferred first. opts.build = false: never start the Windows helper's build.
+function M.english_commands(opts)
+  if M.remote() then
+    return {}
+  end
+
   local candidates
 
   if vim.fn.has("mac") == 1 then
@@ -32,13 +41,31 @@ function M.english_command(opts)
     end
   end
 
-  for _, cmd in ipairs(candidates) do
-    if vim.fn.executable(cmd[1]) == 1 then
-      return cmd
-    end
+  return vim.tbl_filter(function(cmd)
+    return vim.fn.executable(cmd[1]) == 1
+  end, candidates)
+end
+
+-- Queries that fail unless the input method runs (fcitx5-remote exits 1 without fcitx5).
+local PROBES = {
+  ["fcitx5-remote"] = { "fcitx5-remote", "-n" },
+  ["fcitx-remote"] = { "fcitx-remote" },
+  ibus = { "ibus", "engine" },
+}
+
+-- Whether cmd's input method answers; nil when it cannot be asked.
+function M.answers(cmd)
+  local probe = PROBES[cmd[1]]
+
+  if not probe then
+    return nil
   end
 
-  return nil
+  local ok, res = pcall(function()
+    return vim.system(probe, { text = true }):wait(2000)
+  end)
+
+  return ok and res.code == 0 and vim.trim(res.stdout or "") ~= ""
 end
 
 -- Prints Caps Lock as 1 or 0 every 200 ms; the first write after Neovim closes the pipe ends it.
@@ -49,9 +76,17 @@ local function korean_source(out)
   return out:find("Korean", 1, true) ~= nil or out:find("Gureum.han", 1, true) ~= nil
 end
 
+function M.caps_led()
+  return vim.fn.glob("/sys/class/leds/input*::capslock/brightness", true, true)[1]
+end
+
 -- What the statusline reads: im = { cmd, hangul(stdout) }; Caps Lock as a sysfs LED node (caps) or as a
 -- command printing 1 or 0 per line (caps_watch); or both from one command printing <caps><ime> (watch).
 function M.indicators()
+  if M.remote() then
+    return {}
+  end
+
   if vim.fn.has("mac") == 1 then
     local im = nil
 
@@ -90,7 +125,7 @@ function M.indicators()
     }
   end
 
-  return { im = im, caps = vim.fn.glob("/sys/class/leds/input*::capslock/brightness", true, true)[1] }
+  return { im = im, caps = M.caps_led() }
 end
 
 return M

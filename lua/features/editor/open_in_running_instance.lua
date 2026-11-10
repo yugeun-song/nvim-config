@@ -295,6 +295,61 @@ function M.raise(pid)
   return backend ~= nil and backend.raise(lineage(pid))
 end
 
+-- Where a sent file opens: current, previous, then last used window (as Snacks picks its main one); never a
+-- float or a special buffer.
+local function editing_window()
+  local wins = { vim.api.nvim_get_current_win(), vim.fn.win_getid(vim.fn.winnr("#")) }
+  local rest = vim.api.nvim_tabpage_list_wins(0)
+
+  local function lastused(win)
+    return vim.fn.getbufinfo(vim.api.nvim_win_get_buf(win))[1].lastused
+  end
+
+  table.sort(rest, function(a, b)
+    return lastused(a) > lastused(b)
+  end)
+
+  for _, win in ipairs(vim.list_extend(wins, rest)) do
+    if win ~= 0 and vim.api.nvim_win_is_valid(win) then
+      local buf = vim.api.nvim_win_get_buf(win)
+      local float = vim.api.nvim_win_get_config(win).relative ~= ""
+
+      if vim.w[win].snacks_main or vim.b[buf].snacks_main then
+        return win
+      elseif not float and not vim.w[win].snacks_layout and vim.bo[buf].buftype == "" and not vim.wo[win].winfixbuf then
+        return win
+      end
+    end
+  end
+end
+
+-- Called over RPC by scripts/open-at.lua.
+function M.open(file, line, col)
+  vim.api.nvim_cmd({ cmd = "stopinsert" }, {})
+  local win = editing_window()
+
+  if win then
+    vim.api.nvim_set_current_win(win)
+    vim.api.nvim_cmd({ cmd = "drop", args = { vim.fn.fnameescape(file) } }, {})
+  else
+    for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+      if vim.api.nvim_win_get_config(w).relative == "" then
+        vim.api.nvim_set_current_win(w)
+
+        break
+      end
+    end
+
+    vim.api.nvim_cmd({ cmd = "vsplit", args = { vim.fn.fnameescape(file) }, mods = { split = "botright" } }, {})
+  end
+
+  local row = math.min(line, vim.api.nvim_buf_line_count(0))
+  local text = vim.api.nvim_buf_get_lines(0, row - 1, row, false)[1] or ""
+
+  vim.api.nvim_win_set_cursor(0, { row, math.min(col - 1, math.max(#text - 1, 0)) })
+  vim.api.nvim_cmd({ cmd = "normal", args = { "zz" }, bang = true }, {})
+end
+
 function M.setup()
   local group = vim.api.nvim_create_augroup("open_in_running_instance", { clear = true })
 

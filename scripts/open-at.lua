@@ -20,13 +20,11 @@ deadline:start(5000, 0, function()
   os.exit(3)
 end)
 
-local function open_in(addr)
-  local ok, ch = pcall(vim.fn.sockconnect, "pipe", addr, { rpc = true })
+-- The instance picks the window (open_in_running_instance.open); an older instance gets :drop.
+local OPEN = 'local m = require("features.editor.open_in_running_instance") '
+  .. "if not m.open then return false end m.open(...) return true"
 
-  if not ok or ch == 0 then
-    return false
-  end
-
+local function drop_in_current(ch)
   local opened = pcall(function()
     vim.rpcrequest(ch, "nvim_cmd", { cmd = "stopinsert" }, {})
     vim.rpcrequest(ch, "nvim_cmd", { cmd = "drop", args = { vim.fn.fnameescape(file) } }, {})
@@ -42,9 +40,25 @@ local function open_in(addr)
     end)
   end
 
+  return opened
+end
+
+local function open_in(addr)
+  local ok, ch = pcall(vim.fn.sockconnect, "pipe", addr, { rpc = true })
+
+  if not ok or ch == 0 then
+    return false
+  end
+
+  local done, opened = pcall(vim.rpcrequest, ch, "nvim_exec_lua", OPEN, { file, line, col })
+
+  if done and opened == false then
+    opened = drop_in_current(ch)
+  end
+
   pcall(vim.fn.chanclose, ch)
 
-  return opened
+  return done and opened
 end
 
 for _, target in ipairs(remote_open.targets()) do
