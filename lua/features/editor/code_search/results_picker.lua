@@ -28,6 +28,7 @@ local function entry_maker(item)
       local coordinates = item.file_only and ""
         or item.col and (":%d:%d:"):format(item.lnum, item.col + 1)
         or (":%d:"):format(item.lnum)
+
       local display, hl_group, icon =
         require("telescope.utils").transform_devicons(item.filename, shown .. coordinates .. item.text, false)
 

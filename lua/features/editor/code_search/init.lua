@@ -261,6 +261,7 @@ function M.health()
   status.programs("cscope: :Cscope find with the nearest cscope.out", { "cscope" }, {
     status.WINDOWS and "cscope has no native Windows build: register one by path (<leader>uX)" or "install cscope",
   })
+
   status.available("ctags: Neovim's tag search over the tags files 'tags' finds")
   status.programs("gtags: global with the nearest GTAGS", { "global" }, { "install GNU Global; gtags builds GTAGS" })
 

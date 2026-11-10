@@ -50,6 +50,7 @@ function M.run(what, start, show)
       M.notify(("Searching %s ..."):format(what))
     end
   end, NOTICE_MS)
+
   job.limit = vim.defer_fn(function()
     if active == job then
       M.cancel()
