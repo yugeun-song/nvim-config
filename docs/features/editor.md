@@ -85,7 +85,7 @@ Korean input without leaving Normal mode in Hangul.
 
 ### What it does
 
-- **`langmap`** maps the Dubeolsik jamo to their QWERTY keys, so Normal-mode keys typed in 한글 work.
+- **`langmap`** maps the Dubeolsik jamo to their QWERTY keys, so Normal-mode keys typed in Hangul mode work.
 - **English on leaving Insert.** On `InsertLeave` and `FocusGained` the IME is set to English, never to Korean, and never while another program has the focus (the switch acts on the foreground window). Tools are tried in order; a failing one hands over to the next, and the last working one goes first:
 
   | System | Tools, in order |

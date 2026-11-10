@@ -1,4 +1,4 @@
--- Korean input: a Dubeolsik langmap for Normal-mode keys typed in 한글, the IME switched to English on leaving
+-- Korean input: a Dubeolsik langmap for Normal-mode keys typed in Hangul, the IME switched to English on leaving
 -- Insert (and on focus), and foot's own IME mode. The indicators are indicator.lua, the per-system commands
 -- backends.lua.
 local M = {}

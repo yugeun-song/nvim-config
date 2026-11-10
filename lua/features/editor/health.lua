@@ -134,7 +134,7 @@ local function neovide_preedit()
 end
 
 local function korean_input()
-  status.available("Korean langmap (Normal-mode keys typed in 한글 work)")
+  status.available("Korean langmap (Normal-mode keys typed in Hangul mode work)")
 
   local backends = require("features.editor.korean_input.backends")
 
