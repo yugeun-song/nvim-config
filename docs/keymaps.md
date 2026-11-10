@@ -32,6 +32,7 @@ The keys this configuration adds to LazyVim's. `<leader>` is Space and `<localle
 | `<leader>if` | cscope: this file |
 | `<leader>ii` | cscope: files including this file |
 | `<leader>ia` | cscope: assignments to this symbol |
+| `<leader>i/` | Search by a typed pattern: pick clangd, cscope, ctags, gtags or ripgrep ([code search](features/editor.md#code-search), any buffer) |
 | `<C-]>` | Jump through `tags` in C, C++ and assembler |
 | `gf` | On an `#include` line, the project's header |
 | `gd`, `K` | In assembler: definition and hover |

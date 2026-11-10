@@ -1,6 +1,6 @@
 # Editor
 
-Editing, Korean input and the key cheat sheet. Specs: `lua/plugins/editor/`, `lua/plugins/formatting.lua`, `lua/plugins/linting.lua`; code: `lua/features/editor/`, `lua/config/options.lua`, `lua/config/keymaps.lua`.
+Editing, Korean input, code search and the key cheat sheet. Specs: `lua/plugins/editor/`, `lua/plugins/formatting.lua`, `lua/plugins/linting.lua`; code: `lua/features/editor/`, `lua/config/options.lua`, `lua/config/keymaps.lua`.
 
 ## Editing
 
@@ -134,6 +134,30 @@ None: the switch and the indicators run by themselves from `VeryLazy`. ChKeys sh
 WSL counts as Linux, with the switch through `im-select.exe`. `langmap` assumes the Dubeolsik layout.
 
 Over SSH (`SSH_CONNECTION` or `SSH_TTY`) the switch and the indicators are off: they would act on the remote host's IME. foot's sequence still works.
+
+## Code search
+
+Search by a typed pattern instead of the word under the cursor (`code_search/`). `<leader>i/` or `:CodeSearch`: pick a tool this buffer supports, a query kind if it has several, then type the pattern (empty cancels). Hits open in the `<leader>i` Telescope picker; `<C-t>` returns.
+
+| Buffer | Tools |
+|---|---|
+| C, C++, CUDA, assembly (`.S` `.s` `.asm`), linker scripts, headers | clangd, cscope (nearest `cscope.out`), ctags (`'tags'`), gtags (`global -p`), ripgrep |
+| Other files | attached language servers that answer workspace symbols, by name; ripgrep |
+| No file | ripgrep from the working directory |
+
+- cscope takes the `<leader>i` kinds (`s g c d t e f i a`) through `:Cscope find`; gtags takes definition, reference, symbol, grep and path.
+- ripgrep searches `<leader>/`'s root with its settings and skips index files. Without `rg`, fd searches file names.
+- Tools this buffer lacks are not listed; `:CodeSearch` with one reports why and runs nothing. One search at a time: a notice after 1 s, a stop at 30 s.
+
+### Keys and commands
+
+| Command | Does |
+|---|---|
+| `:CodeSearch [tool [kind [pattern]]]` | Search with a tool this buffer supports (`<leader>i/`) |
+
+### What it needs
+
+`clangd`, `cscope`, `tags` files, GNU Global, `rg` or `fd`, each for its own tool; Telescope (installed with cscope_maps).
 
 ## Key cheat sheet
 

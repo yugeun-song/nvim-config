@@ -1,5 +1,5 @@
--- :checkhealth features.editor: editing, Korean input, the key cheat sheet, formatters and linters. Formatters and linters are the ones the merged configuration names, checked by what
--- conform and nvim-lint themselves would run.
+-- :checkhealth features.editor: editing, Korean input, code search, the key cheat sheet, formatters and linters (the
+-- ones the merged configuration names, checked by what conform and nvim-lint would run).
 local status = require("features.util.feature_status")
 
 local M = {}
@@ -242,6 +242,8 @@ function M.check()
   editing()
   vim.health.start("Korean input")
   korean_input()
+  vim.health.start("Code search")
+  require("features.editor.code_search").health()
   vim.health.start("Key cheat sheet")
   key_cheat_sheet()
   vim.health.start("Formatting and linting")
