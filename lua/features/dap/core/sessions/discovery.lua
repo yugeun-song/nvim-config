@@ -387,7 +387,7 @@ local function install_hint(key)
   local native = key == HOST_ARCH
   local d = distro()
 
-  local function is(name)
+  local function distro_is(name)
     return d.id == name or d.like[name]
   end
 
@@ -395,21 +395,21 @@ local function install_hint(key)
     return ("pacman -S mingw-w64-ucrt-x86_64-gdb%s in MSYS2"):format(native and "" or "-multiarch")
   elseif MAC then
     return "use the (lldb) configurations, or brew install gdb and codesign it"
-  elseif is("debian") or is("ubuntu") then
+  elseif distro_is("debian") or distro_is("ubuntu") then
     return native and "apt install gdb" or "apt install gdb-multiarch"
-  elseif is("alpine") then
+  elseif distro_is("alpine") then
     return native and "apk add gdb" or "apk add gdb-multiarch"
-  elseif is("fedora") or is("rhel") then
+  elseif distro_is("fedora") or distro_is("rhel") then
     return "dnf install gdb"
   elseif d.id == "opensuse-leap" and key == "riscv64" then
     return "openSUSE Leap's gdb has no riscv64 target"
-  elseif is("suse") then
+  elseif distro_is("suse") then
     return "zypper install gdb"
-  elseif is("arch") then
+  elseif distro_is("arch") then
     return "pacman -S gdb"
-  elseif is("void") then
+  elseif distro_is("void") then
     return "xbps-install gdb"
-  elseif is("nixos") then
+  elseif distro_is("nixos") then
     return "add pkgs.gdb"
   end
 
@@ -498,7 +498,7 @@ function M.prefetch(arch, bin, done)
   local signed = not bin and MAC and key == HOST_ARCH
   local left = 1
 
-  local function one()
+  local function one_answered()
     left = left - 1
     if left == 0 then
       done()
@@ -508,15 +508,15 @@ function M.prefetch(arch, bin, done)
   for _, name in ipairs(names) do
     if vim.fn.executable(name) == 1 then
       left = left + 1
-      remember_async(identity("probe", name), probe_cmd(name), 10000, probe_answer, one)
+      remember_async(identity("probe", name), probe_cmd(name), 10000, probe_answer, one_answered)
       if signed then
         left = left + 1
-        remember_async(identity("codesign", name), codesign_cmd(name), 5000, codesign_answer, one)
+        remember_async(identity("codesign", name), codesign_cmd(name), 5000, codesign_answer, one_answered)
       end
     end
   end
 
-  one()
+  one_answered()
 end
 
 local xcode
