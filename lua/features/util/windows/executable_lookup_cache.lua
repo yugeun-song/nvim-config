@@ -7,8 +7,8 @@
 -- program installed meanwhile is seen. A directory that changed is listed once and only the answers it can affect are
 -- dropped: a miss it now has a candidate for, a hit it held or now shadows. Some programs write into their own
 -- directory on PATH all the time (IncrediBuild's agent, every few seconds); that costs one listing instead of every
--- answer. A name with a directory in it, and a hit outside PATH (with cmd.exe as 'shell', Neovim also searches the
--- current directory), go to the real functions every time.
+-- answer. A name with a directory in it goes to the real functions every time, and so does a hit outside PATH,
+-- except one in the current directory (with cmd.exe as 'shell', Neovim may search it first): PATH alone answers then.
 local M = {}
 
 local uv = vim.uv
@@ -219,18 +219,14 @@ local function is_runnable(path)
   return is_pathext[(path:match("%.[^.\\/]+$") or ""):lower()] == true
 end
 
--- exepath() can answer with a file Windows cannot start: npm puts an extensionless sh script beside each .cmd it
--- installs, and CreateProcess appends .exe to a path without an extension (ENOENT). cmd.exe never picks such a
--- file; this searches as it does, each PATH directory in turn, each PATHEXT extension in order.
-local function runnable_on_path(name, found)
-  if found == "" or is_runnable(found) then
-    return found
-  end
+-- PATH alone, as cmd.exe searches it: each directory in turn, each PATHEXT extension in order (none if name has one).
+local function search_path(name)
+  local exts = is_runnable(name) and { "" } or pathext
 
   for dir in vim.gsplit(uv.os_getenv("PATH") or "", ";", { plain = true, trimempty = true }) do
     local base = dir:gsub("[/\\]+$", "") .. "\\" .. name
 
-    for _, ext in ipairs(pathext) do
+    for _, ext in ipairs(exts) do
       local st = uv.fs_stat(base .. ext)
 
       if st and st.type == "file" then
@@ -240,6 +236,19 @@ local function runnable_on_path(name, found)
   end
 
   return ""
+end
+
+-- exepath() can answer with a file Windows cannot start (npm puts an extensionless sh script beside each .cmd it
+-- installs; CreateProcess appends .exe to it), or with one from the current directory, tried before PATH (a cl.exe
+-- planted in a repository would build the helper). PATH alone answers then, the current directory only if listed.
+local function runnable_on_path(name, found)
+  local cwd = uv.cwd()
+
+  if found == "" or (is_runnable(found) and not (cwd and key(vim.fs.dirname(found)) == key(cwd))) then
+    return found
+  end
+
+  return search_path(name)
 end
 
 ---@param name string

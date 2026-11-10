@@ -5,7 +5,17 @@ local function setup()
   vim.api.nvim_create_autocmd("CursorHold", {
     group = group,
     callback = function()
-      if not vim.diagnostic.is_enabled({ bufnr = vim.api.nvim_get_current_buf() }) then
+      local bufnr = vim.api.nvim_get_current_buf()
+      local namespaces = {}
+
+      -- open_float ignores enablement: pass the namespaces still on (attach rules can turn some off).
+      for ns in pairs(vim.diagnostic.get_namespaces()) do
+        if vim.diagnostic.is_enabled({ bufnr = bufnr, ns_id = ns }) then
+          namespaces[#namespaces + 1] = ns
+        end
+      end
+
+      if #namespaces == 0 then
         return
       end
 
@@ -16,6 +26,7 @@ local function setup()
         source = "always",
         prefix = " ",
         scope = "line",
+        namespace = namespaces,
       })
 
       if not (ok and winid) then

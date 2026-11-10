@@ -8,16 +8,23 @@ M.RETRY_DAYS = 7
 
 local FILE = require("features.util.storage").path("state", "mason_install_failures.json")
 
+-- The record, {} when absent; nil and why when unreadable (never written over then).
 function M.failures()
-  local ok, lines = pcall(vim.fn.readfile, FILE)
+  local _, _, absent = vim.uv.fs_stat(FILE)
 
-  if not ok then
+  if absent == "ENOENT" then
     return {}
   end
 
-  local dok, failures = pcall(vim.json.decode, table.concat(lines, "\n"))
+  local ok, failures = pcall(function()
+    return vim.json.decode(table.concat(vim.fn.readfile(FILE), "\n"))
+  end)
 
-  return dok and type(failures) == "table" and failures or {}
+  if ok and type(failures) == "table" then
+    return failures
+  end
+
+  return nil, ("%s cannot be read (%s)"):format(FILE, ok and "not a JSON object" or tostring(failures))
 end
 
 local function save(failures)
@@ -43,7 +50,7 @@ end
 
 -- When name last failed, while that still holds it back.
 function M.held_back(name, failures)
-  local at = (failures or M.failures())[name]
+  local at = (failures or M.failures() or {})[name]
 
   return type(at) == "number" and os.time() - at < M.RETRY_DAYS * 86400 and at or nil
 end
@@ -52,13 +59,32 @@ end
 M.requested = nil
 
 function M.filter(names)
-  local failures = M.failures()
+  local failures = M.failures() or {}
 
   M.requested = vim.deepcopy(names)
 
   return vim.tbl_filter(function(name)
     return not M.missing_runtime(name) and not M.held_back(name, failures)
   end, names)
+end
+
+-- mason-lspconfig installs every configured server: a held-back one gets mason = false and comes from PATH.
+function M.filter_servers(servers)
+  local ok, map = pcall(function()
+    return require("mason-lspconfig.mappings").get_mason_map().lspconfig_to_package
+  end)
+
+  local failures = M.failures() or {}
+
+  for name, server in pairs(servers) do
+    -- Without the registry the map is empty; most servers share their package's name.
+    local package = ok and map[name] or name
+    local held = M.missing_runtime(package) or M.held_back(package, failures)
+
+    if held and (server == true or type(server) == "table") then
+      servers[name] = vim.tbl_extend("force", type(server) == "table" and server or {}, { mason = false })
+    end
+  end
 end
 
 local tracking = false
@@ -79,7 +105,11 @@ function M.track()
         return
       end
 
-      local failures = M.failures()
+      local failures, unreadable = M.failures()
+
+      if not failures then
+        return vim.notify(("%s; %s's failure is not recorded"):format(unreadable, pkg.name), vim.log.levels.WARN)
+      end
 
       failures[pkg.name] = os.time()
       save(failures)
@@ -91,7 +121,7 @@ function M.track()
     vim.schedule_wrap(function(pkg)
       local failures = M.failures()
 
-      if failures[pkg.name] then
+      if failures and failures[pkg.name] then
         failures[pkg.name] = nil
         save(failures)
       end

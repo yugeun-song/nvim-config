@@ -5,28 +5,15 @@ local status = require("features.util.feature_status")
 local M = {}
 
 local function attach_rules()
-  local rules = require("features.lsp.attach_rules")
-  local path = rules.registry_path()
+  local path = require("features.lsp.attach_rules").registry_path()
+  local _, err = require("features.lsp.attach_rules.path_and_file_helpers").read_json(path)
 
-  if not vim.uv.fs_stat(path) then
-    status.available("Attach rules (<leader>cF)", "none written: every server attaches wherever it is configured")
-
-    return
-  end
-
-  local ok, text = pcall(vim.fn.readfile, path)
-  local decoded, err = false, nil
-
-  if ok then
-    decoded, err = pcall(vim.json.decode, table.concat(text, "\n"))
-  end
-
-  if ok and decoded then
-    status.available("Attach rules (<leader>cF)", path)
+  if err then
+    status.blocked("Attach rules (<leader>cL)", err, { "<leader>cLe edits it" })
+  elseif not vim.uv.fs_stat(path) then
+    status.available("Attach rules (<leader>cL)", "none written: every server attaches wherever it is configured")
   else
-    status.blocked("Attach rules (<leader>cF)", ("%s cannot be read: %s"):format(path, tostring(err or text)), {
-      "<leader>cFe edits it",
-    })
+    status.available("Attach rules (<leader>cL)", path)
   end
 end
 
@@ -73,10 +60,31 @@ local function mason_packages()
     return
   end
 
+  -- Before the first download every package would read as missing from the registry.
+  if #registry.get_all_package_names() == 0 then
+    status.blocked(
+      "Mason packages",
+      "Mason's registry is not downloaded yet, so no package can be checked or installed",
+      { ":MasonUpdate downloads it (it needs the network)" }
+    )
+
+    return
+  end
+
   local runtimes = require("features.lsp.mason.runtime_requirements")
   local gate = status.WINDOWS and require("features.lsp.mason.windows_install_gate") or nil
-  local failures = gate and gate.failures() or {}
+  local recorded, unreadable
+
+  if gate then
+    recorded, unreadable = gate.failures()
+  end
+
+  local failures = recorded or {}
   local installed = {}
+
+  if unreadable then
+    status.blocked("Mason install failures", unreadable, { "remove it; failed installs are then tried again" })
+  end
 
   -- The merged options run the gate's filter; what it held back is listed too.
   local asked = LazyVim.opts("mason.nvim").ensure_installed or {}

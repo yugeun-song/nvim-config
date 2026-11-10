@@ -26,7 +26,7 @@ return {
         local ok, err = tp.register(name, table.concat(vim.list_slice(args.fargs, 2), " "))
 
         vim.notify(
-          ok and ("%s -> %s"):format(name, tp.read()[name]) or err,
+          ok and ("%s -> %s"):format(name, (tp.read() or {})[name]) or err,
           ok and vim.log.levels.INFO or vim.log.levels.ERROR
         )
       elseif name then

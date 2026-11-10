@@ -54,6 +54,11 @@ local function key(path)
   return vim.fs.normalize(path):lower()
 end
 
+-- A network location (\\server\share) is not looked into: one that does not answer would hold the editor.
+local function is_network(path)
+  return vim.fs.normalize(path):find("^//") ~= nil
+end
+
 local function is_dir(path)
   local st = path ~= "" and uv.fs_stat(path)
 
@@ -106,8 +111,7 @@ local function directories(raw)
 
     dir = vim.fs.normalize(dir)
 
-    -- A network location (\\server\share) is not looked into: one that does not answer would hold the editor.
-    if dir:find("^//") then
+    if is_network(dir) then
       return
     end
 
@@ -161,7 +165,7 @@ local function missing_from_process(raw)
 
   for _, list in ipairs({ as_list(raw.machine_path), as_list(raw.user_path) }) do
     for _, dir in ipairs(list) do
-      if type(dir) == "string" and dir ~= "" and not have[key(dir)] and is_dir(dir) then
+      if type(dir) == "string" and dir ~= "" and not have[key(dir)] and not is_network(dir) and is_dir(dir) then
         have[key(dir)] = true
         missing[#missing + 1] = vim.fs.normalize(dir)
       end
@@ -203,7 +207,7 @@ function M.run(names, cb)
 
         local app = type(raw.apppaths) == "table" and raw.apppaths[name .. ".exe"]
 
-        if type(app) == "string" and uv.fs_stat(app) and key(app) ~= current then
+        if type(app) == "string" and not is_network(app) and uv.fs_stat(app) and key(app) ~= current then
           hits[#hits + 1] = { path = vim.fs.normalize(app), via = "App Paths (registry)" }
         end
 

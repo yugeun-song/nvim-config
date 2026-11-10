@@ -31,16 +31,31 @@ local function key(path)
   return WIN and p:lower() or p
 end
 
+-- name -> program, {} when none; nil and why when unreadable (nothing writes over it then).
 function M.read()
-  local ok, lines = pcall(vim.fn.readfile, STATE)
+  local _, _, absent = uv.fs_stat(STATE)
 
-  if not ok then
+  if absent == "ENOENT" then
     return {}
   end
 
-  local dok, tools = pcall(vim.json.decode, table.concat(lines, "\n"))
+  local ok, tools = pcall(function()
+    return vim.json.decode(table.concat(vim.fn.readfile(STATE), "\n"))
+  end)
 
-  return dok and type(tools) == "table" and tools or {}
+  local valid = ok and type(tools) == "table"
+
+  for name, target in pairs(valid and tools or {}) do
+    valid = valid and type(name) == "string" and type(target) == "string"
+  end
+
+  if not valid then
+    local why = ok and "not names and paths" or tostring(tools)
+
+    return nil, ("%s cannot be read (%s); fix or remove it"):format(STATE, why)
+  end
+
+  return tools
 end
 
 local function write(tools)
@@ -109,7 +124,7 @@ end
 
 -- Windows: a new windows_ime_helper build becomes every shim's launcher.
 function M.refresh_shims(launcher)
-  for name, target in pairs(M.read()) do
+  for name, target in pairs(M.read() or {}) do
     if is_valid_name(name) then
       make_shim(name, target, launcher)
     end
@@ -138,6 +153,7 @@ local function tidy_shims(tools)
   end
 end
 
+-- On Windows also what the shim refuses (native/windows_ime_helper.c), so nothing usable here exits 127 there.
 local function check(name, target)
   if not is_valid_name(name) then
     return nil, "a name is letters, digits and . _ + -"
@@ -145,6 +161,13 @@ local function check(name, target)
 
   if vim.fn.isabsolutepath(target) == 0 then
     return nil, target .. " is not an absolute path"
+  end
+
+  -- Before any stat: an unanswering share would hold the editor.
+  if WIN and not target:match("^%a:[/\\]") then
+    return nil, target .. ": drive-relative, rooted, device and network paths are refused"
+  elseif WIN and target:find(":", 3, true) then
+    return nil, target .. ": alternate data streams are refused"
   end
 
   local st = uv.fs_stat(target)
@@ -156,6 +179,18 @@ local function check(name, target)
   -- CreateProcess hands a .cmd or .bat to cmd.exe, which would parse the forwarded arguments again.
   if WIN and not target:lower():match("%.exe$") and not target:lower():match("%.com$") then
     return nil, "on Windows a registered program is an .exe or .com"
+  end
+
+  if WIN then
+    -- Network drives and links into shares resolve to \\server\share.
+    local real = uv.fs_realpath(target)
+
+    if real and not real:match("^%a:[/\\]") then
+      return nil, target .. ": only programs on a local disk run"
+    elseif uv.fs_stat(target:sub(1, -5) .. ".shim") then
+      -- Scoop's shims\rg.exe beside rg.shim, say.
+      return nil, target .. ": the program is another shim"
+    end
   end
 
   -- A shim, or windows_ime_helper itself, as the program would start shims in a loop.
@@ -179,7 +214,11 @@ function M.register(name, target)
     return nil, err
   end
 
-  local tools = M.read()
+  local tools, unreadable = M.read()
+
+  if not tools then
+    return nil, unreadable
+  end
 
   tools[name] = target
   if not write(tools) then
@@ -196,9 +235,11 @@ function M.register(name, target)
 end
 
 function M.unregister(name)
-  local tools = M.read()
+  local tools, unreadable = M.read()
 
-  if not tools[name] then
+  if not tools then
+    return nil, unreadable
+  elseif not tools[name] then
     return nil, name .. " is not registered"
   end
 
@@ -224,9 +265,15 @@ function M.setup()
     return
   end
 
-  local tools = M.read()
+  local tools, unreadable = M.read()
 
-  if next(tools) == nil then
+  if not tools then
+    vim.schedule(function()
+      vim.notify(unreadable .. "; no registered program is on PATH", vim.log.levels.ERROR, { title = "Tool paths" })
+    end)
+
+    return
+  elseif next(tools) == nil then
     return
   end
 
@@ -337,7 +384,7 @@ end
 local function discovered(name)
   local data = WIN and require("features.util.tool_paths.windows_discovery").read()
   local hits = data and type(data.found) == "table" and data.found[name] or {}
-  local registered = M.read()[name]
+  local registered = (M.read() or {})[name]
   local current = vim.fn.exepath(name)
 
   -- Only what neither the registration nor PATH already gives; PATH may have caught up since the discovery.
@@ -369,12 +416,12 @@ local function prompt_path(name, tools)
 
     local ok, err = M.register(name, input)
 
-    report(ok, err, ("%s -> %s"):format(name, M.read()[name] or input))
+    report(ok, err, ("%s -> %s"):format(name, (M.read() or {})[name] or input))
   end)
 end
 
 function M.prompt(name)
-  local tools = M.read()
+  local tools = M.read() or {}
   local hits = discovered(name)
 
   if #hits == 0 then
@@ -425,8 +472,13 @@ function M.discover()
 end
 
 function M.pick()
-  local tools = M.read()
+  local tools, unreadable = M.read()
   local items, seen = {}, {}
+
+  if not tools then
+    vim.notify(unreadable, vim.log.levels.ERROR, { title = "Tool paths" })
+    tools = {}
+  end
 
   local function add(name, why)
     if not seen[name] then
@@ -524,7 +576,7 @@ function M.names()
     return k[1]
   end, M.KNOWN)
 
-  for name in pairs(M.read()) do
+  for name in pairs(M.read() or {}) do
     if not vim.list_contains(names, name) then
       names[#names + 1] = name
     end
@@ -533,6 +585,6 @@ function M.names()
   return names
 end
 
-M.STATE, M.SHIMS = STATE, SHIMS
+M.STATE, M.SHIMS, M.check = STATE, SHIMS, check
 
 return M

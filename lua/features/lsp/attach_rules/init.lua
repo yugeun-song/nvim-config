@@ -173,6 +173,9 @@ function M.add_rule(raw)
 
   if current == nil then
     current = { rules = {} }
+  elseif current.rules == nil and vim.islist(current) then
+    -- A bare array is a list of rules too (rules.lua): kept, under "rules".
+    current = { rules = current }
   end
 
   if type(current.rules) ~= "table" then

@@ -7,9 +7,15 @@ local M = {}
 -- Programs registered by path (<leader>uX, :ToolPath); nothing is reported when none is.
 local function registered_programs()
   local programs = require("features.util.tool_paths")
-  local registered = programs.read()
+  local registered, unreadable = programs.read()
 
-  if next(registered) == nil then
+  if not registered then
+    status.blocked("Programs registered by path (<leader>uX)", unreadable, {
+      "nothing is registered, unregistered or put on PATH until it is fixed or removed",
+    })
+
+    return
+  elseif next(registered) == nil then
     status.available("Programs registered by path (<leader>uX)", "none registered")
 
     return
@@ -17,10 +23,11 @@ local function registered_programs()
 
   for name, target in pairs(registered) do
     local found = vim.fn.exepath(name)
+    local usable, why = programs.check(name, target)
 
     found = found ~= "" and vim.fs.normalize(found) or ""
-    if vim.fn.executable(target) ~= 1 then
-      status.blocked(name, target .. " is gone", { ":ToolPath " .. name .. " to point it elsewhere" })
+    if not usable then
+      status.blocked(name, why, { ":ToolPath " .. name .. " to point it elsewhere" })
     elseif found == "" then
       status.blocked(name, ("registered as %s, but its shim is missing"):format(target), { "restart Neovim" })
     elseif not vim.startswith(found:lower(), vim.fs.normalize(programs.SHIMS):lower()) then

@@ -812,7 +812,10 @@ local function remove_one(item)
   local moved, err = uv.fs_rename(path, trash)
 
   if not moved then
-    return false, "in use, left as it was (" .. tostring(err) .. ")"
+    -- EXDEV: a mount point, or a container image's lower layer.
+    local reason = tostring(err):find("EXDEV", 1, true) and "on a file system it cannot be renamed on" or "in use"
+
+    return false, ("%s, left as it was (%s)"):format(reason, tostring(err))
   end
 
   local removed, rm_err = pcall(vim.fs.rm, trash, { recursive = true, force = true })

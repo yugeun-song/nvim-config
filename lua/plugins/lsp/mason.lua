@@ -25,8 +25,9 @@ local specs = {
 }
 
 -- Windows: Mason installs no package whose runtime is missing (Java, Elixir, Erlang, Julia), nor one whose install
--- failed lately (lua/features/lsp/mason/windows_install_gate.lua); what is installed stays. It filters the list
--- every other spec has added to, so lua/config/lazy.lua imports this directory last.
+-- failed lately (lua/features/lsp/mason/windows_install_gate.lua); what is installed stays. It filters the lists
+-- every other spec has added to (Mason's, and the servers LazyVim installs through mason-lspconfig), so
+-- lua/config/lazy.lua imports this directory last.
 if vim.fn.has("win32") == 1 then
   specs[#specs + 1] = {
     "mason-org/mason.nvim",
@@ -35,6 +36,13 @@ if vim.fn.has("win32") == 1 then
 
       opts.ensure_installed = held.filter(opts.ensure_installed or {})
       held.track()
+    end,
+  }
+
+  specs[#specs + 1] = {
+    "neovim/nvim-lspconfig",
+    opts = function(_, opts)
+      require("features.lsp.mason.windows_install_gate").filter_servers(opts.servers or {})
     end,
   }
 end

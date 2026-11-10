@@ -23,10 +23,11 @@ M.ENTRIES = {
   { "state", "reset_report_unread", false, "the last reset's report, until a start has shown it" },
   { "state", "reset_confirmation", "reset-confirmed", 'the confirmation a typed "reset" leaves for the reset' },
   { "state", "running_instances", "nvim-focus", "running Neovims with a UI, for scripts/open-at.lua" },
-  { "run", "running_instances", "nvim-focus", "running Neovims with a UI, for scripts/open-at.lua" },
+  -- No old name: run's nvim-focus was shared by every NVIM_APPNAME; it ends with the session.
+  { "run", "running_instances", false, "running Neovims with a UI, for scripts/open-at.lua" },
   { "data", "windows_ime_helper", "winctl", "the Windows IME helper, built here from native/windows_ime_helper.c" },
   { "data", "registered_program_shims", "shims", "one shim per registered program; last on PATH in Neovim" },
-  { "data", "language_server_attach_rules.json", "lsp_filter/rules.json", "language server attach rules (<leader>cF)" },
+  { "data", "language_server_attach_rules.json", "lsp_filter/rules.json", "language server attach rules (<leader>cL)" },
   { "data", "alive_lsp", "alive-lsp", "the Common Lisp language server and its libraries" },
   { "cache", "executable_lookup_cache.json", "which.json", "executable() and exepath() answers per PATH (Windows)" },
   { "cache", "clangd_temporary_files", "clangd-tmp", "clangd's temporary files, one directory per Neovim" },

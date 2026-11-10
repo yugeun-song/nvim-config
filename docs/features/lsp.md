@@ -40,7 +40,7 @@ Linux, macOS and Windows alike.
 
 ## Line diagnostics
 
-On `CursorHold` the line's diagnostics open in a float with their source, and close when the cursor leaves the line (`lua/plugins/lsp/diagnostics.lua`). Inlay hints are off.
+On `CursorHold` the line's diagnostics open in a float with their source, and close when the cursor leaves the line (`lua/plugins/lsp/diagnostics.lua`). Only namespaces still enabled for the buffer show, so what a `diagnostics_off` rule hides stays hidden. Inlay hints are off.
 
 ## Mason packages
 
@@ -56,7 +56,7 @@ Some packages need a runtime on PATH to run (`lua/features/lsp/mason/runtime_req
 | `julia` | `julia-lsp` |
 | `node` | `js-debug-adapter` and every npm package |
 
-Windows (`lua/features/lsp/mason/windows_install_gate.lua`): Mason does not install a package whose runtime is missing, nor, for 7 days, one whose install failed (`stdpath("state")/nvim-config/mason_install_failures.json`), so a build that cannot work there does not rerun in every session or hold up the exit. `:MasonInstall NAME` retries at once; what is installed stays.
+Windows (`lua/features/lsp/mason/windows_install_gate.lua`): Mason skips a package whose runtime is missing, and for 7 days one whose install failed (`stdpath("state")/nvim-config/mason_install_failures.json`), so a hopeless build does not rerun every session. `:MasonInstall NAME` retries at once; installed packages stay. Servers pass the same gate: a held-back one gets `mason = false` and starts only from PATH. An unreadable failure record holds nothing back and is never overwritten; `:checkhealth features.lsp` names it.
 
 ### What it needs
 

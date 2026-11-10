@@ -8,7 +8,7 @@ Where Neovim, the plugins, Neovide and this configuration keep what they write, 
 
 ### Own files
 
-The configuration writes for itself only into `nvim-config` inside `stdpath(kind)` ([why](../structure.md#the-configurations-own-files)). `storage.lua` lists every entry; one still under its old name directly in `stdpath(kind)` moves here the first time its owner asks for it, and one that cannot move is listed as left over.
+The configuration writes for itself only into `nvim-config` inside `stdpath(kind)` ([why](../structure.md#the-configurations-own-files)). `storage.lua` lists every entry. One still under its old name in `stdpath(kind)` moves here on first use; one that cannot move is listed as left over. `nvim-focus` in `stdpath("run")`, shared by every `NVIM_APPNAME`, is left alone and ends with the session.
 
 | Kind | Entry | Holds |
 |---|---|---|
@@ -85,11 +85,11 @@ Programs off PATH, registered by path (`lua/plugins/util/tool_paths.lua`, `lua/f
 - `stdpath("data")/nvim-config/registered_program_shims` holds one shim per program and is the only directory added to PATH, at its end, so nothing beside the program comes into reach and a program already on PATH still wins;
 - a shim is a symbolic link; on Windows it is a copy of the [IME helper](#windows-ime-helper) that runs the program named in `NAME.shim` with the same arguments and exit code, with the program's own directory first on its PATH (so MSYS2's `cscope` finds MSYS2's `sort` for its `-q` index).
 
-With nothing registered this costs one stat at startup. A shim or `.shim` removed by hand is made again at the next start.
+With nothing registered this costs one stat at startup. A shim or `.shim` removed by hand is made again at the next start. An unreadable `registered_programs.json` is never overwritten: nothing is registered or put on PATH until it is fixed or removed (`:checkhealth features.util` says why).
 
-On Windows a `.shim` must name an `.exe` or `.com` on a local disk, absolute or relative to the shim's own directory. Drive-relative, rooted, device and network paths, alternate data streams, another shim and the shim itself are refused (a shim naming a shim could loop). A shim runs only with Neovim among its nearest ancestors (`:terminal` included), and its program runs in a job that ends with the shim. A failure goes to its stderr and to `windows_ime_helper_shims.log` beside it, which Neovim watches and shows at once.
+On Windows a `.shim` must name an `.exe` or `.com` on a local disk, absolute or relative to the shim's own directory. Drive-relative, rooted, device and network paths, alternate data streams, another shim and the shim itself are refused (a shim naming a shim could loop). Registration and `:checkhealth features.util` refuse the same, with the same reasons; only a CD drive is left to the shim. A shim runs only with Neovim among its nearest ancestors (`:terminal` included), and its program runs in a job that ends with the shim. A failure goes to its stderr and to `windows_ime_helper_shims.log` beside it, which Neovim watches and shows at once.
 
-On Windows the picker also reads what the system records, on request only (`windows_discovery.lua`, one PowerShell run): the machine and user PATH in the registry (programs installed after this Neovim started; one pick adds them to the session), App Paths, the install locations of installed programs with their usual bin directories, Visual Studio's LLVM tools through vswhere, and the winget, Scoop, Chocolatey and Cargo directories their variables name. The result is kept in `stdpath("state")/nvim-config/windows_program_discovery.json`; nothing is registered until picked.
+On Windows the picker also reads what the system records, on request only (`windows_discovery.lua`, one PowerShell run): the machine and user PATH in the registry (programs installed after this Neovim started; one pick adds them to the session), App Paths, the install locations of installed programs with their usual bin directories, Visual Studio's LLVM tools through vswhere, and the winget, Scoop, Chocolatey and Cargo directories their variables name. Network locations (`\\server\share`) are skipped: an unanswering one would hold the editor. The result is kept in `stdpath("state")/nvim-config/windows_program_discovery.json`; nothing is registered until picked.
 
 The picker also turns the [MSVC environment](lang.md#msvc-toolchain) off and on.
 
@@ -173,7 +173,7 @@ Style and tests: [development](../development.md#windows-ime-helper).
 
 ### Faster on Windows
 
-- **Program lookups** (`executable_lookup_cache.lua`): Windows' `executable()` and `exepath()` try every PATHEXT extension in every PATH directory, about 10 ms a name with forty directories. Lua callers, `vim.system()` and the plugins included, get the answer from `stdpath("cache")/nvim-config/executable_lookup_cache.json`, kept per PATH with each directory's mtime and checked again every two seconds, so a program installed meanwhile is seen. A changed directory drops only the answers it can affect.
+- **Program lookups** (`executable_lookup_cache.lua`): Windows' `executable()` and `exepath()` try every PATHEXT extension in every PATH directory, about 10 ms a name with forty directories. Lua callers (`vim.system()` and plugins included) get the answer from `stdpath("cache")/nvim-config/executable_lookup_cache.json`, kept per PATH with each directory's mtime and rechecked every 2 s. A changed directory drops only its own answers. A bare name never resolves into the current directory unless PATH lists it, so a planted `cl.exe` cannot build the helper.
 - **matchit and netrw** load before lazy.nvim fills the runtimepath: `:packadd` resolves every entry, about 20 ms more apiece on a full one.
 - **lazy.nvim's update checks** start git once per plugin, and Windows holds the editor about 5 ms per process; they wait until no key has come for 5 s outside a terminal, or until Neovim loses focus.
 
