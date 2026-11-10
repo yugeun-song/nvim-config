@@ -31,8 +31,10 @@ Push-Location $work
 $results = New-Object System.Collections.Generic.List[string]
 
 function Step([string]$name, [scriptblock]$body, [switch]$MustFail, [string]$Expect) {
+  # Every step runs a program: no exit code at all means none started (a command not found), which fails.
+  $global:LASTEXITCODE = $null
   $output = & $body 2>&1 | ForEach-Object { "$_" }
-  $code = $LASTEXITCODE
+  $code = if ($null -eq $LASTEXITCODE) { -1 } else { $LASTEXITCODE }
   $ok = if ($MustFail) { $code -ne 0 -and (-not $Expect -or ($output -join "`n") -match [regex]::Escape($Expect)) } else { $code -eq 0 }
   $results.Add(("{0} {1}" -f ($(if ($ok) { "PASS" } else { "FAIL" })), $name))
   if (-not $ok) { $output | Select-Object -Last 25 | ForEach-Object { "    $_" } }
@@ -41,6 +43,7 @@ function Step([string]$name, [scriptblock]$body, [switch]$MustFail, [string]$Exp
 $env:ASAN_OPTIONS = "halt_on_error=1:detect_leaks=0"
 
 if ($format) { Step "clang-format (native/.clang-format)" { & $format --dry-run --Werror --style=file:$style $src } }
+else { $results.Add("SKIP clang-format: not found (Visual Studio's C++ Clang tools, or LLVM on PATH)") }
 Step "cl /W4 /WX /sdl /analyze, link /WX" { cl /nologo /O2 /MT /W4 /WX /sdl /analyze /analyze:external- /guard:cf /Fewindows_ime_helper.exe $src /link /WX /guard:cf /DEPENDENTLOADFLAG:0x800 /CETCOMPAT }
 if ($clang) {
   Step "clang -Wall -Wextra -Werror (MSVC target)" { & $clang --target=x86_64-pc-windows-msvc -O2 -fms-runtime-lib=static -Wall -Wextra -Werror -o windows_ime_helper-clang.exe $src }
@@ -51,6 +54,7 @@ if ($clang) {
     Step ("guard refuses " + $guard[0]) { & $clang --target=$($guard[0]) -fsyntax-only $src } -MustFail -Expect $guard[1]
   }
 }
+else { $results.Add("SKIP clang builds, analyzer and the five preprocessor guards: clang not found") }
 
 Step "C unit tests (AddressSanitizer)" { cl /nologo /W4 /fsanitize=address /Zi /Od /Feunit.exe (Join-Path $tests "unit.c") /link /INCREMENTAL:NO | Out-Null; if ($LASTEXITCODE -eq 0) { .\unit.exe } }
 Step "windows_ime_helper (AddressSanitizer)" { cl /nologo /W4 /fsanitize=address /Zi /Od /Fewindows_ime_helper-asan.exe $src /link /INCREMENTAL:NO }
@@ -67,6 +71,7 @@ if ($FuzzSeconds -gt 0) {
 Pop-Location
 $results
 $failed = @($results | Where-Object { $_ -like "FAIL*" }).Count
-"== $($results.Count) steps, $failed failed (work directory: $work)"
+$skipped = @($results | Where-Object { $_ -like "SKIP*" }).Count
+"== $($results.Count) steps, $failed failed, $skipped skipped (work directory: $work)"
 if ($failed -eq 0) { cmd /c rmdir /s /q "$work" }
 exit $(if ($failed -eq 0) { 0 } else { 1 })

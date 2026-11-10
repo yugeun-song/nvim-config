@@ -56,16 +56,16 @@ Each tool comes from PATH, else Mason's `bin`; a missing tool prints `skip`. A F
 
 ### Windows IME helper
 
-`powershell -ExecutionPolicy Bypass -File tests\windows_ime_helper\run.ps1 [-FuzzSeconds 60] [-Nvim nvim]` builds and runs every test in a temporary directory and prints PASS or FAIL per step:
+`powershell -ExecutionPolicy Bypass -File tests\windows_ime_helper\run.ps1 [-FuzzSeconds 60] [-Nvim nvim]` builds and runs every test in a temporary directory and prints PASS, FAIL or SKIP per step:
 
 - clang-format with `native/.clang-format`;
 - `cl /W4 /WX /sdl /analyze`, clang `-Wall -Wextra -Werror` and `--analyze`;
 - the preprocessor guards: Linux, macOS, MinGW, 32-bit and ARM64 targets must fail;
 - `unit.c` (C unit tests) and `test.lua` (Neovim-driven) under AddressSanitizer;
-- `bridge.lua`, the Lua side's tests, which also run alone on any system: `nvim -l tests/windows_ime_helper/bridge.lua`;
+- `bridge.lua`, the Lua side's tests, which also run alone on any system, each in a throwaway root: `nvim -l tests/windows_ime_helper/bridge.lua`;
 - `fuzz.c`, a libFuzzer target over the parsers.
 
-It needs Visual Studio 2022 or later with the C++ tools and enters a Developer PowerShell itself.
+It needs Visual Studio 2022 or later with the C++ tools and enters a Developer PowerShell itself. Without clang or clang-format those steps are SKIP.
 
 ## CI
 

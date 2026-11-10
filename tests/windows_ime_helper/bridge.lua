@@ -2,7 +2,26 @@
 -- from a watcher, which files it takes for its build, how it reads an exit status, how it reports, and that it does
 -- nothing at all off Windows.
 --   nvim -l tests/windows_ime_helper/bridge.lua      (any system)
-local repo = vim.fs.dirname(vim.fs.dirname(vim.fs.dirname(vim.fs.normalize(vim.fn.fnamemodify(arg[0], ":p")))))
+local script = vim.fs.normalize(vim.fn.fnamemodify(arg[0], ":p"))
+local repo = vim.fs.dirname(vim.fs.dirname(vim.fs.dirname(script)))
+
+-- The module makes its directory in stdpath("data") as it loads, and moves an older one there: run again with
+-- every stdpath in a throwaway root, so the user's own are never touched.
+if not os.getenv("IME_HELPER_TEST_ROOT") then
+  local root = vim.fn.tempname() .. "-bridge"
+  local env = { IME_HELPER_TEST_ROOT = root }
+
+  for _, kind in ipairs({ "CONFIG", "DATA", "STATE", "CACHE" }) do
+    env["XDG_" .. kind .. "_HOME"] = vim.fs.joinpath(root, kind:lower())
+  end
+
+  local res = vim.system({ vim.v.progpath, "-l", script }, { env = env, text = true }):wait()
+
+  io.stdout:write(res.stdout or "")
+  io.stderr:write(res.stderr or "")
+  vim.fs.rm(root, { recursive = true, force = true })
+  vim.cmd.cquit(res.code)
+end
 
 package.path = vim.fs.joinpath(repo, "lua", "?.lua") .. ";" .. package.path
 
@@ -115,4 +134,4 @@ if not WIN then
 end
 
 print(("== %d failed"):format(failures))
-os.exit(failures == 0 and 0 or 1)
+vim.cmd.cquit(failures == 0 and 0 or 1)

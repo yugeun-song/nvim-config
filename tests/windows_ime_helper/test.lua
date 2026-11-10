@@ -210,14 +210,17 @@ check(r.code == 127, "refused: the program's command line would pass 32767 chara
 write(shim_file, win(cmd_exe))
 
 local marker = vim.fs.joinpath(root, "marker.txt")
-local wmi = ("Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = '%s /d /c echo ran > %s' } | Out-Null"):format(
+-- Exit 3 when WMI did not start it, so a refusal is never confused with a start that failed.
+local wmi = ("$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = '%s /d /c echo ran > %s' }; if ($r.ReturnValue -ne 0) { exit 3 }; Wait-Process -Id $r.ProcessId -Timeout 20 -ErrorAction SilentlyContinue; exit 0"):format(
   win(tool),
   win(marker)
 )
 
-run({ "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", wmi }, { timeout = 30000 })
-vim.wait(3000)
-check(not vim.uv.fs_stat(marker), "a shim started outside Neovim refuses")
+r = run({ "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", wmi }, { timeout = 30000 })
+check(
+  r.code == 0 and not vim.uv.fs_stat(marker),
+  ("a shim started outside Neovim refuses (WMI start: exit %d)"):format(r.code)
+)
 
 -- Killing the shim ends its program (job object).
 write(shim_file, win(vim.fs.joinpath(system32, "PING.EXE")))
