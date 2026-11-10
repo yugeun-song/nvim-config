@@ -110,7 +110,8 @@ local function indexed_includes(buf, spelled)
     return found
   end
 
-  local list = vim.fs.find("cscope.files", { upward = true, path = dir })[1]
+  -- Regular files only: a FIFO would never end.
+  local list = vim.fs.find("cscope.files", { upward = true, path = dir, type = "file" })[1]
   local fd = list and io.open(list, "rb")
 
   if not fd then

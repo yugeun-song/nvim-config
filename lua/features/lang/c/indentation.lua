@@ -12,53 +12,127 @@ local CLANG_FORMAT_STYLE_INDENT = {
   gnu = 2,
 }
 
-local function clang_format_indent(bufname)
-  if bufname == "" then
-    return nil
-  end
+-- UseTab values (false and true are old spellings): only Never indents with spaces.
+local USE_TAB_EXPANDS = {
+  Never = true,
+  ["false"] = true,
+  ForIndentation = false,
+  ForContinuationAndIndentation = false,
+  AlignWithSpaces = false,
+  Always = false,
+  ["true"] = false,
+}
 
-  local found = vim.fs.find({ ".clang-format", "_clang-format" }, {
-    upward = true,
-    path = vim.fs.dirname(bufname),
-    type = "file",
-  })[1]
+-- The .clang-format documents clang-format 23 uses per extension, in order; "" is a first document without
+-- Language. Older releases read .c as Cpp.
+local LANGUAGE_ORDER = { c = { "C", "", "Cpp" }, h = { "Cpp", "", "C" } }
 
-  local fd = found and io.open(found, "r")
+-- The top-level keys of each YAML document, quotes stripped.
+local function documents(path)
+  local fd = io.open(path, "r")
 
   if not fd then
     return nil
   end
 
-  local indent, tab_width, use_tab, based
+  local docs, doc, indent = {}, nil, nil
 
   for line in fd:lines() do
-    if line:match("^%-%-%-") and (indent or use_tab or based) then
-      break
-    end
+    if line:find("^%-%-%-") or line:find("^%.%.%.") then
+      doc = nil
+    else
+      local lead, key, value = line:match("^(%s*)([%w_]+)%s*:%s*([^#]*)")
 
-    local key, value = line:match("^%s*([%w_]+)%s*:%s*([^#]*)")
+      if key and (not doc or lead == indent) then
+        if not doc then
+          doc, indent = {}, lead
+          docs[#docs + 1] = doc
+        end
 
-    if key then
-      value = vim.trim(value)
-      if key == "IndentWidth" then
-        indent = tonumber(value)
-      elseif key == "TabWidth" then
-        tab_width = tonumber(value)
-      elseif key == "UseTab" then
-        use_tab = value
-      elseif key == "BasedOnStyle" then
-        based = value:lower()
+        value = vim.trim(value)
+        doc[key] = value:match('^"(.*)"$') or value:match("^'(.*)'$") or value
       end
     end
   end
 
   fd:close()
-  indent = indent or CLANG_FORMAT_STYLE_INDENT[based] or 2
+
+  return docs
+end
+
+local function inherits(keys)
+  return (keys.BasedOnStyle or ""):lower() == "inheritparentconfig"
+end
+
+-- The keys a .clang-format sets for this extension, or nil when no document applies (clang-format looks higher).
+local function style_keys(path, extension)
+  local docs = documents(path)
+
+  if not docs or #docs == 0 then
+    return docs
+  end
+
+  local default = docs[1].Language == nil and docs[1] or nil
+
+  for _, language in ipairs(LANGUAGE_ORDER[extension] or { "Cpp", "" }) do
+    if language == "" then
+      if default then
+        return default
+      end
+    else
+      for _, doc in ipairs(docs) do
+        if doc.Language == language then
+          return default and (not doc.BasedOnStyle or inherits(doc)) and vim.tbl_extend("force", default, doc) or doc
+        end
+      end
+    end
+  end
+end
+
+local function clang_format_indent(bufname)
+  if bufname == "" then
+    return nil
+  end
+
+  local files = vim.fs.find({ ".clang-format", "_clang-format" }, {
+    upward = true,
+    path = vim.fs.dirname(bufname),
+    type = "file",
+    limit = math.huge,
+  })
+
+  local extension = bufname:match("%.(%w+)$")
+  local layers = {}
+
+  for _, file in ipairs(files) do
+    local keys = style_keys(file, extension)
+
+    if keys then
+      table.insert(layers, 1, keys)
+
+      if not inherits(keys) then
+        break
+      end
+    end
+  end
+
+  if #layers == 0 then
+    return nil
+  end
+
+  local keys = {}
+
+  for _, layer in ipairs(layers) do
+    keys = vim.tbl_extend("force", keys, layer)
+  end
+
+  local based = (layers[1].BasedOnStyle or ""):lower()
+  local expands = USE_TAB_EXPANDS[keys.UseTab]
 
   return {
-    shiftwidth = indent,
-    tabstop = tab_width or 8,
-    expandtab = use_tab == nil or use_tab == "Never",
+    shiftwidth = tonumber(keys.IndentWidth) or CLANG_FORMAT_STYLE_INDENT[based] or 2,
+    tabstop = tonumber(keys.TabWidth) or based == "microsoft" and 4 or 8,
+    expandtab = expands == nil or expands,
   }
 end
 

@@ -61,7 +61,20 @@ end
 
 local function other_languages()
   vim.health.start("Other languages")
-  status.programs("Common Lisp REPL and server", { "sbcl", "ocicl" })
+  status.programs("Common Lisp REPL", { "sbcl" })
+
+  local alive_lsp = require("features.lang.lisp.alive_lsp")
+  local server = "Common Lisp language server (alive-lsp)"
+
+  if alive_lsp.ready() then
+    status.available(server, alive_lsp.directory())
+  elseif not status.find("sbcl") then
+    status.blocked(server, "missing sbcl")
+  else
+    status.blocked(server, "no ocicl.csv in " .. alive_lsp.directory(), { "docs/features/lang.md#common-lisp" })
+  end
+
+  status.programs("Common Lisp lint", { "ocicl" })
   status.programs("Racket REPL", { "racket" })
   require("features.lang.haskell").add_to_path()
   status.programs(
@@ -70,6 +83,7 @@ local function other_languages()
     { "https://www.haskell.org/ghcup/" }
   )
 
+  status.programs("Haskell lint", { "hlint" }, { "https://github.com/ndmitchell/hlint" })
   status.programs("Lean 4", { "elan" }, { "https://github.com/leanprover/elan" })
   status.programs("Python lint and format", { "ruff" })
 end

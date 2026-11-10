@@ -4,8 +4,8 @@ C and the Linux kernel first: clangd, cscope and `tags` tuned for big trees, ass
 
 ## C and C++
 
-- **Indentation** (`c/indentation.lua`). A `.clang-format` found upward sets it (`IndentWidth`, `UseTab`, `TabWidth`, or the `BasedOnStyle` default); a project `.editorconfig` wins over it. With neither, a buffer whose first 2000 lines start more often with a tab than with two spaces gets 8-column tabs, else 4 spaces. Existing whitespace is never rewritten: `list` is on and autoformat off.
-- **clangd** (`lua/plugins/lang/c.lua`, `c/clangd.lua`): `--background-index --clang-tidy --completion-style=detailed --header-insertion=never --pch-storage=disk --background-index-priority=background --limit-results=200 --limit-references=2000 --log=error -j=<all CPUs>`. Its temporary files go to a private directory per Neovim under `stdpath("cache")`, removed when that Neovim exits.
+- **Indentation** (`c/indentation.lua`). A `.clang-format` found upward sets it (`IndentWidth`, `UseTab`, `TabWidth`, or the `BasedOnStyle` default), taken from the document clang-format 23 uses for the file (`Language: C` for `.c`, else `Cpp`, else the one without `Language`). A file with no such document defers to the next one up; `BasedOnStyle: InheritParentConfig` builds on it. A project `.editorconfig` wins over it. With neither, a buffer whose first 2000 lines start more often with a tab than with two spaces gets 8-column tabs, else 4 spaces. Existing whitespace is never rewritten: `list` is on and autoformat off.
+- **clangd** (`lua/plugins/lang/c.lua`, `c/clangd.lua`): `--background-index --clang-tidy --completion-style=detailed --header-insertion=never --pch-storage=disk --background-index-priority=background --limit-results=200 --limit-references=2000 --log=error -j=<all CPUs>`. It starts from PATH, Mason's `bin` first; Mason has no clangd for ARM64 or musl Linux. Its temporary files go to a private directory per Neovim under `stdpath("cache")`, removed when that Neovim exits.
 - **cscope**: cscope_maps.nvim with Telescope under `<leader>i`, loaded by its commands and keys. A query reads only the nearest `cscope.out` above the current buffer, so one tree never answers for another. cscope reads assembler as C, so `find g` drops an assembler hit only when its line proves a use and its file spells nothing else that could define the word; every hit stays when all would go.
 - **`<C-]>`** jumps through `tags` (`make tags`): the language server's `tagfunc` is cleared in C, C++ and assembler buffers. `'tags'` searches upward from the buffer and ignores the working directory.
 - **`gf` on `#include`** (`c/include_gf.lua`): with a project `compile_commands.json` or `compile_flags.txt`, clangd's header when it is in the project or a system one; else a matching `tags` entry, `cscope.out` file or `cscope.files` line (a picker when several match); else the built-in `gf`.
@@ -20,10 +20,10 @@ C and the Linux kernel first: clangd, cscope and `tags` tuned for big trees, ass
 - **`gd` and `K` in assembler** (`asm/definition_navigation.lua`), in order:
   1. clangd's answer for a word's `#define` or on an `#include` line;
   2. the definitions in the file itself, from `tags` or spelled on a line (label, `=`, `.set`, `.equ`, `.macro`, `.req`), alone unless `#if` or `.if` encloses them;
-  3. every place that may define the word, nearest first: the files it includes, macro calls in this file (`SYM_FUNC_ALIAS(name, ...)`), a macro of this file taking the word, all other tags, what cscope spells, and macro calls at file scope (`DEFINE_PER_CPU(type, name)`);
+  3. every place that may define the word, nearest first: the files it includes, macro calls in this file (`SYM_FUNC_ALIAS(name, ...)`), a macro of this file taking the word, all other tags, what cscope spells, functions and variables cscope finds defined at file scope in `.c` files (not `static`, no type, tag or `#define`), and macro calls at file scope (`DEFINE_PER_CPU(type, name)`);
   4. prototypes and other tags that define nothing, then a macro's arguments elsewhere, then the built-in `gd`.
 
-  One hit jumps; several open the `<leader>i` Telescope picker. A `\name` operand is a `.macro` parameter and goes straight to the built-in `gd`. A second clangd (`clangd_asm`: no background index, no tidy) attaches to `asm` buffers and leaves any the project's clangd configuration cannot read as C; it offers only those two answers, no completion, tokens, formatting or diagnostics. `<leader>is` lists a symbol's uses.
+  One hit jumps; several open the `<leader>i` Telescope picker. Each cscope query stops after 2 s. A `\name` operand is a `.macro` parameter and goes straight to the built-in `gd`. A second clangd (`clangd_asm`: no background index, no tidy) attaches to `asm` buffers and leaves any the project's clangd configuration cannot read as C; it offers only those two answers, no completion, tokens, formatting or diagnostics. `<leader>is` lists a symbol's uses.
 
 ## CUDA
 
@@ -43,7 +43,7 @@ Windows only (`c/msvc_toolchain/`).
 
 ## Common Lisp
 
-- The `commonlisp` parser highlights `lisp` buffers. [alive-lsp](https://github.com/nobody-famous/alive-lsp) runs in SBCL as the language server, enabled when `sbcl` is on PATH and its directory holds `ocicl.csv`. `ocicl lint` adds INFO diagnostics on read and write. `'` and `` ` `` are not auto-paired and nothing is formatted on save. `.el` files get neither server, linter nor REPL keys.
+- The `commonlisp` parser highlights `lisp` buffers. [alive-lsp](https://github.com/nobody-famous/alive-lsp) runs in SBCL as the language server, enabled when `sbcl` is on PATH and its directory holds `ocicl.csv`. `ocicl lint` adds INFO diagnostics on read and write when `ocicl` is on PATH. `'` and `` ` `` are not auto-paired and nothing is formatted on save. `.el` files get neither server, linter nor REPL keys.
 - `scripts/alive_lsp_over_stdio.lisp` runs alive-lsp over stdio instead of a TCP port, turns `*read-eval*` off, and reshapes the hover, definition, formatting and shutdown replies. It calls alive's internal `create-deps`: re-check it before moving the pin.
 - Install alive-lsp into `stdpath("data")/nvim-config/alive_lsp` (`~/.local/share/nvim/nvim-config/alive_lsp` on Linux), pinned to the v0.4.5 commit:
 
@@ -60,7 +60,7 @@ Windows only (`c/msvc_toolchain/`).
 
 ## Haskell
 
-[haskell-tools.nvim](https://github.com/mrcjkb/haskell-tools.nvim) (`^11`) runs haskell-language-server for Haskell and Cabal files (lspconfig's `hls` is off), with the `haskell` parser and `hlint`. GHCup's `bin` (`haskell.lua`: `~/.ghcup/bin`, `C:\ghcup\bin`, or under `GHCUP_INSTALL_BASE_PREFIX`) is appended to PATH when Haskell is first needed, so an earlier program of the same name wins.
+[haskell-tools.nvim](https://github.com/mrcjkb/haskell-tools.nvim) (`^11`) runs haskell-language-server for Haskell and Cabal files (lspconfig's `hls` is off), with the `haskell` parser and `hlint` when it is on PATH. GHCup's `bin` (`haskell.lua`: `~/.ghcup/bin`, `C:\ghcup\bin`, or under `GHCUP_INSTALL_BASE_PREFIX`) is appended to PATH when Haskell is first needed, so an earlier program of the same name wins.
 
 ## Lean, Python, Elixir, Rust, TypeScript
 

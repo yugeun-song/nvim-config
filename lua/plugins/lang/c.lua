@@ -29,6 +29,8 @@ local specs = {
 
       opts.servers = opts.servers or {}
       opts.servers.clangd = vim.tbl_deep_extend("force", opts.servers.clangd or {}, {
+        -- Not through Mason: its clangd exists only for x64 Linux (glibc), x64 Windows and macOS; PATH serves the rest.
+        mason = false,
         cmd = {
           "clangd",
           "--background-index",
@@ -119,9 +121,8 @@ local specs = {
 
       ---@diagnostic disable-next-line: duplicate-set-field
       cscope.get_result = function(op_n, op_s, symbol, hide_log)
-        local file = vim.bo.buftype == "" and vim.api.nvim_buf_get_name(0) or ""
-        local from = file ~= "" and vim.fs.dirname(file) or vim.fn.getcwd()
-        local database = vim.fs.find("cscope.out", { upward = true, path = from })[1]
+        local navigation = require("features.lang.asm.definition_navigation")
+        local database = navigation.cscope_database()
 
         vim.g.cscope_maps_db_file = database and database .. "::@" or nil
 
@@ -131,7 +132,7 @@ local specs = {
           return rc, hits
         end
 
-        local kept = require("features.lang.asm.definition_navigation").real_definitions(hits, symbol)
+        local kept = navigation.real_definitions(hits, symbol)
 
         return rc, #kept > 0 and kept or hits
       end

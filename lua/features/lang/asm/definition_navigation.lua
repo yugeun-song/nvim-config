@@ -6,6 +6,8 @@ local TAG_PATTERN_SPECIALS = [[\.*$^~[]]
 
 local CLANGD_PATIENCE_MS = 2000
 
+local CSCOPE_PATIENCE_MS = 2000
+
 local C_TYPE_KINDS = { s = true, u = true, g = true, t = true }
 
 local NAMING_DIRECTIVES = { "set", "equ", "equiv", "eqv", "macro", "comm", "lcomm" }
@@ -325,7 +327,7 @@ local function blank_comments(lines)
 end
 
 -- The buffer's own lines that can define the word. ctags knows no .req and no label a macro call makes
--- (SYM_FUNC_ALIAS, SYM_INNER_LABEL). depth says how many #if or .if enclose each line.
+-- (SYM_FUNC_ALIAS, SYM_INNER_LABEL; its first argument). depth: how many #if or .if enclose each line.
 local function own_occurrences(buf, word, code)
   local pattern = whole_word(word)
   local file = vim.api.nvim_buf_get_name(buf)
@@ -351,7 +353,7 @@ local function own_occurrences(buf, word, code)
       if spelled_here(line, first, last) then
         kind = found.spelled
       elseif not used_here(line, first, last) and not kind then
-        if statement:find("^%s*[%a_][%w_$]*%(") then
+        if statement:find("^%s*[%a_][%w_$]*%(%s*%.?$") then
           kind = found.calls
         elseif statement:find("^%s*[%a_][%w_$]*%s") then
           kind, operation = found.operands, statement:match("^%s*([%a_][%w_$]*)")
@@ -392,16 +394,80 @@ local function merged(...)
   return items
 end
 
+-- The cscope.out nearest the current buffer's file, else the working directory's: the one database cscope_maps'
+-- queries (lua/plugins/lang/c.lua) and gd read, so one tree never answers for another.
+function M.cscope_database()
+  local file = vim.bo.buftype == "" and vim.api.nvim_buf_get_name(0) or ""
+  local from = file ~= "" and vim.fs.dirname(file) or vim.fn.getcwd()
+  local database = vim.fs.find("cscope.out", { upward = true, path = from, type = "file" })[1]
+
+  return database and vim.fs.normalize(database)
+end
+
+-- cscope_maps' query on that database with a time limit, which its get_result lacks (a slow database would hold
+-- the UI). definition_items filters the find g hits itself.
 local function cscope_hits(find, word)
+  local database = M.cscope_database()
   local ok, cscope = pcall(require, "cscope")
 
-  if not ok then
+  if not database or not ok or vim.fn.executable("cscope") == 0 then
     return {}
   end
 
-  local ran, _, hits = pcall(cscope.get_result, cscope.op_s_n[find], find, word, true)
+  local cwd, base = vim.fn.getcwd(), vim.fs.dirname(database)
+  local relative = require("cscope_maps.utils").get_rel_path
+  local cmd =
+    { "cscope", "-dL", "-" .. cscope.op_s_n[find], word, "-f", relative(cwd, database), "-P", relative(cwd, base) }
 
-  return ran and hits or {}
+  local ran, result = pcall(function()
+    return vim.system(cmd, { text = true }):wait(CSCOPE_PATIENCE_MS)
+  end)
+
+  if not ran or result.code ~= 0 then
+    return {}
+  end
+
+  return cscope.parse_output(result.stdout or "", base)
+end
+
+local NOT_EXTERNAL = { static = true, typedef = true, extern = true }
+
+local TAG_KEYWORDS = { struct = true, union = true, enum = true }
+
+-- A find g hit in a .c file that assembler can call: a non-static function or variable defined at file scope.
+local function external_c_definition(hit, word)
+  local lnum = tonumber(hit.lnum)
+  local stat = lnum and hit.filename:find("%.c$") and vim.uv.fs_stat(hit.filename)
+
+  if not stat or stat.type ~= "file" then
+    return false
+  end
+
+  local lines = vim.fn.readfile(hit.filename, "", lnum)
+  local line = lines[lnum] or ""
+  local first, last = line:find(whole_word(word))
+
+  if not first then
+    return false
+  end
+
+  local specifiers = first > 1 and line:sub(1, first - 1) or lines[lnum - 1] or ""
+
+  if
+    not specifiers:find("^[%a_][%w_%s*]*$")
+    or TAG_KEYWORDS[specifiers:match("([%a_][%w_]*)[%s*]*$")]
+    or (line:sub(last + 1):find("^%s*%(") and line:find("%)%s*;%s*$"))
+  then
+    return false
+  end
+
+  for name in specifiers:gmatch("[%a_][%w_]*") do
+    if NOT_EXTERNAL[name] then
+      return false
+    end
+  end
+
+  return true
 end
 
 -- A word on a line whose operation is no assembler macro is an instruction's operand. Only with tags to
@@ -468,7 +534,7 @@ local function macro_made(buf, word, defined_in)
         return false
       end
 
-      return statement_before(line:sub(1, first - 1)):find("^%s*[%a_][%w_$]*%(") ~= nil
+      return statement_before(line:sub(1, first - 1)):find("^%s*[%a_][%w_$]*%(%s*%.?$") ~= nil
     end
 
     if ref.filename:find("%.h$") and spelled(line, pattern) and not line:find("^[^#]*;%s*$") then
@@ -533,6 +599,10 @@ local function definition_items(buf, word, cursor)
       )
   end, hits)
 
+  local c_definitions = vim.tbl_filter(function(hit)
+    return external_c_definition(hit, word)
+  end, hits)
+
   local close_by = merged(
     vim.tbl_filter(function(item)
       return among_files(item.filename, includes)
@@ -576,8 +646,17 @@ local function definition_items(buf, word, cursor)
     return not ref.filename:find("%.h$")
   end, made)
 
-  local likely =
-    merged(at_home, close_by, own.calls, own_macro_arguments, defining, spelled_hits, made_in_sources, made)
+  local likely = merged(
+    at_home,
+    close_by,
+    own.calls,
+    own_macro_arguments,
+    defining,
+    spelled_hits,
+    c_definitions,
+    made_in_sources,
+    made
+  )
 
   if #likely > 0 then
     return likely

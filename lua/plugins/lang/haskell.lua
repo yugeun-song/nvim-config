@@ -55,7 +55,7 @@ return {
           condition = function()
             require("features.lang.haskell").add_to_path()
 
-            return not vim.bo.modified
+            return not vim.bo.modified and vim.fn.executable("hlint") == 1
           end,
         },
       },

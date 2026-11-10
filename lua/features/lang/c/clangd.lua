@@ -10,7 +10,8 @@ function M.private_tmp()
   for name in vim.fs.dir(base) do
     local pid = tonumber(name)
 
-    if pid and pid ~= vim.fn.getpid() and vim.uv.kill(pid, 0) ~= 0 then
+    -- Only ESRCH means gone; EPERM is a live Neovim this user may not signal.
+    if pid and pid ~= vim.fn.getpid() and select(3, vim.uv.kill(pid, 0)) == "ESRCH" then
       pcall(vim.fs.rm, vim.fs.joinpath(base, name), { recursive = true, force = true })
     end
   end

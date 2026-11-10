@@ -18,11 +18,12 @@ return {
     "neovim/nvim-lspconfig",
     -- A function: sbcl and the server's directory are looked for when nvim-lspconfig loads, not at every startup.
     opts = function(_, opts)
-      local alive_root = require("features.util.storage").path("data", "alive_lsp")
+      local alive_lsp = require("features.lang.lisp.alive_lsp")
+      local alive_root = alive_lsp.directory()
 
       opts.servers = opts.servers or {}
       opts.servers.alive_lsp = vim.tbl_deep_extend("force", opts.servers.alive_lsp or {}, {
-        enabled = vim.fn.executable("sbcl") == 1 and vim.uv.fs_stat(alive_root .. "/ocicl.csv") ~= nil,
+        enabled = alive_lsp.ready(),
         mason = false,
         cmd = { "sbcl", "--script", vim.fn.stdpath("config") .. "/scripts/alive_lsp_over_stdio.lisp", alive_root },
         filetypes = { "lisp" },
@@ -52,7 +53,7 @@ return {
           ignore_exitcode = true,
           parser = ocicl_lint_parser,
           condition = function(ctx)
-            return not vim.bo.modified and not ctx.filename:match("%.el$")
+            return not vim.bo.modified and not ctx.filename:match("%.el$") and vim.fn.executable("ocicl") == 1
           end,
         },
       },
