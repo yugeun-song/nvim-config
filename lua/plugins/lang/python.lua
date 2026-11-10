@@ -37,8 +37,8 @@ return {
         "mfussenegger/nvim-dap-python",
         -- stylua: ignore
         keys = {
-          { "<leader>dPt", function() require("dap-python").test_method() end, desc = "Debug: python test method", ft = "python" },
-          { "<leader>dPc", function() require("dap-python").test_class() end, desc = "Debug: python test class", ft = "python" },
+          { "<leader>dLt", function() require("dap-python").test_method() end, desc = "Debug: python test method", ft = "python" },
+          { "<leader>dLc", function() require("dap-python").test_class() end, desc = "Debug: python test class", ft = "python" },
         },
         config = function()
           local venv = vim.fs.joinpath(require("features.lsp.mason").ROOT, "packages", "debugpy", "venv")

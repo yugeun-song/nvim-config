@@ -18,11 +18,11 @@ The rules live in `stdpath("data")/nvim-config/language_server_attach_rules.json
 
 | Want to | Do |
 |---|---|
-| Turn clangd off for a directory | open a file in it, `<leader>cFd`, pick the directory |
-| Pick the servers and the action | `<leader>cFa` |
-| See why a server runs here | `<leader>cFl` |
-| Turn every rule off for now | `<leader>cFt` (this session only) |
-| Remove a rule | `<leader>cFe`, delete it from `rules`, `:w` |
+| Turn clangd off for a directory | open a file in it, `<leader>cLd`, pick the directory |
+| Pick the servers and the action | `<leader>cLa` |
+| See why a server runs here | `<leader>cLl` |
+| Turn every rule off for now | `<leader>cLt` (this session only) |
+| Remove a rule | `<leader>cLe`, delete it from `rules`, `:w` |
 
 Per-directory marker files (`.nvim-lsp-filter.json`) are read only with `markers_enabled = true` in the `setup()` of `features.lsp.attach_rules`; the spec does not set it.
 

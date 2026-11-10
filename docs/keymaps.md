@@ -43,13 +43,13 @@ Details: [languages](features/lang.md#c-and-c).
 
 | Key | Action |
 |---|---|
-| `<leader>cFf` | Exclude the current file |
-| `<leader>cFd` | Exclude the file or an ancestor directory |
-| `<leader>cFa` | Add a rule: path, servers, action |
-| `<leader>cFl` | The action and its source for this buffer |
-| `<leader>cFe` | Edit the rules file |
-| `<leader>cFr` | Reload the rules |
-| `<leader>cFt` | Toggle every rule for this session |
+| `<leader>cLf` | Exclude the current file |
+| `<leader>cLd` | Exclude the file or an ancestor directory |
+| `<leader>cLa` | Add a rule: path, servers, action |
+| `<leader>cLl` | The action and its source for this buffer |
+| `<leader>cLe` | Edit the rules file |
+| `<leader>cLr` | Reload the rules |
+| `<leader>cLt` | Toggle every rule for this session |
 
 Details: [language servers](features/lsp.md#attach-rules).
 
@@ -75,8 +75,8 @@ Details: [language servers](features/lsp.md#attach-rules).
 | `<leader>dR` / `<leader>dm` / `<leader>dD` | Registers / hex view / disassembly (gdb and LLDB sessions) |
 | `<leader>ds` | Target panel (gdb sessions) |
 | `<leader>dq` / `<leader>dQ` | Attach a kbuildlab guest / list the guests |
-| `<leader>dPt` / `<leader>dPc` | Debug the Python test method / class under the cursor |
-| `<leader>dPr` | Pick a cargo target to debug (`:RustLsp debuggables`) |
+| `<leader>dLt` / `<leader>dLc` | Debug the Python test method / class under the cursor |
+| `<leader>dLr` | Pick a cargo target to debug (`:RustLsp debuggables`) |
 
 Panel keys and commands: [debugging](features/dap.md#panels).
 

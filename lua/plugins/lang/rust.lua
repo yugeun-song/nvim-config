@@ -13,7 +13,7 @@ return {
     ft = { "rust" },
     -- stylua: ignore
     keys = {
-      { "<leader>dPr", function() vim.cmd.RustLsp("debuggables") end, desc = "Debug: rust debuggables", ft = "rust" },
+      { "<leader>dLr", function() vim.cmd.RustLsp("debuggables") end, desc = "Debug: rust debuggables", ft = "rust" },
     },
     config = function()
       local opts = {
