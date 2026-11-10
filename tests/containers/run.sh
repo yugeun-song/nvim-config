@@ -1,9 +1,9 @@
 #!/bin/sh
-# This configuration in the official images of desktop Linux distributions, through podman or docker. Nothing runs
+# This configuration in the official images of desktop Linux distributions, through rootless podman. Nothing runs
 # it by itself: start it by hand on a Linux host.
 #
-#   sh tests/containers/run.sh [--keep] [--rebuild] [--engine podman|docker] [DISTRIBUTION...]
-#   sh tests/containers/run.sh --clean [--engine podman|docker]
+#   sh tests/containers/run.sh [--keep] [--rebuild] [DISTRIBUTION...]
+#   sh tests/containers/run.sh --clean
 #
 # Once per run, on the host (network): the official Neovim 0.12.6 build (SHA-256 checked), and the plugins at
 # lazy-lock.json's commits with their tree-sitter parsers, in an isolated directory.
@@ -34,7 +34,6 @@ NV_VERSION=0.12.6
 # Per container, swap included: a runaway test is stopped inside its own cgroup instead of pressing the whole host.
 MEMORY=4g
 
-engine=${NVIM_TEST_ENGINE:-}
 keep=0
 rebuild=0
 clean=0
@@ -45,10 +44,6 @@ while [ $# -gt 0 ]; do
     --keep) keep=1 ;;
     --rebuild) rebuild=1 ;;
     --clean) clean=1 ;;
-    --engine)
-      engine=${2:?--engine needs podman or docker}
-      shift
-      ;;
     -h | --help)
       awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"
       exit 0
@@ -67,34 +62,16 @@ if [ "$(uname -s)" != Linux ]; then
   exit 2
 fi
 
-if [ -z "$engine" ]; then
-  if command -v podman >/dev/null 2>&1; then
-    engine=podman
-  elif command -v docker >/dev/null 2>&1; then
-    engine=docker
-  fi
-fi
+# podman only: it runs rootless, without a root daemon, and its signature policy can check cosign signatures, which
+# openSUSE publishes; Docker's Notary signatures no longer cover the official images' current builds (2026-11-11).
+command -v podman >/dev/null 2>&1 || {
+  echo "error: podman is not installed" >&2
+  exit 2
+}
 
-case "$engine" in
-  podman | docker)
-    command -v "$engine" >/dev/null 2>&1 || {
-      echo "error: $engine is not installed" >&2
-      exit 2
-    }
-    ;;
-  "")
-    echo "error: neither podman nor docker is installed" >&2
-    exit 2
-    ;;
-  *)
-    echo "error: --engine takes podman or docker, not $engine" >&2
-    exit 2
-    ;;
-esac
-
-# Installed is not enough: docker's daemon may be stopped, rootless podman not set up for this user.
-if ! "$engine" info >/dev/null 2>&1; then
-  echo "error: $engine does not answer ($engine info fails); start its service or finish its setup" >&2
+# Installed is not enough: rootless podman may not be set up for this user.
+if ! podman info >/dev/null 2>&1; then
+  echo "error: podman does not answer (podman info fails); finish its rootless setup" >&2
   exit 2
 fi
 
@@ -107,30 +84,30 @@ mkdir -p "$STATE"
 }
 
 image_present() {
-  "$engine" image inspect "$1" >/dev/null 2>&1
+  podman image inspect "$1" >/dev/null 2>&1
 }
 
 # Only what carries this script's label, and official images it recorded as pulled while no container uses them.
 remove_kept() {
-  ids=$("$engine" ps -aq --filter "label=$LABEL")
+  ids=$(podman ps -aq --filter "label=$LABEL")
   # shellcheck disable=SC2086 # one id per word
-  [ -z "$ids" ] || "$engine" rm -f $ids >/dev/null
+  [ -z "$ids" ] || podman rm -f $ids >/dev/null
   echo "removed $(printf '%s' "$ids" | grep -c .) container(s) labelled $LABEL"
-  ids=$("$engine" images -q --filter "label=$LABEL" | sort -u)
+  ids=$(podman images -q --filter "label=$LABEL" | sort -u)
   # shellcheck disable=SC2086
-  [ -z "$ids" ] || "$engine" rmi -f $ids >/dev/null
+  [ -z "$ids" ] || podman rmi -f $ids >/dev/null
   echo "removed $(printf '%s' "$ids" | grep -c .) prepared image(s)"
 
   if [ -f "$PULLED" ]; then
     sort -u "$PULLED" | while IFS= read -r image; do
       [ -n "$image" ] || continue
-      if [ -n "$("$engine" ps -aq --filter "ancestor=$image")" ]; then
+      if [ -n "$(podman ps -aq --filter "ancestor=$image")" ]; then
         echo "kept $image: a container still uses it" >&2
         echo "$image"
-      elif "$engine" rmi "$image" >/dev/null 2>&1; then
+      elif podman rmi "$image" >/dev/null 2>&1; then
         echo "removed $image" >&2
       elif image_present "$image"; then
-        echo "kept $image: $engine rmi failed" >&2
+        echo "kept $image: podman rmi failed" >&2
         echo "$image"
       fi
     done >"$PULLED.left"
@@ -225,7 +202,7 @@ current=""
 
 # shellcheck disable=SC2329 # the trap calls it
 interrupted() {
-  [ -z "$current" ] || "$engine" rm -f "$current" >/dev/null 2>&1
+  [ -z "$current" ] || podman rm -f "$current" >/dev/null 2>&1
   [ "$keep" = 1 ] || remove_kept >/dev/null 2>&1
   exit 130
 }
@@ -234,9 +211,9 @@ trap interrupted INT TERM
 
 # A container of this name is removed only when it carries this script's label.
 remove_ours() {
-  ids=$("$engine" ps -aq --filter "name=^$1\$" --filter "label=$LABEL")
+  ids=$(podman ps -aq --filter "name=^$1\$" --filter "label=$LABEL")
   # shellcheck disable=SC2086 # one id per word
-  [ -z "$ids" ] || "$engine" rm -f $ids >/dev/null 2>&1
+  [ -z "$ids" ] || podman rm -f $ids >/dev/null 2>&1
 }
 
 # The official build and the plugins with their parsers, once per lockfile, in a directory of this script.
@@ -371,10 +348,10 @@ for name in $names; do
   remove_ours "$tester"
 
   if [ "$rebuild" = 1 ] || ! image_present "$prepared" ||
-    [ "$("$engine" image inspect -f '{{ index .Config.Labels "org.nvim-config.test.lock" }}' "$prepared" 2>/dev/null)" != "$LOCK" ]; then
+    [ "$(podman image inspect -f '{{ index .Config.Labels "org.nvim-config.test.lock" }}' "$prepared" 2>/dev/null)" != "$LOCK" ]; then
     echo "== $name: prepare from $image"
     if ! image_present "$image"; then
-      if "$engine" pull "$image" >>"$log" 2>&1; then
+      if podman pull "$image" >>"$log" 2>&1; then
         # Recorded at once, so an interrupted run or --clean removes it too.
         echo "$image" >>"$PULLED"
       else
@@ -387,37 +364,37 @@ for name in $names; do
     current="nvim-config-test-prepare-$name-$$"
     # label=disable: on an SELinux host the container cannot read the mounts otherwise, and relabelling them would
     # change the user's files.
-    "$engine" run --name "$current" --label "$LABEL" --security-opt no-new-privileges --security-opt label=disable \
+    podman run --name "$current" --label "$LABEL" --security-opt no-new-privileges --security-opt label=disable \
       --pids-limit 4096 --memory "$MEMORY" --memory-swap "$MEMORY" -e SETUP="$setup" -e OFFICIAL="$official" \
       -v "$HOST:/prepared:ro" "$image" sh -c "$PREPARE" \
       >>"$log" 2>&1 || {
       echo "FAIL [$name] prepare (log: $log)"
       tail -n 20 "$log"
-      "$engine" rm -f "$current" >/dev/null 2>&1
+      podman rm -f "$current" >/dev/null 2>&1
       current=""
       status=1
       continue
     }
     # The image this tag named before is this script's own; replaced rather than left dangling.
-    "$engine" rmi "$prepared" >/dev/null 2>&1
+    podman rmi "$prepared" >/dev/null 2>&1
     # The tag moves with each release; the label records the build the image was prepared from.
-    base="$image@$("$engine" image inspect -f '{{.Digest}}' "$image" 2>/dev/null)"
-    "$engine" commit --change "LABEL $LABEL" --change "LABEL org.nvim-config.test.lock=$LOCK" \
+    base="$image@$(podman image inspect -f '{{.Digest}}' "$image" 2>/dev/null)"
+    podman commit --change "LABEL $LABEL" --change "LABEL org.nvim-config.test.lock=$LOCK" \
       --change "LABEL org.nvim-config.test.base=$base" "$current" "$prepared" >>"$log" 2>&1
-    "$engine" rm -f "$current" >/dev/null 2>&1
+    podman rm -f "$current" >/dev/null 2>&1
     current=""
   else
     echo "== $name: reuse $prepared"
   fi
 
-  base=$("$engine" image inspect -f '{{ index .Config.Labels "org.nvim-config.test.base" }}' "$prepared" 2>/dev/null)
+  base=$(podman image inspect -f '{{ index .Config.Labels "org.nvim-config.test.base" }}' "$prepared" 2>/dev/null)
   echo "base image: ${base:-unknown (prepared before digests were recorded)}" >>"$log"
 
   current=$tester
   rm_flag=--rm
   [ "$keep" = 0 ] || rm_flag=""
   # shellcheck disable=SC2086 # rm_flag is empty or one word
-  "$engine" run $rm_flag --name "$tester" --label "$LABEL" --label "org.nvim-config.test.run=$RUN" --network none \
+  podman run $rm_flag --name "$tester" --label "$LABEL" --label "org.nvim-config.test.run=$RUN" --network none \
     --security-opt no-new-privileges --security-opt label=disable --pids-limit 4096 --memory "$MEMORY" \
     --memory-swap "$MEMORY" -v "$REPO:/cfg:ro" \
     "$prepared" sh /cfg/tests/containers/inside.sh >>"$log" 2>&1
@@ -433,12 +410,12 @@ done
 
 echo
 if [ "$keep" = 0 ]; then
-  echo "== summary ($engine, run $RUN)$summary"
+  echo "== summary (podman, run $RUN)$summary"
   remove_kept >/dev/null
   echo "removed: the test containers and images, the official images this script pulled, the host directory and the"
   echo "logs (--keep keeps them for a look)"
 else
-  echo "== summary ($engine, run $RUN; logs in $LOGS)$summary"
+  echo "== summary (podman, run $RUN; logs in $LOGS)$summary"
   echo "kept (--keep): containers nvim-config-test-<name>, images localhost/nvim-config-test/<name>:prepared, the"
   echo "official images it pulled and $STATE; sh tests/containers/run.sh --clean removes them"
 fi

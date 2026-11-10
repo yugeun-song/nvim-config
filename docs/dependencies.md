@@ -83,7 +83,7 @@ Everything this configuration uses: how much it needs each one, and who installs
 | Program | For |
 |---|---|
 | `stylua`, `lua-language-server`, `taplo`, `rumdl`, `clang-format` | `scripts/check_repository.lua` (PATH, else Mason's) |
-| `podman` or `docker` | `tests/containers/run.sh` |
+| `podman` (rootless) | `tests/containers/run.sh` |
 | `script` (util-linux) | `tests/managed_paths/run.sh` |
 | PowerShell and Visual Studio | `tests/windows_ime_helper/run.ps1` |
 
