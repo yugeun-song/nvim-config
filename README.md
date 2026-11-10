@@ -53,7 +53,7 @@ The first start installs the plugins, parsers and Mason packages; restart once, 
 | [features](docs/structure.md#categories) | one page per LazyVim category (ui, editor, lang, lsp, dap, util): what it does, keys and commands, what it needs, per-system support |
 | [keymaps](docs/keymaps.md) | every key this configuration adds |
 | [structure](docs/structure.md) | layout, why it is laid out so, where its files are kept, lazy loading |
-| [development](docs/development.md) | rules, `scripts/check_repository.lua`, tests, CI |
+| [development](docs/development.md) | rules, `scripts/check_repository.lua`, tests (containers by hand) |
 | [troubleshooting](docs/troubleshooting.md) | `:FeatureStatus`, logs, caveats |
 | [credits](docs/credits.md) | code taken in, plugins, Mason packages and programs, with their licenses |
 

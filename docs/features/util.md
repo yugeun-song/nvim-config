@@ -69,7 +69,7 @@ From a terminal, with every Neovim closed, `nvim -l scripts/reset_to_fresh_clone
 
 ### What it needs
 
-Nothing. Tests: [development](../development.md#stored-data-paths).
+Nothing. Tests: [development](../development.md#managed-paths).
 
 ### Systems
 

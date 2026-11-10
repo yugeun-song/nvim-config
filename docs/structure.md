@@ -38,9 +38,8 @@ nvim-config/
 ├── native/                      windows_ime_helper.c and its .clang-format
 ├── scripts/                     check_repository.lua, update_credits.lua, reset_to_fresh_clone.lua, open-at.lua,
 │                                alive_lsp_over_stdio.lisp
-├── tests/                       managed_paths/, windows_ime_helper/
-├── docs/                        this documentation; docs/features/ has one page per category
-└── .github/                     workflows/, scripts/
+├── tests/                       containers/ (by hand, Linux host), managed_paths/, windows_ime_helper/
+└── docs/                        this documentation; docs/features/ has one page per category
 ```
 
 `lua/config/` holds what LazyVim loads by name (`options.lua`, `keymaps.lua`, `autocmds.lua`), the bootstrap that `init.lua` requires (`lazy.lua`), and `health.lua` (`:checkhealth config`: Neovim, plugins, `git`, `rg`, `fd`).

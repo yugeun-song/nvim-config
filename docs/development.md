@@ -44,14 +44,25 @@ Each tool comes from PATH, else Mason's `bin`; a missing tool prints `skip`. A F
 
 ## Tests
 
-### Stored data paths
+No CI: every test runs by hand.
+
+### Containers (Linux host)
+
+`sh tests/containers/run.sh [--keep] [--rebuild] [--engine podman|docker] [DISTRIBUTION...]` tests the configuration in official distribution images: arch, debian (stable), ubuntu (LTS), fedora, rocky (10), opensuse (Tumbleweed), void, nixos, gentoo.
+
+1. Host, once per lockfile: the official Neovim 0.12.6 build (SHA-256 checked), the locked plugins and their parsers, in an isolated directory.
+2. Per distribution, with network: its Neovim and test tools, a test user, the official build (not on NixOS) and the plugins, kept as `localhost/nvim-config-test/<name>:prepared`. Gentoo uses the official build only.
+3. Per distribution, without network: `tests/managed_paths/run.sh --installed` for each Neovim, and `startup_check.lua`: the whole configuration opens C, assembler, Python, Markdown and Lua files and runs every health check, with no Lua error, error notification or failed check. Neovim before 0.11.2 must be refused with LazyVim's message.
+
+Only this command starts it. When it ends or is interrupted it removes everything of these tests by default: the containers and images labelled `org.nvim-config.test=containers`, the official images it pulled, the host directory, its records and logs. `--keep` keeps them (a later run reuses a prepared image while `lazy-lock.json` is unchanged; `--rebuild` prepares again), and `--clean` removes them later. Images that were there before, and anything without the label, are never touched. Logs, kept only with `--keep`: `${XDG_STATE_HOME:-~/.local/state}/nvim-config-container-tests/logs/<run>/`.
+
+### Managed paths
 
 `tests/managed_paths/check.lua` holds each Neovim to its directory rules and `lua/features/util/managed_paths.lua` to what it lists and what a reset removes and keeps. Every variant runs in a throwaway root that `HOME` and every directory point into; nothing outside it is removed.
 
 | Command | System | Runs |
 |---|---|---|
-| `sh tests/managed_paths/run.sh [--release] [--flatpak ID] [NVIM...]` | Linux, macOS | variants default, xdg, appname, appname-nested, flatpak-sim, overlap, nested; then the reset's question, piped (nothing removed) and typed through `script(1)` (removed). `--release` adds the official 0.12.2 build, SHA-256 checked; `--installed` the user's real layout, only inside `docker.sh`'s own containers; `KEEP_ROOT=1` keeps the root. |
-| `sh tests/managed_paths/docker.sh [--engine podman\|docker] [DISTRIBUTION...]` | Linux with podman or docker | `run.sh --release --installed` as a new user in each distribution's official image with its own Neovim, the repository read-only: arch, debian, ubuntu, fedora, rocky, opensuse, void, gentoo, nixos by default; flatpak on request (`--privileged`). `--clean` removes the containers it left, `--clean-images` the images it pulled. Logs: `$TMPDIR/nvim-paths-docker/<run>/`. |
+| `sh tests/managed_paths/run.sh [--release] [--flatpak ID] [NVIM...]` | Linux, macOS | variants default, xdg, appname, appname-nested, flatpak-sim, overlap, nested; then the reset's question, piped (nothing removed) and typed through `script(1)` (removed). `--release` adds the official 0.12.6 build, SHA-256 checked (skipped where it cannot run, such as NixOS or musl); `--installed` the user's real layout, only inside the containers of `tests/containers/run.sh`; `KEEP_ROOT=1` keeps the root. |
 | `powershell -ExecutionPolicy Bypass -File tests\managed_paths\run.ps1 [-Nvim nvim] [-KeepRoot]` | Windows | the same variants without flatpak-sim; only the piped answer, since typing needs a console |
 
 ### Windows IME helper
@@ -66,15 +77,3 @@ Each tool comes from PATH, else Mason's `bin`; a missing tool prints `skip`. A F
 - `fuzz.c`, a libFuzzer target over the parsers.
 
 It needs Visual Studio 2022 or later with the C++ tools and enters a Developer PowerShell itself. Without clang or clang-format those steps are SKIP.
-
-## CI
-
-`.github/workflows/tests.yml` runs on every push and by hand (Actions > tests > Run workflow):
-
-| Job | Runs |
-|---|---|
-| `stored-data-paths-unix` | `run.sh --release` on ubuntu-latest and macos-latest, with the system's Neovim |
-| `stored-data-paths-distributions` | `docker.sh --engine podman` once per distribution, then `--clean` |
-| `stored-data-paths-windows` | `run.ps1` with Neovim 0.12.2's official build, SHA-256 checked |
-
-A failed job also leaves its FAIL and SKIP lines and its last lines as an error annotation, readable without signing in (`.github/scripts/report_failure_as_annotation.sh` on Linux and macOS). `scripts/check_repository.lua` and the Windows IME helper tests do not run in CI; run them locally.

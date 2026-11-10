@@ -1,14 +1,14 @@
 #!/bin/sh
 # Where Neovim keeps its files, and lua/features/util/managed_paths.lua, under every layout variant
 # (tests/managed_paths/check.lua). Linux and macOS, natively or in the containers of
-# tests/managed_paths/docker.sh. Everything happens in a throwaway root under $TMPDIR: HOME and every XDG
+# tests/containers/run.sh. Everything happens in a throwaway root under $TMPDIR: HOME and every XDG
 # directory point into it, and it is removed at the end.
 #
 #   tests/managed_paths/run.sh [--release] [--flatpak APP_ID] [NVIM...]
 #
 #   NVIM...          Neovim programs to test (default: nvim on PATH). The layout is checked with any; the module
 #                    with 0.11 or later.
-#   --release        also the official Neovim 0.12.2 build for this system, its SHA-256 checked against the one
+#   --release        also the official Neovim 0.12.6 build for this system, its SHA-256 checked against the one
 #                    GitHub publishes for the release asset.
 #   --flatpak ID     Neovim from a Flatpak (io.neovim.nvim), run inside its sandbox.
 #   --installed      also this user's own layout: the real $HOME and the configuration where it is installed
@@ -38,7 +38,7 @@ for file in "$CHECK" "$RESET"; do
     exit 2
   }
 done
-NV_VERSION=0.12.2
+NV_VERSION=0.12.6
 
 release=0
 installed=0
@@ -83,10 +83,10 @@ say() {
 # The official build, checked before it is unpacked.
 fetch_release() {
   case "$(uname -s)-$(uname -m)" in
-    Linux-x86_64) asset=nvim-linux-x86_64 sha=31cf85945cb600d96cdf69f88bc68bec814acbff50863c5546adef3a1bcef260 ;;
-    Linux-aarch64 | Linux-arm64) asset=nvim-linux-arm64 sha=f697d4e4582b6e4b5c3c26e76e06ce26efa08ba1768e03fd2733fcc422bb0490 ;;
-    Darwin-arm64) asset=nvim-macos-arm64 sha=eeddee1009734f9071266e6b1b8a70308cb60cbcc45f5e1c1023adc471450fee ;;
-    Darwin-x86_64) asset=nvim-macos-x86_64 sha=728321db960a9b6af6c03881892a6abfd743bf759bc62d233f52fa1be64ace3c ;;
+    Linux-x86_64) asset=nvim-linux-x86_64 sha=474430d53e6264f6d6dd18db42d6dc9df3a1b56ca9e88a325bbf860e1a811d87 ;;
+    Linux-aarch64 | Linux-arm64) asset=nvim-linux-arm64 sha=8f1f64a0bdb97247034038c3823c6cbad5bdf9ecd5751b85494b71c3ee04c815 ;;
+    Darwin-arm64) asset=nvim-macos-arm64 sha=1dbd148222b051ba6c307c4d17a318ed083df018a4f6a5a0ce46955ffc9ab87b ;;
+    Darwin-x86_64) asset=nvim-macos-x86_64 sha=481424f1dbc85f637d57e47d27d042aa9c883e5a4fe9ee64fc4ee9573b221998 ;;
     *) say "SKIP [release] no official build for $(uname -s) $(uname -m)"; return 1 ;;
   esac
 
@@ -105,7 +105,17 @@ fetch_release() {
     return 1
   fi
 
-  mkdir -p "$ROOT/release" && tar -xzf "$file" -C "$ROOT/release" || return 1
+  if ! { mkdir -p "$ROOT/release" && tar -xzf "$file" -C "$ROOT/release"; }; then
+    say "FAIL [release] could not unpack $file"
+    return 1
+  fi
+
+  # The build needs glibc and its usual loader: NixOS without nix-ld, or a musl system, cannot run it.
+  if ! "$ROOT/release/$asset/bin/nvim" --version >/dev/null 2>&1; then
+    say "SKIP [release] the official build does not run on this system"
+    return 1
+  fi
+
   echo "$ROOT/release/$asset/bin/nvim"
 }
 
@@ -141,14 +151,18 @@ run_check() { # label, nvim, variant
     echo "$?" >"$dir/exit_code"
   ) | sed "s|^|$1 |" | tee -a "$LOG" "$dir/out.txt"
 
-  # A Neovim that crashed, or a check that ended before testing anything, fails without a FAIL line of its own.
-  if ! grep -qE '(^| )FAIL ' "$dir/out.txt"; then
-    code=$(cat "$dir/exit_code" 2>/dev/null || echo none)
+  judge "$1" "$3" "$dir"
+}
+
+# A Neovim that crashed, or a check that ended before testing anything, fails without a FAIL line of its own.
+judge() { # label, variant, directory holding out.txt and exit_code
+  if ! grep -qE '(^| )FAIL ' "$3/out.txt"; then
+    code=$(cat "$3/exit_code" 2>/dev/null || echo none)
 
     if [ "$code" != 0 ]; then
-      say "$1 FAIL [$3] Neovim ended with code $code"
-    elif ! grep -qE '(^| )(PASS|SKIP) ' "$dir/out.txt"; then
-      say "$1 FAIL [$3] Neovim ended without a result"
+      say "$1 FAIL [$2] Neovim ended with code $code"
+    elif ! grep -qE '(^| )(PASS|SKIP) ' "$3/out.txt"; then
+      say "$1 FAIL [$2] Neovim ended without a result"
     fi
   fi
 }
@@ -261,7 +275,7 @@ done
 
 # The real layout: this user's $HOME, the configuration where it is installed, no variable set.
 in_container() {
-  # docker.sh's own containers only: toolbox, distrobox and devcontainers are containers too, with the real home.
+  # tests/containers/run.sh's own containers only: toolbox, distrobox and devcontainers are containers too, with the real home.
   [ "${NVIM_PATHS_THROWAWAY_CONTAINER:-}" = 1 ] && { [ -e /.dockerenv ] || [ -e /run/.containerenv ] || [ -n "${container:-}" ]; }
 }
 
@@ -269,7 +283,11 @@ if [ "$installed" = 1 ]; then
   if ! in_container; then
     say "FAIL [installed] runs only inside a container: a reset there removes this user's own Neovim data"
   else
+    n=0
     for nvim in $nvims; do
+      n=$((n + 1))
+      dir="$ROOT/installed/nvim$n"
+      mkdir -p "$dir"
       say "== installed: $nvim, HOME=$HOME"
       (
         unset NVIM_APPNAME XDG_CONFIG_HOME XDG_DATA_HOME XDG_STATE_HOME XDG_CACHE_HOME XDG_RUNTIME_DIR \
@@ -277,7 +295,9 @@ if [ "$installed" = 1 ]; then
         # shellcheck disable=SC2031 # set afresh for this subshell
         export PATHS_TEST_ROOT="$HOME" PATHS_TEST_MODE=module PATHS_TEST_VARIANT=installed PATHS_TEST_FILE="$CHECK"
         "$nvim" --headless --clean -c "$RUN_CHECK" </dev/null 2>&1
-      ) | sed 's|^|installed |' | tee -a "$LOG"
+        echo "$?" >"$dir/exit_code"
+      ) | sed 's|^|installed |' | tee -a "$LOG" "$dir/out.txt"
+      judge installed "nvim$n" "$dir"
     done
   fi
 fi
@@ -293,7 +313,9 @@ if [ -n "$flatpak" ]; then
       --env=PATHS_TEST_ROOT="$dir" --env=PATHS_TEST_MODE=module --env=PATHS_TEST_VARIANT=flatpak \
       --env=PATHS_TEST_FILE="$CHECK" --command=nvim "$flatpak" \
       --headless --clean -c "$RUN_CHECK" </dev/null 2>&1
-  ) | sed 's|^|flatpak |' | tee -a "$LOG"
+    echo "$?" >"$dir/exit_code"
+  ) | sed 's|^|flatpak |' | tee -a "$LOG" "$dir/out.txt"
+  judge flatpak sandbox "$dir"
 fi
 
 passed=$(grep -cE '(^| )PASS ' "$LOG")

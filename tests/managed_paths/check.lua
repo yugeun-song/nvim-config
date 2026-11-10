@@ -1,12 +1,12 @@
 -- Where Neovim keeps its files, checked against the rule it follows, and lua/features/util/managed_paths.lua
 -- checked against both. Run by tests/managed_paths/run.sh (Linux, macOS, the containers of
--- tests/managed_paths/docker.sh) and run.ps1 (Windows), each variant in a throwaway root: PATHS_TEST_ROOT names it,
+-- tests/containers/run.sh) and run.ps1 (Windows), each variant in a throwaway root: PATHS_TEST_ROOT names it,
 -- and nothing outside it is ever removed.
 --
 --   PATHS_TEST_MODE=layout  stdpath() against the rule. Any Neovim from 0.5 on (a distribution's own package):
 --                           the question is whether that build keeps the rule.
 --   PATHS_TEST_MODE=module  also the module: what it lists, what it says decided the layout, and what a reset
---                           removes and keeps. Neovim 0.11 or later, as the configuration needs.
+--                           removes and keeps. Neovim 0.11 or later (the configuration itself needs 0.12).
 --
 -- The rule, on Linux and macOS: $XDG_CONFIG_HOME, $XDG_DATA_HOME, $XDG_STATE_HOME, $XDG_CACHE_HOME, else
 -- ~/.config, ~/.local/share, ~/.local/state, ~/.cache, each with NVIM_APPNAME (else nvim) appended; the log in
@@ -101,7 +101,7 @@ end
 expected.log = expected.state
 
 -- The directories come from XDG_*, LOCALAPPDATA and TEMP too, not only HOME: each must lie in the root before
--- anything is written (the installed variant tests the real layout, in docker.sh's containers only).
+-- anything is written (the installed variant tests the real layout, in tests/containers/run.sh's containers only).
 local function refuse_outside(what, path)
   if VARIANT ~= "installed" and not under(path, ROOT) then
     fail(("%s is outside the test root, refusing to run: %s"):format(what, path))
@@ -137,7 +137,7 @@ if MODE ~= "module" then
 end
 
 if not (vim.fs and vim.fs.rm and vim.fs.joinpath and vim.uv) then
-  say("SKIP", "module: needs Neovim 0.11 or later, as the configuration does")
+  say("SKIP", "module: needs Neovim 0.11 or later")
 
   return finish()
 end
@@ -187,8 +187,17 @@ touch(join(outside, "precious.txt"))
 -- A link inside the data directory to a directory outside it: the reset removes the link, never what it names.
 local link = join(expected.data, "linked-outside")
 
+-- Not where the data directory holds the configuration, which the reset keeps whole.
+local linked = false
+
 if not holds_config.data then
-  uv.fs_symlink(outside, link, WIN and { junction = true } or nil)
+  local ok, err = uv.fs_symlink(outside, link, WIN and { junction = true } or nil)
+
+  -- An earlier Neovim of the same run (the installed variant) may have made it already.
+  linked = ok ~= nil or uv.fs_readlink(link) == outside
+  if not linked then
+    fail("could not make the link inside the data directory: " .. tostring(err))
+  end
 end
 
 -- Neovide: its settings linked to the configuration as the README installs them, and its window state.
@@ -284,7 +293,7 @@ if env("FLATPAK_ID") then
   end
 end
 
-pass(("layout reported as: %s"):format(next(seen) and table.concat(vim.tbl_keys(seen), ", ") or "the defaults"))
+say("INFO", ("layout reported as: %s"):format(next(seen) and table.concat(vim.tbl_keys(seen), ", ") or "the defaults"))
 
 -- The reset of this configuration's own files: its directories and what an older layout left go; Neovim's and the
 -- plugins' data stay.
@@ -367,7 +376,10 @@ local function expect(ok, yes, no)
 end
 
 expect(exists(join(expected.config, "init.lua")), "configuration kept", "configuration removed: " .. expected.config)
-expect(exists(join(outside, "precious.txt")), "a directory a link pointed to is kept", "a link's target was removed")
+if linked then
+  expect(exists(join(outside, "precious.txt")), "a directory a link pointed to is kept", "a link's target was removed")
+end
+
 expect(not exists(join(neovide_data, "neovide-settings.json")), "Neovide's window state removed", "window state kept")
 expect(exists(neovide_config), "Neovide's settings link kept", "Neovide's settings link removed")
 
