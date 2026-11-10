@@ -161,7 +161,7 @@ local function blank_rows(src)
 end
 
 local function blank_lines()
-  local missing, report = 0, {}
+  local missing, unparsed, report = 0, 0, {}
 
   for _, file in ipairs(tracked("*.lua")) do
     local path = vim.fs.joinpath(root, file)
@@ -172,7 +172,8 @@ local function blank_lines()
     local rows, lines = blank_rows(src)
 
     if not (rows and lines) then
-      report[#report + 1] = file .. ": not parsed"
+      unparsed = unparsed + 1
+      report[#report + 1] = file .. ": not parsed (a syntax error)"
     elseif #rows > 0 then
       missing = missing + #rows
       if fix then
@@ -200,7 +201,10 @@ local function blank_lines()
     end
   end
 
-  if missing == 0 or fix then
+  if unparsed > 0 then
+    failed = true
+    say("blank-lines", ("FAIL (%d not parsed)"):format(unparsed), table.concat(report, "\n"))
+  elseif missing == 0 or fix then
     say("blank-lines", missing == 0 and "ok" or ("fixed " .. missing), table.concat(report, "\n"))
   else
     failed = true
@@ -326,7 +330,9 @@ if not vim.uv.fs_stat(credits) then
 else
   local code, out = run({ vim.v.progpath, "-l", credits, fix and "--write" or "--check" })
 
-  if code == 0 then
+  if code == 0 and out:find("^skipped: ") then
+    say("credits", "skip (" .. vim.trim(out:sub(#"skipped: " + 1)) .. ")")
+  elseif code == 0 then
     say("credits", fix and "written" or "ok", out)
   else
     failed = true

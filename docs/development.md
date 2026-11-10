@@ -40,7 +40,7 @@ Each tool comes from PATH, else Mason's `bin`; a missing tool prints `skip`. A F
 
 ## Credits
 
-`nvim -l scripts/update_credits.lua --write` rewrites the block between `<!-- credits:start -->` and `<!-- credits:end -->` in [credits](credits.md): plugins from `lazy-lock.json` and their LICENSE files, Mason packages from `lua/plugins/lsp/mason.lua`, LazyVim's defaults and Mason's registry, and the script's own lists (code taken in, programs run, the closing notes). `--check` fails when the block is out of date. Without the plugins installed or Mason's registry downloaded it prints `skipped`.
+`nvim -l scripts/update_credits.lua --write` rewrites the block between `<!-- credits:start -->` and `<!-- credits:end -->` in [credits](credits.md): plugins from `lazy-lock.json` and their LICENSE files, Mason packages from every spec in `lua/plugins/`, LazyVim's defaults and Mason's registry, and the script's own lists (code taken in, programs run, the closing notes). `--check` fails when the block is out of date. Without the plugins installed or Mason's registry downloaded it prints `skipped`.
 
 ## Tests
 
