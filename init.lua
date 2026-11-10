@@ -1,4 +1,21 @@
 -- Modified from https://github.com/LazyVim/starter (Apache-2.0). See THIRD-PARTY-NOTICES.
+-- LazyVim refuses Neovim before 0.11.2; 0.11 starts with a notice.
+if vim.fn.has("nvim-0.12") == 0 then
+  vim.api.nvim_create_autocmd("User", {
+    pattern = "VeryLazy",
+    once = true,
+    callback = function()
+      vim.notify(
+        ("Neovim %s: this configuration needs 0.12, and some features fail. :checkhealth config"):format(
+          tostring(vim.version())
+        ),
+        vim.log.levels.WARN,
+        { title = "nvim-config" }
+      )
+    end,
+  })
+end
+
 -- Windows: executable() and exepath() remember their answers
 -- (lua/features/util/windows/executable_lookup_cache.lua), and Visual Studio's MSVC environment is set as a
 -- Developer Prompt would (lua/features/lang/c/msvc_toolchain/developer_environment.lua).
