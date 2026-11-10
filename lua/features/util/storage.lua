@@ -63,7 +63,7 @@ local function make_directories(dir)
   end
 
   make_directories(vim.fs.dirname(dir))
-  uv.fs_mkdir(dir, 493) -- 0755
+  uv.fs_mkdir(dir, 448)
 end
 
 local by_name = {}
@@ -87,6 +87,14 @@ function M.dir(kind)
 
   if not made[kind] then
     make_directories(dir)
+
+    -- The user's alone (0700): it lists running Neovims' addresses and the programs put on PATH.
+    local st = uv.fs_stat(dir)
+
+    if st and st.mode % 512 ~= 448 then
+      uv.fs_chmod(dir, 448)
+    end
+
     made[kind] = true
   end
 
