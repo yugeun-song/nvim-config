@@ -49,7 +49,8 @@ The first start installs the plugins, parsers and Mason packages; restart once, 
 
 | Document | Contents |
 |---|---|
-| [installation](docs/installation.md) | requirements per feature and per system, first start, Neovide |
+| [installation](docs/installation.md) | install notes per system, first start, Neovide |
+| [dependencies](docs/dependencies.md) | what to install, by level, and what lazy.nvim and Mason install |
 | [features](docs/structure.md#categories) | one page per LazyVim category (ui, editor, lang, lsp, dap, util): what it does, keys and commands, what it needs, per-system support |
 | [keymaps](docs/keymaps.md) | every key this configuration adds |
 | [structure](docs/structure.md) | layout, why it is laid out so, where its files are kept, lazy loading |

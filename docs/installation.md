@@ -4,28 +4,7 @@ What to install, per feature and per system. The clone itself is in the [README]
 
 ## Requirements
 
-| Needed for | Programs |
-|---|---|
-| Everything | Neovim 0.12 or later, `git`, network access on the first start |
-| Tree-sitter parsers | the `tree-sitter` CLI, a C compiler (`cc`, `gcc`, `clang` or `cl`), `curl`, `tar` |
-| Pickers and grep | `rg` (ripgrep), `fd` |
-| Icons | a Nerd Font, in the terminal too (Neovide's profile uses CaskaydiaCove Nerd Font Mono) |
-| C and C++ | `clangd` (Mason installs one), `cscope`, `ctags` (Universal Ctags) |
-| CUDA in clangd | the CUDA toolkit: `CUDA_PATH`, or `nvcc` on PATH |
-| Debugging C, C++ and assembly | `gdb` 14 or later with Python; macOS and Windows: `lldb-dap` or Mason's `codelldb` |
-| Foreign architectures, Linux kernels | Linux only: `qemu-<arch>`, a gdb for the target, [kbuildlab](https://github.com/yugeun-song/kbuildlab), optionally [gdbtools](https://github.com/yugeun-song/gdbtools) |
-| Common Lisp | `sbcl`, `ocicl`, and alive-lsp ([languages](features/lang.md#common-lisp)) |
-| Racket | `racket` |
-| Haskell | `ghc`, `cabal`, `haskell-language-server`, `hlint`, from [GHCup](https://www.haskell.org/ghcup/) |
-| Lean | [elan](https://github.com/leanprover/elan) |
-| Python lint and format | `ruff` |
-| IME switch and indicator | [input method](features/editor.md#korean-input) |
-| Open Folder | [yazi](https://yazi-rs.github.io/) |
-| GUI | [Neovide](https://neovide.dev/) |
-| Window raise for `scripts/open-at.lua` | [editing](features/editor.md#opening-from-other-programs) |
-| Man page highlighting | `man` |
-
-The Mason packages ([external programs](features/lsp.md#mason-packages)) install by themselves; some need a runtime on PATH. `:FeatureStatus` lists every feature as available, not supported here, or blocked with what is missing ([troubleshooting](troubleshooting.md#feature-status)).
+[Dependencies](dependencies.md) lists everything by level (required, recommended, per feature, development) and by who installs it (you, lazy.nvim, Mason, nvim-treesitter). Required: Neovim 0.12 or later, `git`, the `tree-sitter` CLI, a C compiler, `curl`, `tar`, and network access on the first start. `:FeatureStatus` lists every feature as available, not supported here, or blocked with what is missing ([troubleshooting](troubleshooting.md#feature-status)).
 
 For the kernel workflow, generate the indexes in the source tree: `make C=2 compile_commands.json` (or `scripts/clang-tools/gen_compile_commands.py`), `make cscope`, `make tags`.
 
@@ -98,4 +77,4 @@ A Mason package with no build for the machine is reported as not supported; the 
 ## WSL and SSH
 
 - WSL works as Linux, with the IME switch through `im-select.exe`.
-- Over SSH, the terminal background follow reaches the local terminal, while the IME switch and the window raise act on the remote host.
+- Over SSH, the terminal background follow reaches the local terminal; the IME switch and marks are off, and the window raise acts on the remote host.
