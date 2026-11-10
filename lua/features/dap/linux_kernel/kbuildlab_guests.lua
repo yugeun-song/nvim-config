@@ -54,7 +54,8 @@ function M.report(cb)
     local lines = {}
 
     if not cands then
-      lines[#lines + 1] = why
+      -- One buffer line per line of kbuildlab's error.
+      vim.list_extend(lines, vim.split(tostring(why), "\n", { plain = true }))
     elseif #cands == 0 then
       lines[#lines + 1] = "No guest is running.  Start one: kbuildlab run TREE"
     end
@@ -256,17 +257,18 @@ function M.arm_kaslr(session)
   end)
 end
 
--- A dying gdbstub tells the client nothing; watch the QEMU pid instead.
-local watchdog = nil
+-- A dying gdbstub tells the client nothing: watch the QEMU pid, per session.
+local watchdogs = setmetatable({}, { __mode = "k" })
 
-function M.stop_watchdog()
-  if watchdog then
+function M.stop_watchdog(session)
+  local timer = session and watchdogs[session]
+
+  if timer then
+    watchdogs[session] = nil
     pcall(function()
-      watchdog:stop()
-      watchdog:close()
+      timer:stop()
+      timer:close()
     end)
-
-    watchdog = nil
   end
 end
 
@@ -302,7 +304,7 @@ function M.after_attach(session)
 end
 
 function M.watch_target(session)
-  M.stop_watchdog()
+  M.stop_watchdog(session)
   local cfg = session and session.config or {}
   local pid = cfg.qemu_pid
 
@@ -312,27 +314,32 @@ function M.watch_target(session)
 
   local timer = assert(vim.uv.new_timer())
 
-  watchdog = timer
+  watchdogs[session] = timer
   timer:start(
     2000,
     2000,
     vim.schedule_wrap(function()
-      local dap = require("dap")
+      if watchdogs[session] ~= timer then
+        return
+      end
 
-      if dap.session() ~= session then
-        M.stop_watchdog()
+      if session.closed then
+        M.stop_watchdog(session)
 
         return
       end
 
-      if vim.uv.kill(pid, 0) == 0 then
+      -- Only ESRCH means gone; EPERM is a live QEMU of another user (sudo for a TAP device).
+      local _, _, err = vim.uv.kill(pid, 0)
+
+      if err ~= "ESRCH" then
         return
       end
 
-      M.stop_watchdog()
+      M.stop_watchdog(session)
       notify.error(("The QEMU process (pid %s) is gone; the gdbstub died with it"):format(pid))
       pcall(function()
-        dap.disconnect({ terminateDebuggee = false })
+        session:disconnect({ terminateDebuggee = false })
       end)
 
       -- Close the session, not the windows: what the guest printed stays readable.

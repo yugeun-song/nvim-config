@@ -70,6 +70,8 @@ local function refresh(p)
 
   if mod.probe then
     mod.probe()
+  elseif mod.refresh then
+    mod.refresh()
   elseif mod.render then
     mod.render()
   end
@@ -352,12 +354,28 @@ function M.sidebar_open_unguarded()
   end
 end
 
+-- dap-view reports a closed window or a missing section by vim.notify, not an error: ask first.
+local function dapview_has(section)
+  local ok, state = pcall(require, "dap-view.state")
+  local okc, setup = pcall(require, "dap-view.setup")
+  local cfg = okc and setup.config or nil
+
+  return ok
+    and state.winnr ~= nil
+    and vim.api.nvim_win_is_valid(state.winnr)
+    and state.bufnr ~= nil
+    and vim.api.nvim_buf_is_valid(state.bufnr)
+    and cfg ~= nil
+    and cfg.winbar ~= nil
+    and vim.tbl_contains(cfg.winbar.sections or {}, section)
+end
+
 -- With no line table, disassembly is the nearest thing to following the pc.
 -- The console is left alone when visible: gdb echoes there and you type in it.
 function M.show_disassembly()
   local ok, state = pcall(require, "dap-view.state")
 
-  if not ok then
+  if not ok or not dapview_has("disassembly") then
     return
   end
 
@@ -412,7 +430,7 @@ function M.focus(name)
     end
   end
 
-  local ok = pcall(function()
+  local ok = dapview_has(name) and pcall(function()
     require("dap-view").jump_to_view(name)
   end)
 
@@ -465,7 +483,8 @@ function M.fit()
     return
   end
 
-  for _, p in ipairs(PANELS) do
+  -- ring(): LLDB gets only the panels that speak plain DAP.
+  for _, p in ipairs(ring()) do
     local ok, mod = pcall(require, p.mod)
 
     if ok and #vim.fn.win_findbuf(mod.buffer()) > 0 then
@@ -494,7 +513,8 @@ end
 
 -- Snapshot of the layout from before the session, for :DbgClose to restore.
 function M.snapshot()
-  if restore then
+  -- Once the debug windows are gone, the saved layout is stale.
+  if restore and #debug_windows() > 0 then
     return
   end
 
@@ -533,6 +553,19 @@ local function holds_breakpoints(buf)
 
   return ok and bps[buf] ~= nil and #bps[buf] > 0
 end
+
+-- A buffer listed between sessions is the user's: :DbgClose keeps it.
+vim.api.nvim_create_autocmd("BufAdd", {
+  group = vim.api.nvim_create_augroup("dbg_layout_listed", { clear = true }),
+  callback = function(ev)
+    local dap = package.loaded["dap"]
+
+    if restore and not (dap and next(dap.sessions())) then
+      restore.listed[ev.buf] = true
+    end
+  end,
+  desc = "Keep buffers opened between debug sessions out of :DbgClose's cleanup",
+})
 
 -- The debugger lists whatever source it jumped into, which is how a glibc
 -- header ends up in the tabline; drop what it brought in and nobody touched.
@@ -643,7 +676,7 @@ local function cfg_tab_showing()
 
   local host = cfg.host()
 
-  return host ~= nil and vim.api.nvim_win_get_buf(host) == cfg.buffer()
+  return host ~= nil and panel.key_of(vim.api.nvim_win_get_buf(host)) == "cfg"
 end
 
 function M.jump(bufnr, line, column)
@@ -785,7 +818,7 @@ function M.rebuild()
 
   M.apply()
   M.resize()
-  for _, p in ipairs(PANELS) do
+  for _, p in ipairs(ring()) do
     refresh(p)
   end
 

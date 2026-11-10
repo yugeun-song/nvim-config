@@ -34,8 +34,8 @@ end
 
 local function qemu_and_linux_kernel(discovery)
   if not status.LINUX then
-    status.unsupported("Foreign-architecture programs (QEMU user mode)", "QEMU user mode runs on Linux only")
-    status.unsupported("Linux kernels (kbuildlab)", "kbuildlab runs on Linux only")
+    status.unsupported(unpack(discovery.LINUX_ONLY.qemu_user))
+    status.unsupported(unpack(discovery.LINUX_ONLY.linux_kernel))
 
     return
   end

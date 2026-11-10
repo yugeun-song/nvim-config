@@ -131,8 +131,8 @@ function M.dap_view_options()
           end,
         },
         registers = {
-          label = adaptive("Registers(G)", "Reg(G)"),
-          keymap = "G",
+          label = adaptive("Registers(X)", "Reg(X)"),
+          keymap = "X",
           action = function()
             require("features.dap.core.panels.registers").render()
           end,
@@ -151,8 +151,8 @@ function M.dap_view_options()
           end,
         },
         mappings = {
-          label = adaptive("Mappings(V)", "Map(V)"),
-          keymap = "V",
+          label = adaptive("Mappings(P)", "Map(P)"),
+          keymap = "P",
           action = function()
             require("features.dap.core.panels.memory_mappings").probe()
           end,
@@ -161,8 +161,8 @@ function M.dap_view_options()
           end,
         },
         controlflow = {
-          label = adaptive("Control flow(F)", "CFG(F)"),
-          keymap = "F",
+          label = adaptive("Control flow(O)", "CFG(O)"),
+          keymap = "O",
           action = function()
             require("features.dap.core.panels.control_flow_graph").probe()
           end,
@@ -192,6 +192,35 @@ function M.dap_view_options()
     -- output can be read; <leader>du closes it.
     auto_toggle = "open",
   }
+end
+
+local function console_to_prompt(buf)
+  local win = vim.fn.bufwinid(buf)
+
+  if win == -1 then
+    return
+  end
+
+  local last = vim.api.nvim_buf_line_count(buf)
+  local text = vim.api.nvim_buf_get_lines(buf, last - 1, last, false)[1] or ""
+
+  pcall(vim.api.nvim_win_set_cursor, win, { last, #text })
+end
+
+-- In a gdb session i I a A type at the console's prompt; in any other they are Vim's own.
+local function console_prompt_keys(buf)
+  for _, key in ipairs({ "i", "I", "a", "A" }) do
+    vim.keymap.set("n", key, function()
+      if not require("features.dap.core.sessions.session_profile").is_gdb() then
+        vim.api.nvim_feedkeys(key, "n", false)
+
+        return
+      end
+
+      console_to_prompt(buf)
+      vim.cmd("startinsert!")
+    end, { buffer = buf, desc = "gdb console: type at the prompt" })
+  end
 end
 
 function M.setup()
@@ -251,6 +280,24 @@ function M.setup()
     labels = vim.tbl_extend("force", labels, { repl = adaptive("LLDB console(R)", "lldb(R)") }),
   })
 
+  -- nvim-dap-view rebinds its section keys (A, I) on the console each time it shows it; ours go back on top.
+  pcall(function()
+    local winbar = require("dap-view.options.winbar")
+    local key = "set_action_keymaps"
+    local bind = winbar[key]
+
+    if type(bind) == "function" and not winbar.dbg_console_keys then
+      winbar.dbg_console_keys = true
+      winbar[key] = function(bufnr, ...)
+        bind(bufnr, ...)
+
+        if bufnr and vim.api.nvim_buf_is_valid(bufnr) and vim.bo[bufnr].filetype == "dap-repl" then
+          console_prompt_keys(bufnr)
+        end
+      end
+    end
+  end)
+
   -- The panels are winfixbuf, so bufferline's keys raise E1513 from inside
   -- one. Wrap the commands rather than rebinding keys.
   pcall(function()
@@ -301,6 +348,14 @@ function M.setup()
   -- and the kernel-only commands stay inert without a vmlinux.
   dap.adapters.gdb = function(callback, config)
     local notify = require("features.dap.core.sessions.notifications")
+    -- launch.json configurations skip the filter below.
+    local unsupported = config.dbg_qemuser and discover.unsupported_here("qemu_user")
+
+    if unsupported then
+      notify.error(unsupported)
+
+      return
+    end
 
     -- Cross-arch usermode (dbg_qemuser or an external target): the ELF gives the arch, which picks gdb,
     -- sysroot and QEMU. Host-arch configs set neither.
@@ -316,67 +371,70 @@ function M.setup()
       end
     end
 
-    -- The host's own gdb debugs host programs; another arch needs one built for it.
-    local bin, why, broken = config.gdb_bin, nil, nil
+    -- Probed off the main loop: a first probe can take 10 s.
+    discover.prefetch(config.arch, config.gdb_bin, function()
+      -- The host's own gdb debugs host programs; another arch needs one built for it.
+      local bin, why, broken = config.gdb_bin, nil, nil
 
-    if bin then
-      local ok
+      if bin then
+        local ok
 
-      ok, why = discover.gdb_supports_dap(bin)
-      if not ok then
-        bin = nil
+        ok, why = discover.gdb_supports_dap(bin)
+        if not ok then
+          bin = nil
+        end
+      else
+        bin, why, broken = discover.gdb_for(config.arch)
       end
-    else
-      bin, why, broken = discover.gdb_for(config.arch)
-    end
 
-    if not bin then
-      notify.error(why)
+      if not bin then
+        notify.error(why)
 
-      return
-    end
-
-    for _, note in ipairs(broken or {}) do
-      if not warned[note] then
-        warned[note] = true
-        notify.warn("skipped " .. note)
+        return
       end
-    end
 
-    local args = { "-q", "-i", "dap", "-iex", "set pagination off" }
+      for _, note in ipairs(broken or {}) do
+        if not warned[note] then
+          warned[note] = true
+          notify.warn("skipped " .. note)
+        end
+      end
 
-    -- Without the sysroot gdb resolves nothing past the main binary; QEMU
-    -- gets the same root by -L.
-    if config.sysroot and config.sysroot ~= "" then
-      table.insert(args, "-iex")
-      table.insert(args, "set sysroot " .. config.sysroot)
-    end
+      local args = { "-q", "-i", "dap", "-iex", "set pagination off" }
 
-    local tool, terr = discover.gdbtools_loader()
+      -- Without the sysroot gdb resolves nothing past the main binary; QEMU
+      -- gets the same root by -L.
+      if config.sysroot and config.sysroot ~= "" then
+        table.insert(args, "-iex")
+        table.insert(args, "set sysroot " .. config.sysroot)
+      end
 
-    if terr then
-      notify.error(terr)
+      local tool, terr = discover.gdbtools_loader()
 
-      return
-    end
+      -- gdbtools is optional: warn once, start without it.
+      if terr and not warned[terr] then
+        warned[terr] = true
+        notify.warn(terr .. "; gdb starts without gdbtools")
+      end
 
-    if tool then
-      table.insert(args, "-ex")
-      table.insert(args, "source " .. tool)
-    end
+      if tool then
+        table.insert(args, "-ex")
+        table.insert(args, "source " .. tool)
+      end
 
-    local spec = { type = "executable", command = bin, args = args }
+      local spec = { type = "executable", command = bin, args = args }
 
-    if config.dbg_qemuser and config.qemu_socket then
-      -- A gdb attached to a QEMU that never started would wait forever; say why and start nothing.
-      require("features.dap.qemu.user_mode").spawn(config, function()
+      if config.dbg_qemuser and config.qemu_socket then
+        -- A gdb attached to a QEMU that never started would wait forever; say why and start nothing.
+        require("features.dap.qemu.user_mode").spawn(config, function()
+          callback(spec)
+        end, function(msg)
+          notify.error(msg)
+        end)
+      else
         callback(spec)
-      end, function(msg)
-        notify.error(msg)
-      end)
-    else
-      callback(spec)
-    end
+      end
+    end)
   end
 
   -- kbuildlab describes the kernel session (gdb, -iex lines that trust the tree's scripts/gdb, gdbtools facts,
@@ -384,6 +442,13 @@ function M.setup()
   dap.adapters.gdb_linux_kernel = function(callback, config)
     local notify = require("features.dap.core.sessions.notifications")
     local kbl = config.kbl or {}
+    local unsupported = discover.unsupported_here("linux_kernel")
+
+    if unsupported then
+      notify.error(unsupported)
+
+      return
+    end
 
     if not (type(kbl.tree) == "string" and kbl.tree ~= "" and tonumber(kbl.port)) then
       notify.error("This Linux kernel configuration names no kbuildlab tree and port; start it with :DbgLinuxKernel")
@@ -403,55 +468,58 @@ function M.setup()
       end
 
       local gdb = type(spec.gdb) == "string" and spec.gdb ~= "" and spec.gdb or "gdb"
-      local dap_ok, dap_why = discover.gdb_supports_dap(gdb)
 
-      if not dap_ok then
-        notify.error(dap_why)
+      discover.prefetch(nil, gdb, function()
+        local dap_ok, dap_why = discover.gdb_supports_dap(gdb)
 
-        return
-      end
+        if not dap_ok then
+          notify.error(dap_why)
 
-      config.program = spec.vmlinux
-      config.target = spec.target
-      config.kernel_root = spec.src
-      -- The ELF's name for it (aarch64, not the kernel's arm64), as for programs.
-      config.arch = discover.elf_arch(spec.vmlinux or "") or spec.arch
-      config.boot = spec.boot
-      config.fwsym = spec.fwsym
-      config.qemu_pid = spec.pid
-      config.gdb_bin = spec.gdb
-      config.kaslr_state = spec.kaslr == true and "on" or (spec.kaslr == false and "off" or "unknown")
-      local gargs = { "-q", "-i", "dap" }
-
-      for _, x in ipairs(spec.iex or {}) do
-        vim.list_extend(gargs, { "-iex", x })
-      end
-
-      if spec.gdbtools then
-        vim.list_extend(gargs, { "-ex", "source " .. spec.gdbtools })
-      end
-
-      local genv = vim.fn.environ()
-
-      for k, v in pairs(spec.env or {}) do
-        genv[k] = v
-      end
-
-      local env_list = {}
-
-      for k, v in pairs(genv) do
-        if k:find("^[^=]*$") then
-          env_list[#env_list + 1] = k .. "=" .. tostring(v)
+          return
         end
-      end
 
-      callback({
-        type = "executable",
-        command = gdb,
-        args = gargs,
-        -- The attach answers once gdb has read vmlinux, 9-11 s here; 4 s warns every time.
-        options = { env = env_list, initialize_timeout_sec = 60 },
-      })
+        config.program = spec.vmlinux
+        config.target = spec.target
+        config.kernel_root = spec.src
+        -- The ELF's name for it (aarch64, not the kernel's arm64), as for programs.
+        config.arch = discover.elf_arch(spec.vmlinux or "") or spec.arch
+        config.boot = spec.boot
+        config.fwsym = spec.fwsym
+        config.qemu_pid = spec.pid
+        config.gdb_bin = spec.gdb
+        config.kaslr_state = spec.kaslr == true and "on" or (spec.kaslr == false and "off" or "unknown")
+        local gargs = { "-q", "-i", "dap" }
+
+        for _, x in ipairs(spec.iex or {}) do
+          vim.list_extend(gargs, { "-iex", x })
+        end
+
+        if spec.gdbtools then
+          vim.list_extend(gargs, { "-ex", "source " .. spec.gdbtools })
+        end
+
+        local genv = vim.fn.environ()
+
+        for k, v in pairs(spec.env or {}) do
+          genv[k] = v
+        end
+
+        local env_list = {}
+
+        for k, v in pairs(genv) do
+          if k:find("^[^=]*$") then
+            env_list[#env_list + 1] = k .. "=" .. tostring(v)
+          end
+        end
+
+        callback({
+          type = "executable",
+          command = gdb,
+          args = gargs,
+          -- The attach answers once gdb has read vmlinux, 9-11 s here; 4 s warns every time.
+          options = { env = env_list, initialize_timeout_sec = 60 },
+        })
+      end)
     end)
   end
 
@@ -620,19 +688,6 @@ function M.setup()
         return vim.fn.prompt_getprompt(buf)
       end
 
-      local function to_prompt()
-        local win = vim.fn.bufwinid(buf)
-
-        if win == -1 then
-          return
-        end
-
-        local last = vim.api.nvim_buf_line_count(buf)
-        local text = vim.api.nvim_buf_get_lines(buf, last - 1, last, false)[1] or ""
-
-        pcall(vim.api.nvim_win_set_cursor, win, { last, #text })
-      end
-
       vim.keymap.set("n", "<CR>", function()
         if not context.is_gdb() then
           require("dap.ui").trigger_actions({ mode = "first" })
@@ -658,22 +713,11 @@ function M.setup()
           pcall(vim.api.nvim_buf_set_lines, buf, last - 1, last, false, { pre .. command })
         end
 
-        to_prompt()
+        console_to_prompt(buf)
         vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("A<CR>", true, false, true), "n", false)
       end, { buffer = buf, desc = "gdb console: run this line in gdb" })
 
-      for _, key in ipairs({ "i", "I", "a", "A" }) do
-        vim.keymap.set("n", key, function()
-          if not context.is_gdb() then
-            vim.api.nvim_feedkeys(key, "n", false)
-
-            return
-          end
-
-          to_prompt()
-          vim.cmd("startinsert!")
-        end, { buffer = buf, desc = "gdb console: type at the prompt" })
-      end
+      console_prompt_keys(buf)
     end,
     desc = "Make the gdb console take commands the way a console does",
   })
@@ -765,8 +809,10 @@ function M.setup()
     group = group,
     callback = function(ev)
       local key = require("features.dap.core.panels.buffers_and_windows").key_of(ev.buf)
+      local session = dap.session()
 
-      if key and dirty[key] and dap.session() and allowed(key, dap.session()) then
+      -- A running target has nothing to show; the next stop refreshes it.
+      if key and dirty[key] and session and session.stopped_thread_id and allowed(key, session) then
         dirty[key] = nil
         vim.schedule(function()
           pcall(PANELS[key])
@@ -918,7 +964,7 @@ function M.setup()
   local function teardown(session)
     pcall(function()
       require("features.dap.core.sessions.target_capabilities").invalidate(session)
-      require("features.dap.linux_kernel.kbuildlab_guests").stop_watchdog()
+      require("features.dap.linux_kernel.kbuildlab_guests").stop_watchdog(session)
     end)
   end
 
@@ -933,21 +979,21 @@ function M.setup()
     end)
   end
 
-  dap.listeners.after.event_output["dbg_watchdog"] = function(_, body)
+  dap.listeners.after.event_output["dbg_watchdog"] = function(session, body)
     pcall(function()
-      require("features.dap.core.sessions.gdbstub_watchdog").saw_text(body and body.output)
+      require("features.dap.core.sessions.gdbstub_watchdog").saw_text(body and body.output, session)
     end)
   end
 
-  dap.listeners.after.event_terminated["dbg_watchdog"] = function()
+  dap.listeners.after.event_terminated["dbg_watchdog"] = function(session)
     pcall(function()
-      require("features.dap.core.sessions.gdbstub_watchdog").stop()
+      require("features.dap.core.sessions.gdbstub_watchdog").stop(session)
     end)
   end
 
-  dap.listeners.after.disconnect["dbg_watchdog"] = function()
+  dap.listeners.after.disconnect["dbg_watchdog"] = function(session)
     pcall(function()
-      require("features.dap.core.sessions.gdbstub_watchdog").stop()
+      require("features.dap.core.sessions.gdbstub_watchdog").stop(session)
     end)
   end
 
@@ -1057,7 +1103,7 @@ function M.setup()
   vim.api.nvim_create_autocmd("VimResized", {
     group = group,
     callback = function()
-      if not context.is_gdb() then
+      if not context.has_panels() then
         return
       end
 
@@ -1080,7 +1126,7 @@ function M.setup()
   vim.api.nvim_create_autocmd({ "WinNew", "WinClosed" }, {
     group = group,
     callback = function()
-      if not context.is_gdb() then
+      if not context.has_panels() then
         return
       end
 

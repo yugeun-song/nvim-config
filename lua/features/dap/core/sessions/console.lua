@@ -142,8 +142,15 @@ end
 local has_source = M.has_source
 
 function M.setup(dap)
-  dap.repl.commands = vim.tbl_extend("force", dap.repl.commands, {
-    custom_commands = vim.tbl_extend("force", dap.repl.commands.custom_commands or {}, COMMANDS),
+  -- dap.repl is a proxy: set the module's own table. Outside gdb a lookup misses, so `s = 1` evaluates as usual.
+  local commands = require("dap.repl").commands
+
+  commands.custom_commands = setmetatable(vim.tbl_extend("force", {}, commands.custom_commands or {}), {
+    __index = function(_, name)
+      if require("features.dap.core.sessions.session_profile").is_gdb() then
+        return COMMANDS[name]
+      end
+    end,
   })
 
   dap.listeners.after.event_stopped["dbg_console"] = function(session)

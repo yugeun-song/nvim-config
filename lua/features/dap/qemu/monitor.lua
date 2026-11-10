@@ -49,13 +49,13 @@ local function pages_of(hex, count)
   return out
 end
 
-local queue, is_checking, queue_generation = {}, false, 0
+local queue, running, queue_generation = {}, nil, 0
 
 function M.invalidate()
   cache = {}
   ncpu = nil
-  -- A check left unanswered by the last stop must not hold the next stop's checks.
-  queue, is_checking, queue_generation = {}, false, queue_generation + 1
+  -- Drop queued checks; a running one finishes, since it may have moved the monitor's core.
+  queue, queue_generation = {}, queue_generation + 1
 end
 
 function M.active(session)
@@ -127,9 +127,14 @@ local function check_now(session, addr, cb)
   -- The monitor core is shared state, so every path out first returns it to the
   -- core gdb stopped on.
   local moved = false
+  local generation = queue_generation
 
   local function finish(verdict, why)
-    cache[page] = { verdict, why }
+    -- A verdict from before the stop is not cached.
+    if generation == queue_generation then
+      cache[page] = { verdict, why }
+    end
+
     if not moved then
       cb(verdict, why)
 
@@ -235,19 +240,14 @@ end
 local function run_next()
   local job = table.remove(queue, 1)
 
+  running = job
   if not job then
-    is_checking = false
-
     return
   end
 
-  is_checking = true
-
-  local generation = queue_generation
-
   check_now(job.session, job.addr, function(verdict, why)
     pcall(job.cb, verdict, why)
-    if generation == queue_generation then
+    if running == job then
       run_next()
     end
   end)
@@ -257,7 +257,8 @@ end
 -- it answers; two at once would translate on each other's core.
 function M.qemu_check(session, addr, cb)
   queue[#queue + 1] = { session = session, addr = addr, cb = cb }
-  if not is_checking then
+  -- A closed session's request is never answered: do not wait for it.
+  if not running or (running.session or {}).closed then
     run_next()
   end
 end

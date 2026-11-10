@@ -57,17 +57,29 @@ local function norm16(value)
   local digits = text:match("0[xX](%x+)")
 
   if not digits then
-    local n = tonumber(text)
+    local minus, dec = text:match("^%s*(%-?)(%d+)%s*$")
 
-    if not n then
+    if not dec then
       return nil
     end
 
-    if n < 0 then
-      n = n + 2 ^ 64
+    -- gdb prints int64 registers in decimal; 32-bit halves, since a double cannot hold most 64-bit values.
+    local hi, lo = 0, 0
+
+    for d in dec:gmatch("%d") do
+      lo = lo * 10 + tonumber(d)
+      hi = (hi * 10 + math.floor(lo / 2 ^ 32)) % 2 ^ 32
+      lo = lo % 2 ^ 32
     end
 
-    digits = ("%x"):format(math.floor(n))
+    if minus == "-" and (hi > 0 or lo > 0) then
+      hi, lo = 2 ^ 32 - 1 - hi, 2 ^ 32 - lo
+      if lo == 2 ^ 32 then
+        hi, lo = (hi + 1) % 2 ^ 32, 0
+      end
+    end
+
+    digits = ("%08x%08x"):format(hi, lo)
   end
 
   digits = digits:lower()
@@ -276,7 +288,8 @@ local function riscv_taken(mnemonic, operands, values)
 
     local v = (values or {})[name]
 
-    return v ~= nil and norm16(v) or nil
+    -- Raw: the callers normalise it, and norm16 would read its own output as decimal.
+    return norm16(v) and v or nil
   end
 
   local zero_forms = { beqz = "beq", bnez = "bne", bltz = "blt", bgez = "bge" }

@@ -20,11 +20,11 @@ C, C++ and assembly are debugged by GDB itself (`gdb -i dap`), so `~/.gdbinit`, 
 
 - **gdb** for a target: `vim.g.dbg_gdb` (a name or path, or a table by architecture), else the first `<triple>-gdb`, `gdb-multiarch` or host `gdb` that runs DAP (gdb 14 or later with Python) and knows the architecture. One run of each candidate tells; a broken one is skipped with a notice. With none, the session does not start and names the package to install. Windows also looks in MSYS2 (`C:\msys64\ucrt64\bin`, `mingw64`, `clang64`). Kernel sessions run kbuildlab's gdb.
 - **LLDB**: `vim.g.dbg_lldb`, else Xcode's `lldb-dap`, Mason's `codelldb`, an `lldb-dap` on PATH, or Homebrew's llvm. Offered on macOS and Windows; setting `vim.g.dbg_lldb` offers it anywhere.
-- **kbuildlab**: `vim.g.dbg_kbuildlab` or `$KBUILDLAB`, else the one on PATH, else the checkout its installer recorded. **gdbtools**: `$GDBTOOLS_PATH`, else the checkout its `setup.sh` recorded; sourced into each gdb when installed.
+- **kbuildlab**: `vim.g.dbg_kbuildlab` or `$KBUILDLAB`, else the one on PATH, else the checkout its installer recorded. **gdbtools**: `$GDBTOOLS_PATH`, else the checkout its `setup.sh` recorded; sourced into each gdb when installed. A stale pointer is reported once; gdb starts without it.
 
 ## Programs
 
-Launch, launch to `main`, attach by PID, *Run on QEMU user* and *Attach to a QEMU user gdbstub* (Linux: `qemu-<arch> -g` on a private Unix socket with the toolchain's sysroot, stopped at `_start`; x86_64, aarch64, riscv64, arm). The executable and shell-quoted arguments are remembered: `<leader>dc` with no session replays the last run, `<leader>dn` asks again.
+Launch, launch to `main`, attach by PID, *Run on QEMU user* and *Attach to a QEMU user gdbstub* (Linux: `qemu-<arch> -g` on a private Unix socket with the toolchain's sysroot, stopped at `_start`; x86_64, aarch64, riscv64, arm). Its output goes to the debug console; stdin is at end of file. The executable and shell-quoted arguments are remembered: `<leader>dc` with no session replays the last run, `<leader>dn` asks again.
 
 ## Linux kernels
 
@@ -45,15 +45,15 @@ Launch, launch to `main`, attach by PID, *Run on QEMU user* and *Attach to a QEM
 
 nvim-dap-view tabs, switched by the letter in their label: Scopes, Locals+Globals (frame and file variables, `static` included, optimised-out ones tagged `opt`), Watches, Registers (`<symbol+offset>`, change marks), Memory (hex view of an expression, a physical address or a file, 8 KiB per window), Mappings (pwndbg's `vmmap`), Control flow (gdbtools' `cfgjson`), Disassembly (pc highlight, a connector to a taken branch), Call stack, Breakpoints, Target, the gdb console and Output.
 
-A stop refreshes only the panels on screen; a hidden one catches up when shown. Target asks fixed facts (architecture, endianness, checksec) once per session. Values also show at the end of the lines that use them (`:DbgInline off`).
+A stop refreshes only the panels on screen; a hidden one catches up when shown. Target asks fixed facts (architecture, endianness, checksec) once per session. While Locals+Globals is on screen, its values also show at the end of the lines that use them (`:DbgInline off`).
 
-The **gdb console** is GDB's own interpreter with ANSI colours. `c`, `n`, `s`, `ni`, `si`, `finish`, `q` and `kill` go through nvim-dap so the panels stay in step; `<CR>` runs the line under the cursor; `<C-x><C-o>` completes.
+The **gdb console** is GDB's own interpreter with ANSI colours. `c`, `n`, `s`, `ni`, `si`, `finish`, `q` and `kill` go through nvim-dap so the panels stay in step; `<CR>` runs the line under the cursor; `i` `I` `a` `A` type at the prompt; `<C-x><C-o>` completes.
 
 **Layout** depends on `columns` and `lines` only: compact keeps every panel in the bottom bar; wide adds a right-hand column with one panel, Registers first. `:DbgLayout` overrides, `:DbgLayoutReset` rebuilds the windows.
 
 | Panel | Keys |
 |---|---|
-| Hex view | `t` source, `L` layout, `w` bytes per row, `g` bytes per group, `+` `-` rows, `]]` `[[` page, `<CR>` follow pointer, `p` `x` `s` pin, unpin, switch, `e` byte order, `A` ASCII column, `N` symbol annotation, `W` width fitting, `a` auto refresh, `o` read past the guard |
+| Hex view | `t` source, `L` layout, `w` bytes per row, `u` bytes per group, `+` `-` rows, `]]` `[[` page, `<CR>` follow pointer, `p` `x` `s` pin, unpin, switch, `e` byte order, `c` ASCII column, `N` symbol annotation, `f` width fitting, `a` auto refresh, `o` read past the guard |
 | Registers | `f` filter, `<CR>` value in the hex view |
 | Locals+Globals | `f` filter, `<CR>` pin to Watches, `K` gdbtools' `addr2sym` for the address on the line (it does not read it) |
 | Control flow | `p` back to the pc, `<CR>` source line, `+` `-` (or `=` `_`) detail, `H` `J` `K` `L` move by block |
@@ -69,7 +69,7 @@ The **gdb console** is GDB's own interpreter with ANSI colours. `c`, `n`, `s`, `
 | `:DbgLinuxKernel` | Pick a kbuildlab guest and attach; asks where |
 | `:DbgLinuxKernelEarly` | The same, armed for early boot (`GDBTOOLS_AUTO=1`) |
 | `:DbgTargets` | The guests kbuildlab sees on this machine |
-| `:DbgMemory [expr\|file]` | Open the hex view |
+| `:DbgMemory [expr\|file]` | Open the hex view; a file is named by a path (`./main`, `~/x`, `%`), anything else is an expression |
 | `:DbgRegisters`, `:DbgMappings` | Open the register or memory-map panel |
 | `:DbgControlFlow` | The control-flow graph in the source window; again to go back |
 | `:DbgSafeMem on\|off\|auto` | Guard memory reads against QEMU device regions (`auto`: kernel sessions) |
@@ -101,4 +101,4 @@ Keys: [keymaps](../keymaps.md#debugging).
 |---|---|---|---|
 | gdb sessions | yes | not on Apple silicon | yes, with MSYS2's gdb |
 | LLDB sessions | with `vim.g.dbg_lldb` | yes | yes, for MSVC builds whose PDB gdb cannot read |
-| QEMU user mode, Linux kernels | yes | no | no |
+| QEMU user mode, Linux kernels | yes | no: their keys and commands say it is Linux only | no: the same |

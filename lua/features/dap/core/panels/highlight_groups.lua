@@ -36,9 +36,8 @@ end
 
 function M.setup_highlights()
   for name, spec in pairs(M.groups) do
-    if vim.fn.hlexists(name) == 0 or spec.force then
-      vim.api.nvim_set_hl(0, name, spec)
-    end
+    -- default: a colorscheme's own definition wins, and `:hi clear` restores ours.
+    vim.api.nvim_set_hl(0, name, spec.force and spec or vim.tbl_extend("force", spec, { default = true }))
   end
 
   local bg = pc_background()

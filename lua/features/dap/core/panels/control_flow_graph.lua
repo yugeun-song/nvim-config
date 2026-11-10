@@ -450,7 +450,11 @@ function M.render()
   local width = panel.width(buf, 100)
 
   if state.error then
-    panel.render(buf, { ui.banner("CONTROL FLOW", width), "", "  " .. state.error }, { { 2, 0, -1, "DbgWarn" } })
+    -- cfgjson's `error` field may decode to true or a table.
+    local why = type(state.error) == "string" and state.error
+      or ("cfgjson reported an error: " .. vim.inspect(state.error, { newline = " ", indent = "" }))
+
+    panel.render(buf, { ui.banner("CONTROL FLOW", width), "", "  " .. why }, { { 2, 0, -1, "DbgWarn" } })
 
     return
   end
@@ -472,29 +476,8 @@ function M.render()
     local glines, ghl = nil, nil
 
     if ok then
-      -- Too big at this level: try lower ones before refusing, and say which.
-      local okr, a, b, where, why = pcall(box.render, data, width, state.detail)
-      local shown = state.detail
-
-      while okr and not a and shown > 0 do
-        shown = shown - 1
-        okr, a, b, where, why = pcall(box.render, data, width, shown)
-      end
-
-      if okr and not a and why then
-        lines[#lines + 1] = "  " .. why
-        hl[#hl + 1] = { #lines - 1, 0, -1, "DbgWarn" }
-        panel.render(buf, lines, hl)
-
-        return
-      end
-
-      if okr and shown ~= state.detail then
-        local names = { "labels only", "no addresses", "full" }
-
-        lines[#lines + 1] = ("  too wide for %s detail, showing %s"):format(names[state.detail + 1], names[shown + 1])
-        hl[#hl + 1] = { #lines - 1, 0, -1, "DbgMuted" }
-      end
+      -- nil: no usable blocks at any detail level; the listing below stands in.
+      local okr, a, b, where = pcall(box.render, data, width, state.detail)
 
       if okr then
         glines, ghl = a, b
@@ -727,11 +710,14 @@ end
 -- The window showing the graph, found by what is displayed rather than a
 -- marker: reaching the buffer through the tabline sets none.
 function M.host()
-  local buf = panel.buffer("cfg")
+  -- Never create the buffer here: M.buffer() binds keys only on creation.
+  if panel.visible("cfg") then
+    local buf = M.buffer()
 
-  for _, win in ipairs(vim.api.nvim_list_wins()) do
-    if is_editor_window(win) and vim.api.nvim_win_get_buf(win) == buf then
-      return win
+    for _, win in ipairs(vim.api.nvim_list_wins()) do
+      if is_editor_window(win) and vim.api.nvim_win_get_buf(win) == buf then
+        return win
+      end
     end
   end
 

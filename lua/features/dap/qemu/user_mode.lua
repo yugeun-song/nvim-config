@@ -65,10 +65,15 @@ end
 local jobs = {}
 local serial = 0
 
+-- The gdbstub takes any client: its socket directory is 0700.
 function M.socket_path()
+  local dir = require("features.util.storage").path("run", "qemu_user_gdbstubs")
+
+  vim.uv.fs_mkdir(dir, 448)
+  vim.uv.fs_chmod(dir, 448)
   serial = serial + 1
 
-  return require("features.util.storage").path("run", ("qemu-gdb-%d-%d.sock"):format(vim.fn.getpid(), serial))
+  return vim.fs.joinpath(dir, ("%d-%d.sock"):format(vim.fn.getpid(), serial))
 end
 
 -- Runs `qemu-<arch> -g <socket> [-L <sysroot>] <program> [args...]`; exactly one of
@@ -109,13 +114,32 @@ function M.spawn(cfg, on_ready, on_fail)
   vim.list_extend(cmd, cfg.qemu_args or {})
 
   local last_err = ""
+
+  -- Raw chunks, so partial lines join up.
+  local function to_console(data)
+    local text = table.concat(data or {}, "\n")
+
+    if text ~= "" then
+      pcall(function()
+        require("dap.repl").append(text, "$", { newline = false })
+      end)
+    end
+  end
+
+  -- Like a host program under gdb: stdin at EOF, output in the debug console.
   local jid = vim.fn.jobstart(cmd, {
+    stdin = "null",
+    on_stdout = function(_, data)
+      to_console(data)
+    end,
     on_stderr = function(_, data)
       for _, line in ipairs(data or {}) do
         if line ~= "" then
           last_err = line
         end
       end
+
+      to_console(data)
     end,
     on_exit = function(_, code)
       jobs[sock] = nil

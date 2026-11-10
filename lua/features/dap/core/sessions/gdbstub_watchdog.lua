@@ -3,47 +3,52 @@ local M = {}
 -- A lost gdbstub is no error to nvim-dap (gdb keeps its DAP connection), so liveness comes from gdb's output and
 -- the socket table, never from connecting: the stub serves one client.
 
+-- gdb's own errors, matched at line start: a guest's log can say "connection closed", and a running target
+-- refuses commands while alive.
 local LOST = {
   "Remote connection closed",
   "Remote communication error",
-  "Connection reset by peer",
-  "connection closed",
-  "Connection timed out",
   "The program is not being run",
   "Remote 'g' packet reply is too long",
-  "Cannot execute this command while the target is running",
 }
 
-local state = { timer = nil, session = nil, target = nil, misses = 0, announced = false }
+-- One watch per session.
+local watches = setmetatable({}, { __mode = "k" })
 
 local INTERVAL_MS = 4000
 -- One miss can be a listener re-binding.
 local MISSES_BEFORE_CALLING_IT = 3
 
-local function announce(why)
-  if state.announced then
+local function announce(watch, why)
+  if watch.announced then
     return
   end
 
-  state.announced = true
+  watch.announced = true
   require("features.dap.core.sessions.notifications").warn(
     ("The target at %s is gone (%s). The panels below are the last state it reported, not the current one."):format(
-      state.target or "the gdbstub",
+      watch.target or "the gdbstub",
       why
     )
   )
 end
 
-function M.saw_text(text)
-  if not state.session or state.announced or type(text) ~= "string" then
+function M.saw_text(text, session)
+  local watch = session and watches[session]
+
+  if not watch or watch.announced or type(text) ~= "string" then
     return
   end
 
-  for _, needle in ipairs(LOST) do
-    if text:find(needle, 1, true) then
-      announce(needle)
+  for line in text:gmatch("[^\n]+") do
+    local head = line:gsub("\27%[[%d;]*m", ""):match("^[^A-Za-z0-9]*(.*)")
 
-      return
+    for _, needle in ipairs(LOST) do
+      if head:sub(1, #needle) == needle then
+        announce(watch, needle)
+
+        return
+      end
     end
   end
 end
@@ -88,19 +93,24 @@ function M.port_is_listening(port)
   return false
 end
 
-function M.stop()
-  if state.timer then
-    pcall(function()
-      state.timer:stop()
-      state.timer:close()
-    end)
+function M.stop(session)
+  local watch = session and watches[session]
+
+  if not watch then
+    return
   end
 
-  state = { timer = nil, session = nil, target = nil, misses = 0, announced = false }
+  watches[session] = nil
+  if watch.timer then
+    pcall(function()
+      watch.timer:stop()
+      watch.timer:close()
+    end)
+  end
 end
 
 function M.start(session)
-  M.stop()
+  M.stop(session)
   local cfg = session and session.config or {}
 
   if
@@ -110,8 +120,9 @@ function M.start(session)
   end
 
   local host, port = split_target(cfg.target)
+  local watch = { timer = nil, target = cfg.target, misses = 0, announced = false }
 
-  state.session, state.target = session, cfg.target
+  watches[session] = watch
   -- Unparseable, or on another host or network namespace (absent from this one's port table): the message-based
   -- half only.
   if not port or not (host == "localhost" or host == "::1" or tostring(host):match("^127%.")) then
@@ -120,29 +131,31 @@ function M.start(session)
 
   local timer = assert(vim.uv.new_timer())
 
-  state.timer = timer
+  watch.timer = timer
   timer:start(
     INTERVAL_MS,
     INTERVAL_MS,
     vim.schedule_wrap(function()
-      local ok, dap = pcall(require, "dap")
+      if watches[session] ~= watch then
+        return
+      end
 
-      if not ok or dap.session() ~= state.session then
-        M.stop()
+      if session.closed then
+        M.stop(session)
 
         return
       end
 
       if M.port_is_listening(port) then
-        state.misses = 0
+        watch.misses = 0
 
         return
       end
 
-      state.misses = state.misses + 1
-      if state.misses >= MISSES_BEFORE_CALLING_IT then
-        announce("the port stopped listening")
-        M.stop()
+      watch.misses = watch.misses + 1
+      if watch.misses >= MISSES_BEFORE_CALLING_IT then
+        announce(watch, "the port stopped listening")
+        M.stop(session)
       end
     end)
   )

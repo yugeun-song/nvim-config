@@ -37,6 +37,23 @@ function M.clear(buf)
   end
 end
 
+-- Only the Locals+Globals probe draws values; clear them when it skips a stop or the session changes.
+local has_dap, dap = pcall(require, "dap")
+
+if has_dap then
+  dap.listeners.after.event_stopped["dbg_inline_values"] = function(session)
+    local gdb = require("features.dap.core.sessions.session_profile").is_gdb(session)
+
+    if not (gdb and require("features.dap.core.panels.buffers_and_windows").visible("watch")) then
+      M.clear()
+    end
+  end
+
+  dap.listeners.on_session["dbg_inline_values"] = function()
+    M.clear()
+  end
+end
+
 function M.render(session, values)
   M.clear()
   if not M.enabled or not session or not values or vim.tbl_isempty(values) then

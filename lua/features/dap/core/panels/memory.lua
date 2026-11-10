@@ -446,7 +446,18 @@ local function read_file()
     return
   end
 
-  local fd = vim.uv.fs_open(f.path, "r", 438)
+  local stat = vim.uv.fs_stat(f.path)
+
+  -- Reads are synchronous: regular files only (a FIFO or device would block).
+  if not (stat and stat.type == "file") then
+    fail("failed", (stat and "Not a regular file: " or "No such file: ") .. f.path)
+
+    return
+  end
+
+  -- Non-blocking: some regular files wait for data (/proc/kmsg).
+  local c = vim.uv.constants
+  local fd = vim.uv.fs_open(f.path, c.O_NONBLOCK and (c.O_RDONLY + c.O_NONBLOCK) or "r", 438)
 
   if not fd then
     fail("failed", "Cannot open " .. f.path)
@@ -494,7 +505,10 @@ local function read_at(addr)
     return
   end
 
-  if state.force or not qemumon.active(session) then
+  -- The QEMU monitor needs gdb's `monitor`; LLDB has none.
+  local guarded = require("features.dap.core.sessions.session_profile").is_gdb(session) and qemumon.active(session)
+
+  if state.force or not guarded then
     state.force = false
     state.phys = false
     do_read(addr, generation)
@@ -587,8 +601,16 @@ end
 
 function M.show_file(path, offset)
   path = vim.fn.fnamemodify(vim.fn.expand(path), ":p")
-  if not vim.uv.fs_stat(path) then
+  local stat = vim.uv.fs_stat(path)
+
+  if not stat then
     fail("failed", "No such file: " .. path)
+
+    return
+  end
+
+  if stat.type ~= "file" then
+    fail("failed", "Not a regular file: " .. path)
 
     return
   end
@@ -965,6 +987,7 @@ bind = function(buf)
     end
   end
 
+  -- Clear of dap-view's section letters (A, W, X, ...) and of a bare `g`, which would delay `gg`.
   local maps = {
     {
       "]]",
@@ -994,7 +1017,7 @@ bind = function(buf)
     { "x", M.unpin, "Memory: unpin target" },
     { "s", M.select_pinned, "Memory: switch pinned target" },
     { "w", cycle("per_row", { 8, 16, 24, 32, 48, 64 }), "Memory: cycle bytes per row" },
-    { "g", cycle("group", { 1, 2, 4, 8 }), "Memory: cycle bytes per group" },
+    { "u", cycle("group", { 1, 2, 4, 8 }), "Memory: cycle bytes per group" },
     {
       "+",
       function()
@@ -1020,7 +1043,7 @@ bind = function(buf)
       "Memory: toggle group byte order",
     },
     {
-      "A",
+      "c",
       function()
         state.ascii = not state.ascii
         M.refresh()
@@ -1036,7 +1059,7 @@ bind = function(buf)
       "Memory: toggle symbol annotation",
     },
     {
-      "W",
+      "f",
       function()
         state.auto_width = not state.auto_width
         M.refresh()
@@ -1075,7 +1098,10 @@ function M.open(arg)
 
   panel.show(buf, 18, "Memory")
   if arg and arg ~= "" then
-    if vim.uv.fs_stat(vim.fn.expand(arg)) then
+    -- A file needs a path form (./main, ~/x, %); a bare `main` is the symbol.
+    local path_like = arg:find("[/\\]") or arg:match("^[%%#<~]")
+
+    if path_like and vim.uv.fs_stat(vim.fn.expand(arg)) then
       M.show_file(arg, 0)
     else
       M.show_expr(arg, "target")

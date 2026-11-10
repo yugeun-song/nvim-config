@@ -195,55 +195,95 @@ local function failure(res)
   return ("exit status %d: %s"):format(res.code, err:match("%S[^\n]*") or "no output")
 end
 
--- { version, major, arches } or { why }.
-local function probe(bin)
-  local key = identity("probe", bin)
-
-  if probes[key] then
-    return probes[key]
+-- { version, major, arches } or { why }; err when gdb did not start.
+local function probe_answer(res, err)
+  if err then
+    return { why = "could not start: " .. tostring(err):gsub("^[^\n]-:%d+: ", "") }
   end
 
-  local started, proc = pcall(vim.system, { bin, "-nx", "-batch", "-ex", PROBE }, { text = true })
-  local p
+  local json = (res.stdout or ""):match("dbg%-probe (%b{})")
+  local ok, info = pcall(vim.json.decode, json or "")
 
-  if not started then
-    p = { why = "could not start: " .. tostring(proc):gsub("^[^\n]-:%d+: ", "") }
-  else
-    local res = proc:wait(10000)
-    local json = (res.stdout or ""):match("dbg%-probe (%b{})")
-    local ok, info = pcall(vim.json.decode, json or "")
+  if json and ok and type(info) == "table" and type(info.version) == "string" then
+    local arches = {}
 
-    if json and ok and type(info) == "table" and type(info.version) == "string" then
-      local arches = {}
-
-      for _, name in ipairs(info.arches or {}) do
-        arches[name] = true
-      end
-
-      p = { version = info.version, major = tonumber(info.version:match("^(%d+)")) or 0, arches = arches }
-    else
-      p = { why = failure(res) }
+    for _, name in ipairs(info.arches or {}) do
+      arches[name] = true
     end
+
+    return { version = info.version, major = tonumber(info.version:match("^(%d+)")) or 0, arches = arches }
   end
 
-  probes[key] = p
-
-  return p
+  return { why = failure(res) }
 end
 
 -- An Intel Mac's gdb debugs programs only when codesigned with the debugger entitlement.
-local function codesigned(bin)
-  local key = identity("codesign", bin)
+local function codesign_answer(res)
+  res = res or {}
 
+  return ((res.stdout or "") .. (res.stderr or "")):find("com.apple.security.cs.debugger", 1, true) ~= nil
+end
+
+local function probe_cmd(bin)
+  return { bin, "-nx", "-batch", "-ex", PROBE }
+end
+
+local function codesign_cmd(bin)
+  return { "codesign", "-d", "--entitlements", "-", vim.fn.exepath(bin) }
+end
+
+local function remember(key, cmd, timeout, answer)
   if probes[key] == nil then
-    local cmd = { "codesign", "-d", "--entitlements", "-", vim.fn.exepath(bin) }
     local ok, proc = pcall(vim.system, cmd, { text = true })
-    local res = ok and proc:wait(5000) or {}
 
-    probes[key] = ((res.stdout or "") .. (res.stderr or "")):find("com.apple.security.cs.debugger", 1, true) ~= nil
+    if ok then
+      probes[key] = answer(proc:wait(timeout))
+    else
+      probes[key] = answer(nil, proc)
+    end
   end
 
   return probes[key]
+end
+
+local waiting = {}
+
+-- remember() off the main loop: done() runs on it once the answer is in.
+local function remember_async(key, cmd, timeout, answer, done)
+  if probes[key] ~= nil then
+    return done()
+  end
+
+  if waiting[key] then
+    waiting[key][#waiting[key] + 1] = done
+
+    return
+  end
+
+  waiting[key] = { done }
+
+  local function settle(res, err)
+    local list = waiting[key]
+
+    probes[key], waiting[key] = answer(res, err), nil
+    for _, fn in ipairs(list) do
+      fn()
+    end
+  end
+
+  local ok, err = pcall(vim.system, cmd, { text = true, timeout = timeout }, vim.schedule_wrap(settle))
+
+  if not ok then
+    settle(nil, err)
+  end
+end
+
+local function probe(bin)
+  return remember(identity("probe", bin), probe_cmd(bin), 10000, probe_answer)
+end
+
+local function codesigned(bin)
+  return remember(identity("codesign", bin), codesign_cmd(bin), 5000, codesign_answer)
 end
 
 -- Why bin cannot run a DAP session (debugging arch, when given), or nil when it can.
@@ -376,10 +416,8 @@ local function install_hint(key)
   return "install gdb 14 or newer built with Python" .. (native and "" or (" and " .. key))
 end
 
--- vim.g.dbg_gdb when stated (a name, a path or a table keyed by arch), else the first candidate that debugs
--- arch (default: the host's). The gdb, nil and the broken candidates it passed; or nil and why none fits.
-function M.gdb_for(arch)
-  local key = norm(arch or HOST_ARCH)
+-- vim.g.dbg_gdb's gdb for key (a name, a path or a table keyed by arch), or nil.
+local function stated_gdb(key)
   local stated = vim.g.dbg_gdb
 
   if type(stated) == "table" then
@@ -394,7 +432,16 @@ function M.gdb_for(arch)
     stated = pick
   end
 
-  if type(stated) == "string" and stated ~= "" then
+  return type(stated) == "string" and stated ~= "" and stated or nil
+end
+
+-- vim.g.dbg_gdb when stated, else the first candidate that debugs arch (default: the host's). The gdb, nil and
+-- the broken candidates it passed; or nil and why none fits.
+function M.gdb_for(arch)
+  local key = norm(arch or HOST_ARCH)
+  local stated = stated_gdb(key)
+
+  if stated then
     local why = M.gdb_unusable(stated, key)
 
     if why then
@@ -440,6 +487,36 @@ function M.gdb_for(arch)
   local msg = ("no gdb here debugs %s (%s)"):format(key, table.concat(skipped, "; "))
 
   return nil, lacking and ("%s: %s, or set vim.g.dbg_gdb"):format(msg, install_hint(key)) or msg
+end
+
+-- Runs the probes gdb_for(arch) or gdb_supports_dap(bin) needs, off the main loop; then done(), and that call
+-- answers from memory.
+function M.prefetch(arch, bin, done)
+  local key = norm(arch or HOST_ARCH)
+  local stated = not bin and stated_gdb(key)
+  local names = bin and { bin } or stated and { stated } or candidates(key)
+  local signed = not bin and MAC and key == HOST_ARCH
+  local left = 1
+
+  local function one()
+    left = left - 1
+    if left == 0 then
+      done()
+    end
+  end
+
+  for _, name in ipairs(names) do
+    if vim.fn.executable(name) == 1 then
+      left = left + 1
+      remember_async(identity("probe", name), probe_cmd(name), 10000, probe_answer, one)
+      if signed then
+        left = left + 1
+        remember_async(identity("codesign", name), codesign_cmd(name), 5000, codesign_answer, one)
+      end
+    end
+  end
+
+  one()
 end
 
 local xcode
@@ -507,17 +584,47 @@ local function config_home()
 end
 
 -- A tool's checkout as its own installer recorded it in <config>/<tool>/root,
--- or nil.  Read, never searched for.
+-- or nil.  Read, never searched for.  nil, the file and why when it is there but cannot be read.
 local function root_pointer(tool)
   local f = config_home() .. "/" .. tool .. "/root"
+  local st = vim.uv.fs_stat(f)
 
-  if not vim.uv.fs_stat(f) then
+  if not st then
     return nil
   end
 
-  local root = (vim.fn.readfile(f)[1] or ""):gsub("%s+$", "")
+  local ok, lines = false, nil
+
+  if st.type == "file" then
+    ok, lines = pcall(vim.fn.readfile, f, "", 1)
+  end
+
+  if not ok or not lines then
+    return nil, f, f .. " is not a readable file"
+  end
+
+  local root = (lines[1] or ""):gsub("%s+$", "")
 
   return root ~= "" and root or nil, f
+end
+
+-- Linux-only features, as the health check names them.
+M.LINUX_ONLY = {
+  qemu_user = { "Foreign-architecture programs (QEMU user mode)", "QEMU user mode runs on Linux only" },
+  linux_kernel = { "Linux kernels (kbuildlab)", "kbuildlab runs on Linux only" },
+}
+
+-- The "not supported" message for a LINUX_ONLY key; nil on Linux.
+function M.unsupported_here(what)
+  local status = require("features.util.feature_status")
+
+  if status.LINUX then
+    return nil
+  end
+
+  local feature, why = unpack(M.LINUX_ONLY[what])
+
+  return ("%s: not supported on %s (%s)"):format(feature, status.OS, why)
 end
 
 -- gdbtools' loader: $GDBTOOLS_PATH, else the root gdbtools' setup.sh records.
@@ -535,10 +642,10 @@ function M.gdbtools_loader()
     return nil, "GDBTOOLS_PATH=" .. env .. " is not a file"
   end
 
-  local root, file = root_pointer("gdbtools")
+  local root, file, unreadable = root_pointer("gdbtools")
 
   if not root then
-    return nil
+    return nil, unreadable
   end
 
   local loader = root .. "/gdbtools.py"
@@ -554,6 +661,12 @@ end
 -- vim.g.dbg_kbuildlab or $KBUILDLAB, else the one on $PATH, else the checkout its installer recorded: a
 -- graphical launcher may not put ~/.local/bin on PATH.
 function M.kbuildlab()
+  local unsupported = M.unsupported_here("linux_kernel")
+
+  if unsupported then
+    return nil, unsupported
+  end
+
   local stated = vim.g.dbg_kbuildlab or vim.env.KBUILDLAB
 
   if stated and stated ~= "" then
@@ -568,7 +681,7 @@ function M.kbuildlab()
     return "kbuildlab"
   end
 
-  local root = root_pointer("kbuildlab")
+  local root, _, unreadable = root_pointer("kbuildlab")
   local bin = root and (root .. "/bin/kbuildlab")
 
   if bin and vim.fn.executable(bin) == 1 then
@@ -576,7 +689,12 @@ function M.kbuildlab()
   end
 
   return nil,
-    "kbuildlab is not installed (not on PATH, no " .. config_home() .. "/kbuildlab/root); kernel debugging needs it"
+    unreadable
+      or (
+        "kbuildlab is not installed (not on PATH, no "
+        .. config_home()
+        .. "/kbuildlab/root); kernel debugging needs it"
+      )
 end
 
 -- Run `kbuildlab ARGS` and decode its JSON, null as nil; cb(value) or cb(nil, why).

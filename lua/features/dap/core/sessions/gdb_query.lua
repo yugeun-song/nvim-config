@@ -40,7 +40,7 @@ function M.run(cmd, cb, opts)
       local message = err.message or "command failed"
 
       pcall(function()
-        require("features.dap.core.sessions.gdbstub_watchdog").saw_text(message)
+        require("features.dap.core.sessions.gdbstub_watchdog").saw_text(message, session)
       end)
 
       cb(nil, message)
@@ -51,7 +51,7 @@ function M.run(cmd, cb, opts)
     local text = M.strip_ansi((res or {}).result or "")
 
     pcall(function()
-      require("features.dap.core.sessions.gdbstub_watchdog").saw_text(text)
+      require("features.dap.core.sessions.gdbstub_watchdog").saw_text(text, session)
     end)
 
     cb(text)
