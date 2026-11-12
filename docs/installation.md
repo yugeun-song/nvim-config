@@ -4,7 +4,7 @@ What to install, per feature and per system. The clone itself is in the [README]
 
 ## Requirements
 
-[Dependencies](dependencies.md) lists everything by level (required, recommended, per feature, development) and by who installs it (you, lazy.nvim, Mason, nvim-treesitter). Required: Neovim 0.12 or later, `git`, the `tree-sitter` CLI, a C compiler, `curl`, `tar`, and network access on the first start. `:FeatureStatus` lists every feature as available, not supported here, or blocked with what is missing ([troubleshooting](troubleshooting.md#feature-status)).
+[Dependencies](dependencies.md) lists everything by level (required, recommended, per feature, development) and by who installs it (you, lazy.nvim, Mason, nvim-treesitter). Required: Neovim 0.12 or later, `git`, the `tree-sitter` CLI (0.26.1 or later), a C compiler, `curl`, `tar`, and network access on the first start. `:FeatureStatus` lists every feature as available, not supported here, or blocked with what is missing ([troubleshooting](troubleshooting.md#feature-status)).
 
 For the kernel workflow, generate the indexes in the source tree: `make C=2 compile_commands.json` (or `scripts/clang-tools/gen_compile_commands.py`), `make cscope`, `make tags`.
 
@@ -67,7 +67,9 @@ A Mason package with no build for the machine is reported as not supported; the 
 ## Windows
 
 - The configuration is `%LOCALAPPDATA%\nvim`; data, state and logs are `%LOCALAPPDATA%\nvim-data`; the cache is `%TEMP%\nvim`.
-- Visual Studio (or its Build Tools) with the MSVC tools builds the [IME helper](features/util.md#windows-ime-helper), sets the [MSVC environment](features/lang.md#msvc-toolchain) and writes compile databases. clang targeting MSVC also builds the helper; without either, the IME switch uses `im-select.exe`.
+- Visual Studio 2026 (or its Build Tools) with the C++ tools builds the [IME helper](features/util.md#windows-ime-helper), sets the [MSVC environment](features/lang.md#msvc-toolchain) and writes compile databases. clang targeting MSVC also builds the helper; without either, the IME switch uses `im-select.exe`.
+- Visual Studio's C++ library refuses a clangd older than it was written for, and Mason does not update what it installed: after a Visual Studio update, `:MasonInstall clangd` before opening a C-family file (Mason cannot replace a clangd that runs). `:MsvcCompileDb` says so when it applies.
+- A program named without a directory starts from PATH only, never from the current directory ([why](features/util.md#programs-from-path-only)); in `:terminal`'s `cmd.exe`, a program there takes `.\name`.
 - gdb: MSYS2's `pacman -S mingw-w64-ucrt-x86_64-gdb` (`mingw-w64-ucrt-x86_64-gdb-multiarch` for foreign targets), found under `C:\msys64` when not on PATH.
 - cscope has no native build: register one by path with `<leader>uX`, such as MSYS2's ([external programs](features/util.md#programs-registered-by-path)).
 - GHCup installs to `C:\ghcup\bin`, which joins PATH with the first Haskell buffer.

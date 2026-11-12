@@ -20,7 +20,8 @@ nvim-config/
 │   │   ├── formatting.lua       formatters that serve several languages
 │   │   ├── linting.lua          linters of the languages without a file in lang/
 │   │   ├── treesitter.lua       parsers of the languages without a file in lang/
-│   │   ├── ui/                  statusline, dashboard, search count, keystroke display, Neovide, ANSI colours
+│   │   ├── ui/                  statusline, notifications, dashboard, search count, keystroke display, Neovide,
+│   │   │                        ANSI colours
 │   │   ├── editor/              explorer, pickers, Trouble, Open Folder, reload, Korean input, key cheat sheet
 │   │   ├── lang/                one file per language: c, asm, cuda, lisp, haskell, lean, python, elixir, rust,
 │   │   │                        typescript, markdown
@@ -38,7 +39,8 @@ nvim-config/
 ├── native/                      windows_ime_helper.c and its .clang-format
 ├── scripts/                     check_repository.lua, update_credits.lua, reset_to_fresh_clone.lua, open-at.lua,
 │                                alive_lsp_over_stdio.lisp
-├── tests/                       containers/ (by hand, Linux host), managed_paths/, windows_ime_helper/
+├── tests/                       containers/ (by hand, Linux host), managed_paths/, msvc_compile_database/,
+│                                windows_ime_helper/, focus_events/
 └── docs/                        this documentation; docs/features/ has one page per category
 ```
 
@@ -50,7 +52,7 @@ The categories are LazyVim's own (its `lazyvim/plugins` and `extras` use the sam
 
 | Category | What it covers | Page |
 |---|---|---|
-| `ui` | colorscheme, statusline, dashboard, search count, keystroke display, man pages, Neovide | [UI](features/ui.md) |
+| `ui` | colorscheme, statusline, notifications, dashboard, search count, keystroke display, man pages, Neovide | [UI](features/ui.md) |
 | `editor` | options, motions, explorer, pickers, formatting, linting, reload, Open Folder, opening from other programs, Korean input, key cheat sheet | [editor](features/editor.md) |
 | `lang` | C, C++, assembly, CUDA, MSVC, Lisp, Racket, Haskell, Lean, Python, Elixir, Rust, TypeScript, Markdown | [languages](features/lang.md) |
 | `lsp` | attach rules, line diagnostics, Mason packages | [language servers](features/lsp.md) |

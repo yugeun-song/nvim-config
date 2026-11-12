@@ -28,7 +28,7 @@ Everything this configuration uses: how much it needs each one, and who installs
 |---|---|
 | Neovim 0.12 or later | everything (0.11.2 starts with a notice; older is refused by LazyVim) |
 | `git` | lazy.nvim and the plugins |
-| `tree-sitter` CLI and a C compiler (`cc`, `gcc`, `clang` or `cl`) | building the parsers; without them LazyVim reports an error at every start |
+| `tree-sitter` CLI, 0.26.1 or later as nvim-treesitter asks (not npm's), and a C compiler (`cc`, `gcc`, `clang` or `cl`) | building the parsers; without them LazyVim reports an error at every start |
 | `curl`, `tar` | parser and Mason downloads |
 | network access | the first start |
 
@@ -36,8 +36,9 @@ Everything this configuration uses: how much it needs each one, and who installs
 
 | Program | For |
 |---|---|
-| `rg` (ripgrep) | grep pickers, ripgrep code search |
+| `rg` (ripgrep 14 or later) | grep pickers, search and replace (grug-far), ripgrep code search |
 | `fd` (or `fdfind`) | file pickers |
+| `wl-clipboard`, or `xclip` or `xsel` | the system clipboard on Linux (Wayland, X11); Windows and macOS need nothing |
 | a Nerd Font | icons (Neovide's profile uses CaskaydiaCove Nerd Font Mono) |
 | `unzip`, `gzip` | Mason packages from GitHub releases |
 | Node.js with `npm` | Mason's npm packages |
@@ -51,9 +52,10 @@ Everything this configuration uses: how much it needs each one, and who installs
 | C and C++ navigation | `cscope`, Universal Ctags | all (Windows: cscope registered by path) |
 | Code search | `cscope`, `ctags`, GNU Global, `clangd`, `rg` or `fd`, each for its own tool | all |
 | CUDA in clangd | the CUDA toolkit (`CUDA_PATH` or `nvcc`) | all |
-| Visual Studio projects | Visual Studio or its Build Tools | Windows |
+| Visual Studio projects | Visual Studio 2026 or its Build Tools, with the C++ tools (MSBuild, found through `vswhere`); a `clangd` as new as that toolset's C++ library asks for | Windows |
 | Debugging C, C++ and assembly | `gdb` 14 or later with Python | Linux; Intel macOS, codesigned |
 | | `lldb-dap` (Xcode 16 tools), else Mason's `codelldb` | macOS, Windows |
+| JavaScript in a browser under the debugger | Chrome or Edge (`pwa-chrome`, `pwa-msedge`) | all |
 | Foreign architectures | `qemu-<arch>` and a gdb for the target (`<triple>-gdb` or `gdb-multiarch`) | Linux |
 | Linux kernels | [kbuildlab](https://github.com/yugeun-song/kbuildlab); [gdbtools](https://github.com/yugeun-song/gdbtools) optional | Linux |
 | Korean input switch and marks | `fcitx5`, `fcitx` or `ibus` | Linux |
@@ -63,6 +65,7 @@ Everything this configuration uses: how much it needs each one, and who installs
 | | `osascript` | macOS |
 | | the IME helper, else PowerShell | Windows |
 | Open Folder | `yazi` | all |
+| Picker history and frecency in SQLite (else a plain file) | the SQLite library; on Windows Snacks downloads `sqlite3.dll` | all |
 | GUI | Neovide | all |
 | Discord Rich Presence | the Discord app | all |
 | Man page highlighting | `man` | Linux, macOS |
@@ -82,10 +85,11 @@ Everything this configuration uses: how much it needs each one, and who installs
 
 | Program | For |
 |---|---|
-| `stylua`, `lua-language-server`, `taplo`, `rumdl`, `clang-format` | `scripts/check_repository.lua` (PATH, else Mason's) |
+| `stylua`, `lua-language-server`, `taplo`, `rumdl`, `clang-format` (21 or later) | `scripts/check_repository.lua` (PATH, else Mason's) |
 | `podman` (rootless) | `tests/containers/run.sh` |
 | `script` (util-linux) | `tests/managed_paths/run.sh` |
 | PowerShell and Visual Studio | `tests/windows_ime_helper/run.ps1` |
+| Visual Studio 2026; `clangd` for its last step | the MSBuild steps of `tests/msvc_compile_database/check.lua` (SKIP without) |
 
 ## Plugins
 
@@ -134,7 +138,7 @@ Installed by lazy.nvim. Loads on: the event, filetype, command or key that loads
 
 ## Mason packages
 
-Installed by Mason on every system with a build; with none, a program of the same name on PATH serves. "Needs" is what it needs on PATH to install or run; on Windows a package whose runtime is missing is not installed ([language servers](features/lsp.md#mason-packages)).
+Installed by Mason on every system with a build; with none, a program of the same name on PATH serves. "Needs" is what it needs on PATH to install or run; on Windows a package whose runtime is missing is not installed ([language servers](features/lsp.md#mason-packages)). Mason installs a package once and does not update it: `:Mason` (`U`), or `:MasonInstall <name>`, brings the registry's current version.
 
 | Package | For | Needs |
 |---|---|---|

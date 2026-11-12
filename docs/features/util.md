@@ -17,6 +17,7 @@ The configuration writes for itself only into `nvim-config` inside `stdpath(kind
 | state | `mason_install_failures.json` | Mason installs held back after a failure |
 | state | `msvc_developer_environment.json` | the MSVC environment VsDevCmd sets (Windows) |
 | state | `msvc_compile_databases.json` | databases `:MsvcCompileDb` wrote (Windows) |
+| state | `msvc_compile_database.log` | MSBuild's output of the last `:MsvcCompileDb` run (Windows) |
 | state | `all_ifdef_branches` | the all-`#if`-branches view, on or off |
 | state | `open_folder_history` | folders opened (Projects) |
 | state | `colorscheme_choice` | the default colorscheme confirmed in `<leader>uC` |
@@ -152,30 +153,35 @@ What Windows lacks and Linux has elsewhere: an IME tool, a Caps Lock LED, a wind
 
 ### Windows IME helper
 
-`native/windows_ime_helper.c`, kept in this repository and built at the first start (and after the source changes) in the background into `stdpath("data")/nvim-config/windows_ime_helper`; nothing is downloaded.
+`native/windows_ime_helper.c`, kept in this repository and built at the first start (and after the source changes) in the background into `stdpath("data")/nvim-config/windows_ime_helper`; nothing is downloaded. What it serves begins as the build lands, without a restart.
 
 | Command | Does |
 |---|---|
 | `ime-english` | Turn the foreground window's IME to its alphanumeric mode, keeping the keyboard layout (as `fcitx5-remote -c` does) |
 | `input-state` | Print `<caps><ime>` once (`1` = on, or native script) |
 | `watch-input-state PID [MS]` | Print `<caps><ime>` on each change until PID exits, polling every MS (100 by default); stdin `e`, `p`, `r` = ime-english, pause, resume |
-| `raise-window PID` | Raise the window of PID, or of its nearest ancestor that has one |
+| `raise-window PID` | Raise the window of the Neovim PID: its terminal's, or that of its nearest ancestor that has one (never the desktop's) |
 | `version` | Print the compiler and architecture; the build runs it to prove every import loads |
 
 Copied as `NAME.exe` beside a `NAME.shim`, it runs the program that file names instead ([shims](#programs-registered-by-path)). It serves the [IME switch and indicators](editor.md#korean-input), the [window raise](editor.md#opening-from-other-programs) and the shims.
 
 - **Build.** x86_64 Windows only, by Visual Studio's `cl` (on PATH through the [MSVC environment](lang.md#msvc-toolchain)) or clang targeting MSVC; the preprocessor stops any other target or compiler (Linux, macOS, MinGW, 32-bit, ARM64). Warnings fail the build, the linker's too; the C runtime is linked in, so the program loads only the system's DLLs. A build that does not answer `version` exactly is discarded and the next compiler tried; the compilers' output is kept in `windows_ime_helper-*.log` beside the builds (delete it to retry).
-- **Only for Neovim.** It runs only as Neovim's child (its parent must be `nvim.exe`, checked against reused process ids; a shim's may be a few levels up, for `:terminal`) and ends with Neovim: the watcher waits on Neovim's process and its stdin.
+- **Only for Neovim.** It runs only as Neovim's child (its parent must be `nvim.exe`, checked against reused process ids; a shim's may be a few levels up, for `:terminal`), raises only a Neovim's window, and ends with Neovim: the watcher waits on Neovim's process and its stdin. That keeps it from being picked up as a general tool; it is no barrier against a program of the same user, which can name itself `nvim.exe` and could call Windows itself. The helper holds no privilege such a program lacks: not elevated, no service, no network.
 - **No keystrokes.** It reads only Caps Lock and the IME's mode, polled rather than hooked, since a keyboard hook would see every key; even that state is wiped once used.
-- **Failures.** Exit codes: 0 done, 1 failed, 2 usage, 3 a protocol violation on stdin, 4 not started by Neovim, 127 a shim that cannot run its program. Neovim shows each failure once and lists them in `:checkhealth features.editor`.
+- **Nothing from where it starts.** Its libraries load from System32 only (it does not run where that cannot be set), and unless it runs as a shim it leaves the directory Neovim started it in: a repository can plant nothing for it, and the watcher does not keep that directory from being renamed or deleted.
+- **Failures.** Exit codes: 0 done, 1 failed, 2 usage, 3 a protocol violation on stdin, 4 not started by Neovim, 127 a shim that cannot run its program; each comes with its reason on stderr. Neovim shows each failure once, with that reason, and lists them in `:checkhealth features.editor`. Without the helper the IME switch falls back to `im-select.exe`; the indicators have no other source.
 
 Style and tests: [development](../development.md#windows-ime-helper).
+
+### Programs from PATH only
+
+`init.lua` sets Windows' own switch, `NoDefaultCurrentDirectoryInExePath`, for Neovim and everything it starts: a program named without a directory comes from PATH, never from the current directory. Without it Windows, libuv (every `vim.system()` and job) and `cmd.exe` look there first, and a repository holding a `clangd.exe` or `rg.exe` would be run for whichever tool the machine lacks. In `:terminal`'s `cmd.exe`, a program of the current directory then takes `.\name`, as in PowerShell. A value set before Neovim starts is kept.
 
 ### Faster on Windows
 
 - **Program lookups** (`executable_lookup_cache.lua`): Windows' `executable()` and `exepath()` try every PATHEXT extension in every PATH directory, about 10 ms a name with forty directories. Lua callers (`vim.system()` and plugins included) get the answer from `stdpath("cache")/nvim-config/executable_lookup_cache.json`, kept per PATH with each directory's mtime and rechecked every 2 s. A changed directory drops only its own answers. A bare name never resolves into the current directory unless PATH lists it, so a planted `cl.exe` cannot build the helper.
 - **matchit and netrw** load before lazy.nvim fills the runtimepath: `:packadd` resolves every entry, about 20 ms more apiece on a full one.
-- **lazy.nvim's update checks** start git once per plugin, and Windows holds the editor about 5 ms per process; they wait until no key has come for 5 s outside a terminal, or until Neovim loses focus.
+- **lazy.nvim's update checks** start git once per plugin, and Windows holds the editor about 5 ms per process; they wait until no key has come for 5 s outside a terminal, or until Neovim has been without focus for a second, and start from the main loop, never inside the focus event ([why](../troubleshooting.md#caveats)).
 
 Elsewhere on Windows: [MSVC environment, compile databases, `--query-driver`](lang.md#msvc-toolchain), [LLDB beside gdb](dap.md#choosing-gdb-and-lldb), [Mason's install gate](lsp.md#mason-packages), [program discovery](#programs-registered-by-path).
 

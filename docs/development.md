@@ -65,6 +65,17 @@ Only this command starts it. When it ends or is interrupted it removes everythin
 | `sh tests/managed_paths/run.sh [--release] [--flatpak ID] [NVIM...]` | Linux, macOS | variants default, xdg, appname, appname-nested, flatpak-sim, overlap, nested; then the reset's question, piped (nothing removed) and typed through `script(1)` (removed). `--release` adds the official 0.12.6 build, SHA-256 checked (skipped where it cannot run, such as NixOS or musl); `--installed` the user's real layout, only inside the containers of `tests/containers/run.sh`; `KEEP_ROOT=1` keeps the root. |
 | `powershell -ExecutionPolicy Bypass -File tests\managed_paths\run.ps1 [-Nvim nvim] [-KeepRoot]` | Windows | the same variants without flatpak-sim; only the piped answer, since typing needs a console |
 
+### MSVC compile database
+
+`nvim -l tests/msvc_compile_database/check.lua` runs on any system, in a throwaway root:
+
+- everywhere: how a cl command line is split and becomes a clangd entry, how a solution configuration's projects are read, how a configuration is chosen;
+- on Windows with Visual Studio, through MSBuild for real: solutions the test writes itself (`.sln` and `.slnx`, under a directory named with a space, Korean and `&`) must resolve `$(SolutionDir)`, read the solution's `x86` as the projects' `Win32`, refuse a configuration the solution has not, name a toolset or Windows SDK version that is not installed, keep the other projects' entries when one cannot be loaded, be rebuilt on opening a file only when behind, and leave a database that would say the same untouched. clangd, when there is one, must read a source of them without a diagnostic. Elsewhere these steps print SKIP.
+
+### Focus events
+
+`nvim -l tests/focus_events/check.lua` runs on any system: nothing may work or wait inside a `FocusLost` or `FocusGained` autocmd, where Neovim drops the next focus event ([why](troubleshooting.md#caveats)). It holds the deferred lazy.nvim update check to that.
+
 ### Windows IME helper
 
 `powershell -ExecutionPolicy Bypass -File tests\windows_ime_helper\run.ps1 [-FuzzSeconds 60] [-Nvim nvim]` builds and runs every test in a temporary directory and prints PASS, FAIL or SKIP per step:
@@ -72,7 +83,7 @@ Only this command starts it. When it ends or is interrupted it removes everythin
 - clang-format with `native/.clang-format`;
 - `cl /W4 /WX /sdl /analyze`, clang `-Wall -Wextra -Werror` and `--analyze`;
 - the preprocessor guards: Linux, macOS, MinGW, 32-bit and ARM64 targets must fail;
-- `unit.c` (C unit tests) and `test.lua` (Neovim-driven) under AddressSanitizer;
+- `unit.c` (C unit tests) and `test.lua` (Neovim-driven; it switches the foreground IME to English and raises a window) under AddressSanitizer;
 - `bridge.lua`, the Lua side's tests, which also run alone on any system, each in a throwaway root: `nvim -l tests/windows_ime_helper/bridge.lua`;
 - `fuzz.c`, a libFuzzer target over the parsers.
 

@@ -1,6 +1,6 @@
 # UI
 
-Colours, statusline, dashboard, search count, keystroke display, man pages and the Neovide profile. Specs: `lua/plugins/colorscheme.lua`, `lua/plugins/ui/`; code: `lua/features/ui/`, `colors/spaceduck-remix.lua`, `after/ftplugin/man.lua`.
+Colours, statusline, notifications, dashboard, search count, keystroke display, man pages and the Neovide profile. Specs: `lua/plugins/colorscheme.lua`, `lua/plugins/ui/`; code: `lua/features/ui/`, `colors/spaceduck-remix.lua`, `after/ftplugin/man.lua`.
 
 ## What it does
 
@@ -8,6 +8,7 @@ Colours, statusline, dashboard, search count, keystroke display, man pages and t
 - **Default colorscheme**: one confirmed in `<leader>uC` stays the default across restarts; confirming `spaceduck-remix` clears that choice.
 - **Terminal background** (`terminal_background.lua`): in the TUI the terminal's own background follows `Normal` (OSC 11), so its padding matches; restored on exit and suspend (OSC 111). Skipped inside tmux, screen, Zellij and a nested Neovim.
 - **Statusline**: the full path, never shortened; an encoding and line-end flag (`UTF-8/LF`, `UTF-8+BOM/CRLF`); after the branch, the latest tag from `git describe --tags --long` (`v6.12.95`, or `v6.12.95+12` twelve commits past it), read in the background, again after 60 s, on focus and on `:cd`, never while unfocused (`statusline.lua`). The IME and Caps Lock indicators come from [Korean input](editor.md#korean-input).
+- **Notifications** wrap (`plugins/ui/notifications.lua`): Snacks cuts a line at the notification's width, 40 % of the screen, and the messages here end in what to do about them.
 - **Search count** (`search_count.lua`): [nvim-hlslens](https://github.com/kevinhwang91/nvim-hlslens) shows `[current/total]` beside the nearest match after `n`, `N`, `*`, `#`, `g*`, `g#`, `/` and `?`; noice's own search count is off.
 - **Dashboard header** (`dashboard.lua`): the system's logo left of NVIM, in its brand colour, shifted to the nearest shade that reads at 3:1 against the background. Linux and FreeBSD are named by `/etc/os-release`, macOS and Windows by the system. An unknown system or a narrow window leaves NVIM alone.
 - **ChKeys** (`keystroke_display.lua`): typed keys float at the bottom right for 1.6 s, with `한` while the IME is in Hangul; one window per key under Neovide. Off at startup. Terminal mode and `input()` and `inputsecret()` prompts are never shown (`excluded_modes`, `hide_cmdtypes`). Nothing is written to disk.
