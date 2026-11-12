@@ -4,8 +4,9 @@
 -- VCTools and Windows SDK variables, and the directories it adds to PATH. Each start then sets those (none already set
 -- is overwritten) and appends the directories, so a program already on PATH still wins; clangd reads INCLUDE for MSVC's
 -- and the SDK's headers, and :terminal and :make get cl, link, nmake and msbuild. A start inside a Developer Prompt
--- changes nothing. Applying costs one file read and one stat; a new Visual Studio version, whose directories the record
--- no longer matches, is captured again in the background.
+-- changes nothing. Applying costs one file read and a few stats; after a Visual Studio or Windows SDK update, when the
+-- record's toolset is gone or a version was installed or removed beside the ones it chose, it is captured again in
+-- the background.
 local M = {}
 
 local uv = vim.uv
@@ -42,10 +43,58 @@ local function key(dir)
   return (dir:lower():gsub("\\", "/"):gsub("/+$", ""))
 end
 
+-- Where VsDevCmd chose its versions: the directory above the toolset, and the one above the Windows SDK version in
+-- INCLUDE. A toolset or SDK that comes or goes changes their time.
+local function version_listings(env)
+  local listings, seen = {}, {}
+
+  local function add(dir)
+    local st = uv.fs_stat(dir)
+
+    if st and not seen[key(dir)] then
+      seen[key(dir)] = true
+      listings[#listings + 1] = { path = dir, mtime = st.mtime.sec }
+    end
+  end
+
+  if type(env.VCToolsInstallDir) == "string" then
+    add(vim.fs.dirname((vim.fs.normalize(env.VCToolsInstallDir):gsub("/+$", ""))))
+  end
+
+  local sdk = type(env.WindowsSDKVersion) == "string" and env.WindowsSDKVersion:gsub("[\\/]+$", ""):lower() or ""
+
+  for dir in vim.gsplit(sdk ~= "" and env.INCLUDE or "", ";", { plain = true, trimempty = true }) do
+    local normalized = vim.fs.normalize(dir)
+    local at = normalized:lower():find("/" .. sdk .. "/", 1, true)
+
+    if at then
+      add(normalized:sub(1, at - 1))
+
+      break
+    end
+  end
+
+  return listings
+end
+
+-- The record still describes this machine: its toolset is there, and nothing was installed or removed beside the
+-- toolset and the SDK it chose. One from before the listings were kept is captured again, once.
 local function valid(data)
   local dir = type(data.vars) == "table" and data.vars.VCToolsInstallDir
 
-  return type(dir) == "string" and uv.fs_stat(dir) ~= nil
+  if type(dir) ~= "string" or not uv.fs_stat(dir) or type(data.listings) ~= "table" then
+    return false
+  end
+
+  for _, listing in ipairs(data.listings) do
+    local st = type(listing) == "table" and type(listing.path) == "string" and uv.fs_stat(listing.path)
+
+    if not st or st.mtime.sec ~= listing.mtime then
+      return false
+    end
+  end
+
+  return true
 end
 
 -- libuv's environment calls, not vim.env: no Vimscript round trip for forty variables at every start.
@@ -205,6 +254,7 @@ function M.capture(cb)
             vs = { name = vs.displayName, version = vs.installationVersion, path = vs.installationPath },
             vars = vars,
             path = path,
+            listings = version_listings(after),
             when = os.time(),
           }
 

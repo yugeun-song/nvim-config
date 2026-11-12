@@ -16,6 +16,7 @@ M.ENTRIES = {
   { "state", "mason_install_failures.json", "mason-failed.json", "Mason installs held back after a failure" },
   { "state", "msvc_developer_environment.json", "msvc_env.json", "the MSVC environment VsDevCmd sets (Windows)" },
   { "state", "msvc_compile_databases.json", "msvc_compiledb.json", "databases :MsvcCompileDb wrote (Windows)" },
+  { "state", "msvc_compile_database.log", false, "MSBuild's output of the last :MsvcCompileDb run (Windows)" },
   { "state", "all_ifdef_branches", "ifdef_all", "the all-#if-branches view, on or off (<leader>uB)" },
   { "state", "open_folder_history", "open_folder_history", "folders opened (Projects)" },
   { "state", "colorscheme_choice", "colorscheme", "the default colorscheme confirmed in <leader>uC" },

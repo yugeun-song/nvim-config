@@ -184,10 +184,11 @@ if vim.fn.has("win32") == 1 then
         db.generate({ configuration = args.fargs[1], platform = args.fargs[2] })
       end, {
         nargs = "*",
-        complete = function(_, line)
-          local n = #vim.split(vim.trim(line), "%s+")
-
-          return n <= 1 and { "Debug", "Release" } or { "x64", "Win32", "ARM64" }
+        -- The solution's own configurations and platforms, as its last database found them.
+        complete = function(lead, line)
+          return vim.tbl_filter(function(name)
+            return vim.startswith(name:lower(), lead:lower())
+          end, db.complete(line))
         end,
         desc = "compile_commands.json from the nearest .sln, .slnx or .vcxproj: MsvcCompileDb [Configuration] [Platform]",
       })
