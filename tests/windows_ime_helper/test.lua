@@ -130,6 +130,16 @@ check(wr.code == 0, "watch ends when its stdin closes: exit " .. tostring(wr.cod
 r = run({ exe, "raise-window", me })
 check(r.code == 0 or r.code == 1, "raise runs and returns 0 or 1: exit " .. r.code)
 
+-- Only a Neovim is raised: for any other process this would put a window of the caller's choosing in front.
+local other = vim.system({ vim.fs.joinpath(system32, "PING.EXE"), "-n", "30", "127.0.0.1" }, { stdout = false })
+
+r = run({ exe, "raise-window", tostring(other.pid) })
+other:kill(9)
+check(
+  r.code == 1 and r.stderr:find("not a running Neovim", 1, true) ~= nil,
+  ("raise of a process that is no Neovim is refused, and says so: exit %d, %q"):format(r.code, r.stderr)
+)
+
 -- Not Neovim's child: a cmd.exe between refuses the subcommands.
 r = run({ cmd_exe, "/d", "/c", win(exe) .. " version" })
 check(r.code == 4, "refused when cmd.exe, not Neovim, starts it: exit " .. r.code)

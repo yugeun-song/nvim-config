@@ -22,6 +22,7 @@ local SRC = vim.fs.joinpath(
 local DIR = vim.fs.normalize(require("features.util.storage").path("data", "windows_ime_helper"))
 local EXE_NAME = "^windows_ime_helper%-%x+%-%x+%.exe$"
 local BUILD_TIMEOUT_MS = 120000
+local COMPILER_WAIT_MS = 20000
 local SELFTEST_TIMEOUT_MS = 5000
 local RECHECK_MS = 2000
 
@@ -37,7 +38,9 @@ local COMPILERS = {
         "cl",
         "/nologo",
         -- The object beside the build's own temporary .exe: another Neovim may be building at the same time.
-        "/Fo" .. out:sub(1, -5) .. ".obj",
+        "/Fo"
+          .. out:sub(1, -5)
+          .. ".obj",
         "/O2",
         "/MT",
         "/W4",
@@ -217,19 +220,25 @@ end
 
 local function announce(compiler)
   notify_later(
-    ("Built the Windows helper with %s: the IME switch is on; the 한/EN and CAPS indicators start with the next Neovim."):format(
-      compiler
-    ),
+    ("Built the Windows helper with %s: the IME switch and the 한/EN and CAPS indicators are on."):format(compiler),
     vim.log.levels.INFO
   )
 end
 
-local function compile(s)
+local function compile(s, is_second_try)
   local found = vim.tbl_filter(function(c)
     return vim.fn.executable(c.name) == 1
   end, COMPILERS)
 
   if #found == 0 then
+    -- cl comes with the MSVC environment, which a first start, or one after a Visual Studio update, captures in
+    -- the background a few seconds in: asked once more when it has had the time.
+    if not is_second_try and (uv.os_getenv("VCToolsInstallDir") or "") == "" then
+      return vim.defer_fn(function()
+        compile(s, true)
+      end, COMPILER_WAIT_MS)
+    end
+
     return finish(nil, "no Visual Studio cl, nor clang targeting MSVC, on PATH; the features that need it are off")
   end
 
@@ -456,6 +465,9 @@ function M.watch(on_data)
 
       if why then
         reject(why)
+      elseif #lines > 0 then
+        -- A watcher that reports again: what stopped an earlier one is over (:checkhealth reads this).
+        watch_failure = nil
       end
     end,
   }, function(res)
@@ -487,6 +499,11 @@ function M.send(cmd)
   end
 
   return (pcall(watcher.write, watcher, cmd))
+end
+
+-- Whether a build runs, or waits for its compiler: M.on_ready hears of its success.
+function M.is_building()
+  return building
 end
 
 -- fn(exe) now when the helper is there, else after the background build succeeds.

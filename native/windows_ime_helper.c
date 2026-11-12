@@ -5,7 +5,8 @@
 //   windows_ime_helper input-state                <caps><ime> once, 1 = on / native script
 //   windows_ime_helper watch-input-state PID [MS] <caps><ime> on each change until PID exits;
 //                                                 stdin e, p, r = ime-english, pause, resume
-//   windows_ime_helper raise-window PID           raise the window of PID or of its nearest ancestor that has one
+//   windows_ime_helper raise-window PID           raise the window of the Neovim PID: its terminal's, or that of its
+//                                                 nearest ancestor that has one
 //   windows_ime_helper version                    compiler and architecture; the build runs it to prove every
 //                                                 import loads
 //
@@ -18,6 +19,10 @@
 // run its program.
 // It reads no keystrokes, only Caps Lock and the IME's mode, polled rather than hooked: any event source for them
 // (a low-level keyboard hook, raw input) would see every key. Even that state is wiped once used.
+// It takes nothing from the directory it is started in, which may be a repository: libraries load from System32
+// only (it refuses to run where that cannot be set), and unless it is a shim (whose program works there) it leaves
+// that directory at once.
+// A failure says why on stderr, which Neovim shows; a shim's also goes to its log.
 // Every function releases what it acquired and wipes what it filled on every path, through one Cleanup exit.
 // Style: native/.clang-format. Tests: tests/windows_ime_helper/.
 
@@ -423,6 +428,7 @@ static int WatchIndicatorState(_In_ DWORD ownerPid, _In_ DWORD intervalMs)
 
         if (waitResult == WAIT_FAILED)
         {
+            fwprintf(stderr, L"watch-input-state: cannot wait for Neovim (error %lu)\n", GetLastError());
             result = EXIT_FAILED;
             break;
         }
@@ -723,11 +729,19 @@ Cleanup:
     return isForeground;
 }
 
+// The window of the nearest process of the lineage that has one. A console nearer than it is asked too: a terminal
+// that is no ancestor (Windows Terminal taking over a console) is found only that way, and one whose process owns
+// several windows is told apart only by it. The desktop shell's windows are nobody's: every program the user starts
+// descends from it, so the lineage ends before it.
 static int RaiseProcessLineage(_In_ DWORD processId)
 {
     DWORD lineage[MAX_LINEAGE] = { 0 };
     WINDOW_QUERY query = { lineage, 0, 0, NULL };
+    HWND shell = GetShellWindow();
+    HWND console = NULL;
     HWND window = NULL;
+    DWORD shellProcessId = 0;
+    DWORD consoleProcessId = 0;
     int length = -1;
     int result = EXIT_FAILED;
 
@@ -742,24 +756,58 @@ static int RaiseProcessLineage(_In_ DWORD processId)
         goto Cleanup;
     }
 
+    if (shell != NULL && GetWindowThreadProcessId(shell, &shellProcessId) != 0 && shellProcessId != 0)
+    {
+        for (int i = 0; i < length; ++i)
+        {
+            if (lineage[i] == shellProcessId)
+            {
+                length = i;
+                break;
+            }
+        }
+    }
+
     query.length = length;
     query.nearest = length;
     SetLastError(ERROR_SUCCESS);
-    if (!EnumWindows(MatchLineageWindow, (LPARAM)&query) && query.found == NULL && GetLastError() != ERROR_SUCCESS)
+    if (length > 0 && !EnumWindows(MatchLineageWindow, (LPARAM)&query) && query.found == NULL &&
+        GetLastError() != ERROR_SUCCESS)
     {
         fwprintf(stderr, L"raise-window: cannot list the windows (error %lu)\n", GetLastError());
         goto Cleanup;
     }
 
-    window = query.found;
-    for (int i = 0; window == NULL && i < length; ++i)
+    // query.nearest is the level of query.found, or length when no process of the lineage owns a window.
+    for (int i = 0; console == NULL && i < query.nearest && i < length; ++i)
     {
-        window = FindConsoleWindow(lineage[i]);
+        console = FindConsoleWindow(lineage[i]);
     }
 
-    if (window != NULL)
+    // Beside a window of the lineage, a console counts only as that same process's: a program that shares its
+    // terminal's console while its own window belongs to a nearer process (a GUI started from a shell) is raised
+    // by that window.
+    window = query.found;
+    if (console != NULL && (window == NULL || (query.nearest >= 0 && query.nearest < length &&
+                                               GetWindowThreadProcessId(console, &consoleProcessId) != 0 &&
+                                               consoleProcessId == lineage[query.nearest])))
     {
-        result = BringToForeground(window) ? EXIT_DONE : EXIT_FAILED;
+        window = console;
+    }
+
+    if (window == NULL)
+    {
+        fwprintf(stderr, L"raise-window: no window belongs to process %lu or to an ancestor of it\n", processId);
+        goto Cleanup;
+    }
+
+    if (BringToForeground(window))
+    {
+        result = EXIT_DONE;
+    }
+    else
+    {
+        fwprintf(stderr, L"raise-window: Windows kept another window in front\n");
     }
 
 Cleanup:
@@ -1910,6 +1958,22 @@ static BOOL IsCommand(_In_ int argc, _In_reads_opt_(argc) char **argv, _In_opt_z
     return strcmp(argv[1], name) == 0;
 }
 
+// The helper's own commands read nothing from the current directory. In System32 instead, the watcher, which lives
+// as long as Neovim, does not hold the directory Neovim was started in: Windows refuses to delete or rename a
+// directory that is some process's current one.
+static void LeaveCallerDirectory(void)
+{
+    wchar_t systemDirectory[MAX_PATH] = { 0 };
+    UINT length = GetSystemDirectoryW(systemDirectory, ARRAYSIZE(systemDirectory));
+
+    if (length > 0 && length < ARRAYSIZE(systemDirectory))
+    {
+        SetCurrentDirectoryW(systemDirectory);
+    }
+
+    SecureZeroMemory(systemDirectory, sizeof(systemDirectory));
+}
+
 // tests/windows_ime_helper/unit.c and fuzz.c include this file for its functions and bring their own entry point.
 #ifndef WINDOWS_IME_HELPER_NO_MAIN
 int main(int argc, char **argv)
@@ -1921,6 +1985,7 @@ int main(int argc, char **argv)
     DWORD ownerPid = 0;
     DWORD intervalMs = 0;
     DWORD processId = 0;
+    DWORD loadingError = ERROR_SUCCESS;
     SHIM_RESULT shimResult = SHIM_NOT_A_SHIM;
     int exitCode = EXIT_USAGE;
 
@@ -1930,9 +1995,23 @@ int main(int argc, char **argv)
     // No system error dialog may block a helper nobody looks at.
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
 
+    // Whatever Windows loads for this process from here on comes from System32: not from the current directory,
+    // PATH or beside this program. Its own imports are bound there by the linker (/DEPENDENTLOADFLAG:0x800).
+    if (!SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32))
+    {
+        loadingError = GetLastError();
+    }
+
     shimResult = FindShimFile(self, shim, ARRAYSIZE(self), &lastError);
     if (shimResult == SHIM_OK)
     {
+        // Unlimited, a library could come from the directory the shim was started in: nothing runs then.
+        if (loadingError != ERROR_SUCCESS)
+        {
+            exitCode = FailShim(shim, L"cannot limit library loading to System32", loadingError);
+            goto Cleanup;
+        }
+
         exitCode = FindNeovimCaller(SHIM_CALLER_DEPTH) != 0 ? RunShim(shim, self) : RefuseCaller();
         goto Cleanup;
     }
@@ -1943,6 +2022,13 @@ int main(int argc, char **argv)
         goto Cleanup;
     }
 
+    if (loadingError != ERROR_SUCCESS)
+    {
+        fwprintf(stderr, L"windows_ime_helper: cannot limit library loading to System32 (error %lu)\n", loadingError);
+        exitCode = EXIT_FAILED;
+        goto Cleanup;
+    }
+
     caller = FindNeovimCaller(1);
     if (caller == 0)
     {
@@ -1950,6 +2036,7 @@ int main(int argc, char **argv)
         goto Cleanup;
     }
 
+    LeaveCallerDirectory();
     if (IsCommand(argc, argv, "version", 2))
     {
         exitCode = PrepareStdout() && printf("windows_ime_helper %s x64\n", WINDOWS_IME_HELPER_COMPILER) >= 0
@@ -1959,6 +2046,11 @@ int main(int argc, char **argv)
     else if (IsCommand(argc, argv, "ime-english", 2))
     {
         exitCode = SetImeEnglish();
+        if (exitCode != EXIT_DONE)
+        {
+            fwprintf(stderr, L"ime-english: the foreground window's IME did not take the mode in %d ms\n",
+                     IME_TIMEOUT_MS);
+        }
     }
     else if (IsCommand(argc, argv, "input-state", 2))
     {
@@ -1986,7 +2078,21 @@ int main(int argc, char **argv)
     else if (IsCommand(argc, argv, "raise-window", 3))
     {
         processId = ParseNumber(argv[2]);
-        exitCode = processId != 0 ? RaiseProcessLineage(processId) : PrintUsage();
+        if (processId == 0)
+        {
+            exitCode = PrintUsage();
+        }
+        else if (!IsNeovimProcess(processId, MAXULONGLONG))
+        {
+            // Neovim raises a Neovim (scripts/open-at.lua); for any other process this would be a way to put a
+            // window of one's choosing in front of the user.
+            fwprintf(stderr, L"raise-window: process %lu is not a running Neovim\n", processId);
+            exitCode = EXIT_FAILED;
+        }
+        else
+        {
+            exitCode = RaiseProcessLineage(processId);
+        }
     }
     else
     {

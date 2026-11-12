@@ -16,10 +16,18 @@ if vim.fn.has("nvim-0.12") == 0 then
   })
 end
 
--- Windows: executable() and exepath() remember their answers
--- (lua/features/util/windows/executable_lookup_cache.lua), and Visual Studio's MSVC environment is set as a
--- Developer Prompt would (lua/features/lang/c/msvc_toolchain/developer_environment.lua).
+-- Windows: a program named without a directory is started from PATH only, executable() and exepath() remember
+-- their answers (lua/features/util/windows/executable_lookup_cache.lua), and Visual Studio's MSVC environment is set
+-- as a Developer Prompt would (lua/features/lang/c/msvc_toolchain/developer_environment.lua).
 if vim.fn.has("win32") == 1 then
+  -- Windows, libuv (every vim.system() and job) and cmd.exe look in the current directory before PATH: a repository
+  -- holding a "clangd.exe" or "rg.exe" would be run for whichever tool this machine lacks. This variable, Windows'
+  -- own switch, turns that off for Neovim and what it starts; in :terminal's cmd.exe a program of the current
+  -- directory then takes .\name, as in PowerShell. One set outside Neovim is kept.
+  if not vim.uv.os_getenv("NoDefaultCurrentDirectoryInExePath") then
+    vim.uv.os_setenv("NoDefaultCurrentDirectoryInExePath", "1")
+  end
+
   require("features.util.windows.executable_lookup_cache").install()
   require("features.lang.c.msvc_toolchain.developer_environment").setup()
 end

@@ -306,6 +306,8 @@ static void TestMisc(void)
     char *argv[] = { "windows_ime_helper", "input-state", NULL };
     char *argvWithNull[] = { "windows_ime_helper", NULL };
     wchar_t path[64] = { 0 };
+    wchar_t currentDirectory[MAX_PATH] = { 0 };
+    wchar_t systemDirectory[MAX_PATH] = { 0 };
     DWORD lastError = 0;
     int length;
 
@@ -341,6 +343,13 @@ static void TestMisc(void)
     Check(!PrependOwnDirectory(L"x.exe", &lastError), "prepend refuses a relative program");
     Check(!PrependOwnDirectory(NULL, &lastError), "prepend refuses NULL");
     Check(!PrependOwnDirectory(L"C:\\x.exe", NULL), "prepend refuses a NULL error");
+
+    // Last: it moves this process.
+    LeaveCallerDirectory();
+    Check(GetCurrentDirectoryW(ARRAYSIZE(currentDirectory), currentDirectory) != 0 &&
+              GetSystemDirectoryW(systemDirectory, ARRAYSIZE(systemDirectory)) != 0 &&
+              CompareStringOrdinal(currentDirectory, -1, systemDirectory, -1, TRUE) == CSTR_EQUAL,
+          "the helper leaves the caller's directory for System32");
 }
 
 int main(void)
