@@ -81,7 +81,7 @@ function M.caps_led()
 end
 
 -- What the statusline reads: im = { cmd, hangul(stdout) }; Caps Lock as a sysfs LED node (caps) or as a
--- command printing 1 or 0 per line (caps_watch); or both from one command printing <caps><ime> (watch).
+-- command printing 1 or 0 per line (caps_watch); or both from one watcher printing <caps><ime> (watch).
 function M.indicators()
   if M.remote() then
     return {}
@@ -104,10 +104,11 @@ function M.indicators()
   end
 
   -- Windows: one windows_ime_helper prints Caps Lock and the IME's mode as two digits, at start and on every change.
+  -- While it is still being built, the indicators are there and start when it lands.
   if vim.fn.has("win32") == 1 then
-    local ime_helper = require("features.util.windows.ime_helper").path()
+    local ime_helper = require("features.util.windows.ime_helper")
 
-    return ime_helper and { watch = { ime_helper, "watch-input-state", tostring(vim.fn.getpid()) } } or {}
+    return (ime_helper.path() or ime_helper.is_building()) and { watch = true } or {}
   end
 
   if vim.fn.has("linux") == 0 then

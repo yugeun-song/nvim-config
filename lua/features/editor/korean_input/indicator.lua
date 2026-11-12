@@ -174,6 +174,9 @@ local function on_pair(data)
   end
 end
 
+-- Whether Neovim has the focus, as far as the indicators were told.
+local active, awaited = false, false
+
 local function watch_both()
   if not both then
     return
@@ -181,9 +184,17 @@ local function watch_both()
 
   local ime_helper = require("features.util.windows.ime_helper")
 
-  if not ime_helper.send("r") then
-    ime_helper.watch(on_pair)
+  if ime_helper.send("r") or ime_helper.watch(on_pair) or awaited then
+    return
   end
+
+  -- Still being built (the first start, or the first after its source changed): watched once it lands.
+  awaited = true
+  ime_helper.on_ready(function()
+    if active then
+      watch_both()
+    end
+  end)
 end
 
 local has_caps = caps_path ~= nil or caps_watch ~= nil or both ~= nil
@@ -206,6 +217,7 @@ function M.start()
   end
 
   local function run()
+    active = true
     for _, t in ipairs(timers) do
       t[1]:start(0, t[2], t[3])
     end
@@ -220,6 +232,7 @@ function M.start()
   end
 
   local function pause()
+    active = false
     for _, t in ipairs(timers) do
       t[1]:stop()
     end

@@ -31,18 +31,23 @@ end
 -- lazy's update check starts git once per plugin right after startup (60 processes here), and Windows
 -- holds the editor about 5 ms on each process it starts, so a terminal such as yazi's stutters for the first
 -- seconds. The check, and the hourly one, wait instead until no key has come for 5 s outside a terminal, or
--- until Neovim loses focus.
+-- until Neovim has been without focus for a second.
+-- The check always starts from the main loop, never from inside the focus autocmd: it waits on git (vim.wait),
+-- Neovim takes other events meanwhile, and a focus event that arrives while a focus autocmd still runs is
+-- dropped. Neovide loses and regains focus within 0.1 s as its window appears: run from that FocusLost, the
+-- check swallowed the FocusGained after it, and Neovim stayed "unfocused" until the next change of focus.
 function M.defer_update_checks()
   local IDLE_MS = 5000
+  local UNFOCUSED_MS = 1000
   -- One namespace for every wait: the checks come one at a time, an hour apart.
   local ns = vim.api.nvim_create_namespace("lazy_update_check_when_idle")
 
   local function when_idle(fn)
     return function(...)
-      local args, done = { ... }, false
-      local focus_lost
+      local args, done, unfocused = { ... }, false, false
       local timer = assert(vim.uv.new_timer())
-      local fire
+      local autocmds = {}
+      local when_quiet
 
       local function run()
         if done then
@@ -52,36 +57,59 @@ function M.defer_update_checks()
         done = true
         vim.on_key(nil, ns)
         timer:close()
-        -- Gone already when it was the one that fired; otherwise one would be left behind per hourly check.
-        pcall(vim.api.nvim_del_autocmd, focus_lost)
+        for _, id in ipairs(autocmds) do
+          pcall(vim.api.nvim_del_autocmd, id)
+        end
+
         fn(unpack(args))
       end
 
-      local function arm()
-        timer:start(IDLE_MS, 0, vim.schedule_wrap(fire))
-      end
-
-      fire = function()
+      -- Both on the main loop, made once: a key restarts the timer with nothing new to allocate.
+      local quiet = vim.schedule_wrap(function()
         if done then
           return
         end
 
         if vim.api.nvim_get_mode().mode:find("^t") then
-          return arm()
+          return when_quiet()
         end
 
         run()
+      end)
+
+      local left = vim.schedule_wrap(function()
+        if unfocused then
+          run()
+        end
+      end)
+
+      -- Starting a running timer restarts it.
+      when_quiet = function()
+        timer:start(IDLE_MS, 0, quiet)
       end
 
       vim.on_key(function()
         if not done then
-          timer:stop()
-          arm()
+          when_quiet()
         end
       end, ns)
 
-      focus_lost = vim.api.nvim_create_autocmd("FocusLost", { once = true, callback = run })
-      arm()
+      autocmds = {
+        vim.api.nvim_create_autocmd("FocusLost", {
+          callback = function()
+            unfocused = true
+            timer:start(UNFOCUSED_MS, 0, left)
+          end,
+        }),
+        vim.api.nvim_create_autocmd("FocusGained", {
+          callback = function()
+            unfocused = false
+            when_quiet()
+          end,
+        }),
+      }
+
+      when_quiet()
     end
   end
 
