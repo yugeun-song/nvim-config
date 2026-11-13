@@ -79,7 +79,7 @@ Their debuggers: [debugging](dap.md#programs).
 
 ## Markdown
 
-markview.nvim renders Markdown in place (`markdown.lua`); it loads at startup, as its README asks. `rumdl` lints.
+markview.nvim renders Markdown in place (`markdown.lua`); it loads at startup, as its README asks. `rumdl` lints without a line-length limit, unless the project's rumdl or markdownlint config sets one.
 
 ## Tree-sitter parsers
 
