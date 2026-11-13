@@ -501,6 +501,9 @@ stop = function()
 end
 
 local function toggle()
+  -- The user's choice: no UI attaching later starts it again.
+  pcall(vim.api.nvim_del_augroup_by_name, "discord_rich_presence_ui")
+
   if S.running then
     stop()
     vim.notify("Discord RPC: off", vim.log.levels.INFO)
@@ -526,8 +529,29 @@ function M.setup()
   end, { desc = "Show Discord RPC status" })
 
   vim.keymap.set("n", "<leader>uP", toggle, { desc = "Discord RPC toggle" })
-  if ENABLED_BY_DEFAULT then
+  if not ENABLED_BY_DEFAULT then
+    return
+  end
+
+  -- A headless Neovim (a script, or a server no UI has attached to yet) is nobody's session to show. The UIs are
+  -- counted, not the event taken at its word (a script can fire UIEnter); the autocmd goes once one is there.
+  if #vim.api.nvim_list_uis() > 0 then
     start()
+  else
+    vim.api.nvim_create_autocmd("UIEnter", {
+      group = vim.api.nvim_create_augroup("discord_rich_presence_ui", { clear = true }),
+      callback = function()
+        if #vim.api.nvim_list_uis() == 0 then
+          return
+        end
+
+        if not S.running then
+          start()
+        end
+
+        return true
+      end,
+    })
   end
 end
 

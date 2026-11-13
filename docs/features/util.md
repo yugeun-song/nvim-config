@@ -128,7 +128,7 @@ The editor shown in Discord (`lua/plugins/util/discord_rich_presence.lua`, `lua/
 
 ### What it does
 
-Rich Presence over Discord's IPC socket (a named pipe on Windows), written from the public protocol, with no plugin. On by default from `VeryLazy`, it shows "Editing in Neovim" and the elapsed time; no file or workspace names. It finds the desktop client's socket, and those of its Snap and Flatpak builds and of Vesktop's Flatpak.
+Rich Presence over Discord's IPC socket (a named pipe on Windows), written from the public protocol, with no plugin. On by default from `VeryLazy` (a headless Neovim, from its first UI), it shows "Editing in Neovim" and the elapsed time; no file or workspace names. It finds the desktop client's socket, and those of its Snap and Flatpak builds and of Vesktop's Flatpak.
 
 It borrows the public application ID and `neovim` art of [presence.nvim](https://github.com/andweeb/presence.nvim). `vim.g.discord_rich_presence_client_id`, set before the first screen, uses an application of one's own, and `vim.g.discord_rich_presence_image` names its art.
 
