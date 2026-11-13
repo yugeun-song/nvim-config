@@ -44,6 +44,21 @@ return {
           ins_after_memref = 40,
           columns = { "address", "instructionBytes", "instruction" },
         },
+        -- Its view goes into nvim-dap-view. When that loads first (:Lazy load), it requires nvim-dap, whose
+        -- dependency this is, and is still loading here: requiring it would loop, so the setup waits for it. A
+        -- loaded module is a table; what require leaves while loading is not (LuaJIT's mark reads as a number).
+        config = function(_, opts)
+          local function setup()
+            require("dap-view")
+            require("dap-disasm").setup(opts)
+          end
+
+          if type(package.loaded["dap-view"]) == "table" then
+            setup()
+          else
+            vim.schedule(setup)
+          end
+        end,
       },
     },
     keys = {
