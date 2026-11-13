@@ -268,7 +268,29 @@ function M.start()
     end,
   })
 
-  run()
+  -- Read only while a UI shows the marks: from the first one (headless, or before it attaches, there is none) until
+  -- the last one leaves. The UIs are counted, not the event taken at its word: a script can fire UIEnter itself.
+  vim.api.nvim_create_autocmd("UIEnter", {
+    group = group,
+    callback = function()
+      if not active and #vim.api.nvim_list_uis() > 0 then
+        run()
+      end
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("UILeave", {
+    group = group,
+    callback = vim.schedule_wrap(function()
+      if active and #vim.api.nvim_list_uis() == 0 then
+        pause()
+      end
+    end),
+  })
+
+  if #vim.api.nvim_list_uis() > 0 then
+    run()
+  end
 end
 
 -- The lualine components, Caps Lock first; none for what this system cannot report.

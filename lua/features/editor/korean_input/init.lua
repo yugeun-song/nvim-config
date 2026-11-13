@@ -75,7 +75,8 @@ function M.setup()
       callback = function(ev)
         is_focused = is_focused or ev.event == "FocusGained"
 
-        if not is_focused then
+        -- Without a UI (headless, or before one attaches) Neovim has no window: the foreground one is another's.
+        if not is_focused or #vim.api.nvim_list_uis() == 0 then
           return
         end
 
