@@ -227,8 +227,14 @@ local function same_file(a, b)
 end
 
 -- gdb's own breakpoints (a "stop at main" tbreak, a console break) arrive as "new"; on a line the user already
--- holds, nvim-dap would replace the user's and drop it when the tbreak goes.
+-- holds, nvim-dap would replace the user's and drop it when the tbreak goes. Once per session: an adapter that
+-- restarts in place sends "initialized" again.
 local function guard_events(session)
+  if session.dbg_breakpoint_guard then
+    return
+  end
+
+  session.dbg_breakpoint_guard = true
   local class_event = session.event_breakpoint
 
   session.event_breakpoint = function(self, body)
