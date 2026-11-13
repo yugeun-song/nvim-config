@@ -200,6 +200,7 @@ same(
   "Debug|x64",
   "a last one that is gone is passed over"
 )
+
 same(
   chosen(offer({ "Release|ARM64", "Checked|ARM64" }, { "Debug", "Win32" }, "X64")),
   "Release|ARM64",
@@ -244,6 +245,7 @@ check(
   #advice == 2 and advice[1]:find("clangd 21.1.8", 1, true) and advice[1]:find("Clang 22 or newer", 1, true),
   "a clangd too old: its version and the one wanted"
 )
+
 check(
   advice[2]:find(":MasonInstall clangd", 1, true) and advice[2]:find("not running", 1, true),
   "Mason's clangd: updated by Mason, while clangd does not run"
@@ -523,6 +525,7 @@ check(
   has(main.arguments, include_switch(sln)),
   ".sln: $(SolutionDir)Include is the solution's directory: " .. include_switch(sln)
 )
+
 check(has(main.arguments, 'FIXTURE_TEXT="a b"'), ".sln: a definition with quotes and a space is one argument")
 check(entry_of(db, "util.c") ~= nil and entry_of(db, "lib.cpp") ~= nil, ".sln: the C file and the library's file")
 
@@ -651,6 +654,7 @@ check(
   renewed ~= nil and renewed.quiet and identity(sln_db) == written,
   "a record written the older way is renewed on opening a file, with nothing said for a database that says the same"
 )
+
 check(opened() == nil, "and is current again")
 
 edit_state(function(record)
