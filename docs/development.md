@@ -76,6 +76,15 @@ Only this command starts it. When it ends or is interrupted it removes everythin
 
 `nvim -l tests/focus_events/check.lua` runs on any system: nothing may work or wait inside a `FocusLost` or `FocusGained` autocmd, where Neovim drops the next focus event ([why](troubleshooting.md#caveats)). It holds the deferred lazy.nvim update check to that.
 
+### Configuration fuzz
+
+`nvim -l tests/config_fuzz/run.lua [--seed N] [--steps N]` (300 steps, about a minute) runs on any system where Neovim loads this repository as its configuration:
+
+1. The mapping recorder against its own edge cases, without the configuration: a call recorded twice (`vim.keymap.set` calls `nvim_set_keymap`), its own frames or a tail call named as the caller, a wrapper installed twice, an error reworded or a failed call remembered, the depth left raised, an error of the recorder's own reaching the call it watches, `<leader>z`/`<Space>z` and `<c-b>`/`<C-B>` taken as two keys, a buffer's mappings outliving it, a plugin's helper setting the configuration's own function taken for a conflict, an input method switch let through with no UI, a command started in a libuv callback, or a command started calling into the configuration.
+2. A headless Neovim with the whole configuration takes a seeded random series of edits, typing (Hangul too), windows, tabs, buffer deletions, focus changes, resizes, writes, files changed on disk, language server requests, `:terminal` and plugin loads, on samples under a path with a space, Hangul and `&`. After each step: no Lua error, no error notification (a language server's own message, `LSP[name] ...`, is told and not counted), no input method switch. Then every plugin loads and the same work runs four times: autocmds, mappings, libuv handles, clients, buffers, namespaces or commands growing each time fail. Last, the mappings: two files of the configuration setting one key, a plugin setting one of its keys, or Vimscript replacing one fail.
+
+A failure prints the steps before it and the seed that repeats it. Nothing of the configuration's state is written (no ShaDa, session, undo or swap file), and lazy.nvim checks no remote.
+
 ### Windows IME helper
 
 `powershell -ExecutionPolicy Bypass -File tests\windows_ime_helper\run.ps1 [-FuzzSeconds 60] [-Nvim nvim]` builds and runs every test in a temporary directory and prints PASS, FAIL or SKIP per step:
