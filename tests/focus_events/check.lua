@@ -6,11 +6,8 @@
 local script = vim.fs.normalize(vim.fn.fnamemodify(arg[0], ":p"))
 local repo = vim.fs.dirname(vim.fs.dirname(vim.fs.dirname(script)))
 
-package.path = vim.fs.joinpath(repo, "lua", "?.lua")
-  .. ";"
-  .. vim.fs.joinpath(repo, "lua", "?", "init.lua")
-  .. ";"
-  .. package.path
+-- First on 'runtimepath': require() searches it before package.path, and the installed configuration is on it too.
+vim.opt.runtimepath:prepend(repo)
 
 local failures = 0
 
