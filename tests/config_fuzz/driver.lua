@@ -26,6 +26,7 @@ local function settle(ms)
   vim.wait(ms, function()
     return false
   end, 10)
+
   pcall(vim.api.nvim_exec_autocmds, "SafeState", { modeline = false })
 end
 
@@ -194,6 +195,7 @@ local TEXT = {
   "<C-w>",
   "<BS><BS>",
 }
+
 local KEYS = {
   "gg",
   "G",
@@ -223,6 +225,7 @@ local KEYS = {
   "zR",
   ":nohlsearch<CR>",
 }
+
 local FILETYPES = { "c", "cpp", "asm", "python", "markdown", "lua", "json", "sh", "text", "lisp", "rust", "go", "help" }
 
 -- name = { weight, action }; an action returns what it did, or nil when it does not apply now.
@@ -773,6 +776,7 @@ out("TRY load every plugin")
 pcall(function()
   vim.cmd("Lazy! load all")
 end)
+
 settle(2000)
 after(steps + 1)
 close_floats()
@@ -921,6 +925,7 @@ check(
   "the recorder had no error of its own (a fault of this test, not of the configuration): "
     .. table.concat(vim.list_slice(recorder.faults, 1, 3), " | ")
 )
+
 out(("INFO %d random steps, seed %d"):format(steps, seed))
 
 for _, client in ipairs(vim.lsp.get_clients()) do

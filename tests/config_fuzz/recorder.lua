@@ -212,6 +212,7 @@ local function wrap(fn, outer, inner)
 
     depth = depth + 1
     local result = pack(pcall(fn, ...))
+
     depth = depth - 1
 
     if not result[1] then

@@ -127,6 +127,7 @@ check(
   set_despite_fault and vim.fn.maparg("<Plug>(fuzz-fault)", "n") ~= "" and #recorder.faults == faults + 1,
   "an error of the recorder's own reaches no caller: the mapping is set, the fault is kept"
 )
+
 table.remove(recorder.faults)
 
 local from_callback
@@ -134,9 +135,11 @@ local from_callback
 vim.uv.new_timer():start(0, 0, function()
   from_callback = pcall(vim.system, { vim.v.progpath, "--version" })
 end)
+
 vim.wait(3000, function()
   return from_callback ~= nil
 end)
+
 check(from_callback == true, "a command started in a libuv callback, where the API cannot be asked, passes as it is")
 
 a.set("", "<Plug>(fuzz-map)", "<Nop>")
@@ -238,6 +241,7 @@ vim.cmd("nnoremap <Plug>(fuzz-lost) <Cmd>echo<CR>")
 a.set("n", "<Plug>(fuzz-expr)", function()
   return "<Nop>"
 end, { expr = true })
+
 a.set("n", "<Plug>(fuzz-string)", "<Cmd>echo 1<CR>")
 
 check(lost_has("<Plug>(fuzz-lost)"), "a mapping replaced by Vimscript's :nnoremap is lost")
@@ -278,6 +282,7 @@ check(
   real_conflict ~= nil and not recorder.ours(real_conflict.after, real_conflict.after_defined),
   "and one setting its own function over it is still a plugin's"
 )
+
 recorder.install(cfg)
 
 p.set("n", "<Plug>(fuzz-plugin)", "<Nop>")
@@ -294,6 +299,7 @@ check(
   is_held and fake.code == 0 and #recorder.held_back == held + 1,
   "with no UI, windows_ime_helper ime-english is held back"
 )
+
 check(
   recorder.holds_back({ "/x/windows_ime_helper-1.exe", "raise-window", "1" })
     and not recorder.holds_back({ "/x/windows_ime_helper-1.exe", "input-state" }),
@@ -322,6 +328,7 @@ check(
   recorder.holds_back({ "fcitx5-remote", "-c" }) and not recorder.holds_back({ "fcitx5-remote" }),
   "the configuration's own switch commands, as handed over, are held back; other arguments are not"
 )
+
 vim.fn.delete(root, "rf")
 
 -- 2. The configuration, in a headless Neovim that loads it.
@@ -342,6 +349,7 @@ if not same_dir(config, repo) then
       repo
     ) .. "NVIM_APPNAME to the name of the directory it is in"
   )
+
   print(("== %d failed"):format(failures))
   vim.cmd.cquit(1)
 end
@@ -420,6 +428,7 @@ if not summary then
       child.code == 124 and ": timed out" or ""
     )
   )
+
   print("the last actions begun:\n  " .. table.concat(trail, "\n  "))
   print(((child.stderr or ""):gsub("\r", "")):sub(-3000))
 end
