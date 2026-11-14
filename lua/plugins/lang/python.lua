@@ -14,6 +14,13 @@ return {
         enabled = vim.fn.executable("ruff") == 1,
         mason = false,
         init_options = { settings = { logLevel = "error" } },
+        -- A buffer with no file (:enew, then the Python filetype) has no path, and ruff panics on its first request
+        -- ("a path to a document should have a parent path"). Others find their root by the root markers.
+        root_dir = function(bufnr, on_dir)
+          if vim.api.nvim_buf_get_name(bufnr) ~= "" then
+            on_dir(vim.fs.root(bufnr, vim.lsp.config.ruff.root_markers or {}))
+          end
+        end,
       })
 
       opts.setup = opts.setup or {}
