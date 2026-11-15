@@ -73,7 +73,7 @@ Keys: [keymaps](../keymaps.md#general).
 
 ### What it needs
 
-`yazi` for Open Folder; the window tool of the desktop for the raise; `oxfmt`, `taplo` and the linters from Mason ([Mason packages](lsp.md#mason-packages)), `clang-format` from Mason or the system.
+`yazi` for Open Folder; the window tool of the desktop for the raise; `oxfmt`, `taplo` and the linters from Mason ([Mason packages](lsp.md#mason-packages)), `clang-format` from Mason or the system. A linter whose program is missing is skipped without a message; `:checkhealth` names what is missing.
 
 ### Systems
 

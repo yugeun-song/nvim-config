@@ -35,6 +35,23 @@ local function yamllint_config()
   return "-d", yamllint_fallback
 end
 
+-- Whether the linter's program is on PATH; a cmd the check cannot read counts as there.
+local function installed(name)
+  local linter = require("lint").linters[name]
+
+  if type(linter) == "function" then
+    linter = linter()
+  end
+
+  local cmd = type(linter) == "table" and linter.cmd
+
+  if type(cmd) == "function" then
+    cmd = cmd()
+  end
+
+  return type(cmd) ~= "string" or vim.fn.executable(cmd) == 1
+end
+
 return {
   {
     "mason-org/mason.nvim",
@@ -78,5 +95,32 @@ return {
         },
       },
     },
+  },
+  {
+    "mfussenegger/nvim-lint",
+    -- A linter whose program is missing is skipped instead of failing with ENOENT on every read and write. Language
+    -- files merged after this one gate their own (hlint, ocicl).
+    opts = function(_, opts)
+      opts.linters = opts.linters or {}
+
+      local gated = {}
+
+      for _, names in pairs(opts.linters_by_ft or {}) do
+        for _, name in ipairs(names) do
+          local linter = opts.linters[name] or {}
+
+          if not gated[name] and type(linter) == "table" then
+            local condition = linter.condition
+
+            gated[name] = true
+            linter.condition = function(ctx)
+              return installed(name) and (condition == nil or condition(ctx))
+            end
+
+            opts.linters[name] = linter
+          end
+        end
+      end
+    end,
   },
 }
