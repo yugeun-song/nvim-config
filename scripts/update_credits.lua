@@ -19,6 +19,8 @@ local PROGRAMS = {
   { "ocicl", "https://github.com/ocicl/ocicl", "MIT", "Lisp systems and lint" },
   { "alive-lsp", "https://github.com/nobody-famous/alive-lsp", "Unlicense", "the Common Lisp server" },
   { "Racket", "https://racket-lang.org", "MIT or Apache-2.0", "the Racket REPL and docs" },
+  { "Ruby and irb", "https://www.ruby-lang.org", "Ruby or BSD-2-Clause", "Ruby, the irb REPL" },
+  { "Bundler", "https://bundler.io", "MIT", "ruby-lsp's gem loading" },
   { "GHC, cabal, hlint", "https://www.haskell.org", "BSD-3-Clause", "Haskell" },
   {
     "haskell-language-server",

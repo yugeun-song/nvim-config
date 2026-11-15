@@ -94,6 +94,9 @@ Mason packages (the specs in `lua/plugins/` and LazyVim's defaults):
 | [lua-language-server](https://github.com/LuaLS/lua-language-server) | MIT |
 | [oxfmt](https://oxc.rs/docs/guide/usage/formatter) | MIT |
 | [oxlint](https://github.com/oxc-project/oxc) | MIT |
+| [rdbg](https://github.com/ruby/debug) | BSD-2-Clause |
+| [rubocop](https://rubocop.org) | MIT |
+| [ruby-lsp](https://github.com/Shopify/ruby-lsp) | MIT |
 | [rumdl](https://github.com/rvben/rumdl) | MIT |
 | [rust-analyzer](https://github.com/rust-lang/rust-analyzer) | Apache-2.0 / MIT |
 | [shellcheck](https://www.shellcheck.net/) | GPL-3.0-or-later |
@@ -124,6 +127,8 @@ Programs it runs:
 | [ocicl](https://github.com/ocicl/ocicl) | MIT | Lisp systems and lint |
 | [alive-lsp](https://github.com/nobody-famous/alive-lsp) | Unlicense | the Common Lisp server |
 | [Racket](https://racket-lang.org) | MIT or Apache-2.0 | the Racket REPL and docs |
+| [Ruby and irb](https://www.ruby-lang.org) | Ruby or BSD-2-Clause | Ruby, the irb REPL |
+| [Bundler](https://bundler.io) | MIT | ruby-lsp's gem loading |
 | [GHC, cabal, hlint](https://www.haskell.org) | BSD-3-Clause | Haskell |
 | [haskell-language-server](https://github.com/haskell/haskell-language-server) | Apache-2.0 | the Haskell server |
 | [Lean 4](https://lean-lang.org) | Apache-2.0 | Lean, through elan |

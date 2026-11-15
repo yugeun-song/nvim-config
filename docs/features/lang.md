@@ -1,6 +1,6 @@
 # Languages
 
-C and the Linux kernel first: clangd, cscope and `tags` tuned for big trees, assembly that reads right, CUDA and Visual Studio projects in clangd; then Lisp, Racket, Haskell, Lean, Python, Elixir, Rust, TypeScript and Markdown. One spec file per language in `lua/plugins/lang/`, with its parsers, Mason packages, servers, formatters, linters and debugger; code: `lua/features/lang/`, `after/`, `queries/`.
+C and the Linux kernel first: clangd, cscope and `tags` tuned for big trees, assembly that reads right, CUDA and Visual Studio projects in clangd; then Lisp, Racket, Ruby, Haskell, Lean, Python, Elixir, Rust, TypeScript and Markdown. One spec file per language in `lua/plugins/lang/`, with its parsers, Mason packages, servers, formatters, linters and debugger; code: `lua/features/lang/`, `after/`, `queries/`.
 
 ## C and C++
 
@@ -63,6 +63,14 @@ Windows only (`c/msvc_toolchain/`).
 
 `racket` alone: the `racket` parser highlights, Neovim's runtime indents, and its racket ftplugin makes `K` run `raco docs`. No language server. The REPL is `racket -i` in a bottom terminal split, in the nearest folder with `info.rkt` or `.git`; under `TERM=dumb` xrepl reads plain lines and saves no history, and forms go through temporary files the REPL deletes after `,ld`.
 
+## Ruby
+
+- **Server**: ruby-lsp (Mason) for symbols, hover, go-to-definition and completion, with `BUNDLE_GEMFILE` set so it never writes `.ruby-lsp/` into the project nor installs or updates gems from the network: it runs on Mason's pinned gems. It needs Bundler on PATH and starts only when both are there. The root is the folder with `Gemfile` or `.git`, else the file's folder, never `~` or `/` (ruby-lsp indexes the root and loads every `ruby_lsp/**/addon.rb` in it).
+- **Lint and format**: `rubocop --lsp` (Mason) over stdio; ruby-lsp's own formatter and linters are off. Without a `.rubocop.yml`, RuboCop's defaults apply.
+- **Indent**: two spaces, from Neovim's ruby ftplugin (`ruby_recommended_style`), as the Ruby style guide and RuboCop ask.
+- **Debugging**: rdbg (Mason) over a Unix socket in Neovim's private temp folder, never TCP ([debugging](dap.md#adapters)).
+- **REPL**: `irb` in a bottom terminal split, in the nearest folder with `Gemfile` or `.git`. Code goes through a temporary file that irb evaluates in its own binding and deletes, under the buffer's path and line, so locals stay visible and `require_relative` and backtraces point at the buffer. irb also runs a `.irbrc` in that folder, as it does in a terminal.
+
 ## Haskell
 
 [haskell-tools.nvim](https://github.com/mrcjkb/haskell-tools.nvim) (`^11`) runs haskell-language-server for Haskell and Cabal files (lspconfig's `hls` is off), with the `haskell` parser and `hlint` when it is on PATH. GHCup's `bin` (`haskell.lua`: `~/.ghcup/bin`, `C:\ghcup\bin`, or under `GHCUP_INSTALL_BASE_PREFIX`) is appended to PATH when Haskell is first needed, so an earlier program of the same name wins.
@@ -92,7 +100,7 @@ Each language file adds its own parsers; `lua/plugins/treesitter.lua` adds those
 | `:MsvcCompileDb [Configuration] [Platform]` | Windows: rebuild `compile_commands.json` from the nearest `.sln`, `.slnx` or `.vcxproj` now, and keep that configuration for the automatic rebuilds (the solution's own names; unasked, the machine's platform when the solution has it) |
 | `:Cscope`, `:Cs` | cscope_maps' commands; the `<leader>i` keys run `:Cscope find …` |
 
-Keys: [C and kernel navigation](../keymaps.md#c-and-kernel-navigation), [Haskell, Common Lisp, Racket](../keymaps.md#languages).
+Keys: [C and kernel navigation](../keymaps.md#c-and-kernel-navigation), [Haskell, Common Lisp, Racket, Ruby](../keymaps.md#languages).
 
 For a kernel tree, generate the indexes first: [installation](../installation.md#requirements).
 
@@ -106,6 +114,7 @@ For a kernel tree, generate the indexes first: [installation](../installation.md
 | MSVC toolchain | Visual Studio 2026 or its Build Tools, with the C++ tools (MSBuild is found through vswhere); a `clangd` as new as that toolset's C++ library asks for |
 | Common Lisp | `sbcl`, `ocicl`, alive-lsp |
 | Racket | `racket` |
+| Ruby | `ruby`, Bundler, `irb`; ruby-lsp, rubocop and rdbg from Mason |
 | Haskell | `ghc`, `cabal`, `haskell-language-server`, `hlint` |
 | Lean | `elan` |
 | Python | `ruff` |

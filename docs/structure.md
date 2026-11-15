@@ -31,7 +31,7 @@ nvim-config/
 │   └── features/                the configuration's own code, in the same categories and under the same names
 │       ├── ui/ editor/ lang/ lsp/ dap/ util/
 │       └── <category>/health.lua   :checkhealth features.<category>
-├── after/ftplugin/              lisp.lua, racket.lua, man.lua
+├── after/ftplugin/              lisp.lua, racket.lua, ruby.lua, man.lua
 ├── after/queries/asm/           injections.scm: C in .S/.s directives
 ├── queries/asm/                 highlights.scm
 ├── colors/                      spaceduck-remix.lua
@@ -54,7 +54,7 @@ The categories are LazyVim's own (its `lazyvim/plugins` and `extras` use the sam
 |---|---|---|
 | `ui` | colorscheme, statusline, notifications, dashboard, search count, keystroke display, man pages, Neovide | [UI](features/ui.md) |
 | `editor` | options, motions, explorer, pickers, formatting, linting, reload, Open Folder, opening from other programs, Korean input, key cheat sheet | [editor](features/editor.md) |
-| `lang` | C, C++, assembly, CUDA, MSVC, Lisp, Racket, Haskell, Lean, Python, Elixir, Rust, TypeScript, Markdown | [languages](features/lang.md) |
+| `lang` | C, C++, assembly, CUDA, MSVC, Lisp, Racket, Ruby, Haskell, Lean, Python, Elixir, Rust, TypeScript, Markdown | [languages](features/lang.md) |
 | `lsp` | attach rules, line diagnostics, Mason packages | [language servers](features/lsp.md) |
 | `dap` | nvim-dap, gdb, LLDB, QEMU, Linux kernels, panels | [debugging](features/dap.md) |
 | `util` | where everything is kept, tool paths, `:FeatureStatus`, Discord Rich Presence, the Windows platform code | [utilities](features/util.md) |

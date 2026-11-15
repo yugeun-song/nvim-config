@@ -74,6 +74,7 @@ Everything this configuration uses: how much it needs each one, and who installs
 | Haskell | `ghc`, `cabal`, `haskell-language-server`, `hlint` (GHCup) | all |
 | Common Lisp | `sbcl`; `ocicl` (lint, and installs alive-lsp) | all |
 | Racket | `racket` | all |
+| Ruby | `ruby` (Mason's gems), Bundler (ruby-lsp), `irb` (REPL) | all |
 | Lean | `elan` | all |
 | Elixir | `elixir` (Expert, ElixirLS) | all |
 | Erlang | `erl` (elp) | all |
@@ -175,9 +176,12 @@ Installed by Mason on every system with a build; with none, a program of the sam
 | elixir-ls | Elixir debugging (its debug adapter) | Elixir |
 | elp | Erlang server | Erlang |
 | julia-lsp | Julia server | Julia |
+| ruby-lsp | Ruby server | Ruby, Bundler |
+| rubocop | Ruby lint and format (its own server) | Ruby |
+| rdbg | Ruby debugging | Ruby, a C compiler |
 
 Not from Mason: `ruff` (PATH), haskell-language-server (GHCup), alive-lsp (ocicl), and the second clangd for assembler (`clangd_asm`, the same `clangd`).
 
 ## Parsers
 
-Built by nvim-treesitter with the `tree-sitter` CLI and a C compiler: asm, awk, bash, c, commonlisp, cpp, css, cuda, devicetree, diff, dockerfile, eex, elixir, erlang, git_config, git_rebase, gitattributes, gitcommit, haskell, heex, html, java, javascript, jsdoc, json, julia, kconfig, kotlin, linkerscript, lua, luadoc, luap, make, markdown, markdown_inline, printf, python, query, racket, regex, rust, toml, tsx, typescript, vim, vimdoc, xml, yaml.
+Built by nvim-treesitter with the `tree-sitter` CLI and a C compiler: asm, awk, bash, c, commonlisp, cpp, css, cuda, devicetree, diff, dockerfile, eex, elixir, erlang, git_config, git_rebase, gitattributes, gitcommit, haskell, heex, html, java, javascript, jsdoc, json, julia, kconfig, kotlin, linkerscript, lua, luadoc, luap, make, markdown, markdown_inline, printf, python, query, racket, regex, ruby, rust, toml, tsx, typescript, vim, vimdoc, xml, yaml.

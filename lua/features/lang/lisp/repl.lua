@@ -1,4 +1,4 @@
--- Lisp REPLs (sbcl, racket) in a terminal split, with no socket anywhere.
+-- REPLs (sbcl, racket, irb) in a terminal split, with no socket anywhere.
 local M = {}
 
 local states = {}
@@ -73,6 +73,26 @@ local profiles = {
     end,
     run = function(file)
       return (',enter (file "%s")\n'):format(quote(file))
+    end,
+  },
+  ruby = {
+    exe = "irb",
+    ext = ".rb",
+    root = { "Gemfile", ".git" },
+    -- Completion popups would swallow the keys of the line sent next.
+    cmd = function()
+      return { "irb", "--noautocomplete" }
+    end,
+    -- The workspace binding is the one irb evaluates in, so locals defined here stay visible. The buffer's path and
+    -- line make require_relative and backtraces point at the buffer.
+    eval = function(path, label, file, line)
+      return ('IRB.CurrentContext.workspace.binding.eval(File.read("%s").tap { File.delete("%s") }, "%s", %d) # %s\n'):format(
+        quote(path),
+        quote(path),
+        quote(file ~= "" and file or "(nvim)"),
+        line,
+        label
+      )
     end,
   },
 }
@@ -176,7 +196,7 @@ local function deliver(win, line)
   vim.fn.chansend(state.job, line)
 end
 
-local function send(text)
+local function send(text, line)
   if not text or not text:find("%S") then
     vim.notify("Nothing to evaluate", vim.log.levels.WARN)
 
@@ -195,7 +215,7 @@ local function send(text)
   vim.fn.writefile(vim.split(text, "\n", { plain = true }), path)
   local label = vim.fn.strcharpart((vim.trim(text:match("[^\n]*")):gsub("%c", " ")), 0, 60)
 
-  deliver(win, profile.eval(path, label))
+  deliver(win, profile.eval(path, label, vim.api.nvim_buf_get_name(0), line or 1))
 end
 
 function M.eval_toplevel()
@@ -211,7 +231,7 @@ function M.eval_toplevel()
     end
 
     if node:id() ~= root_id then
-      return send(vim.treesitter.get_node_text(node, 0))
+      return send(vim.treesitter.get_node_text(node, 0), node:start() + 1)
     end
   end
 
@@ -219,17 +239,18 @@ function M.eval_toplevel()
 end
 
 function M.eval_selection()
+  local first = math.min(vim.fn.line("v"), vim.fn.line("."))
   local lines = vim.fn.getregion(vim.fn.getpos("v"), vim.fn.getpos("."), { type = vim.fn.mode() })
 
   vim.api.nvim_feedkeys(vim.keycode("<Esc>"), "nx", false)
-  send(table.concat(lines, "\n"))
+  send(table.concat(lines, "\n"), first)
 end
 
 function M.eval_buffer()
   local profile = current()
 
   if not profile.run then
-    return send(table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n"))
+    return send(table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n"), 1)
   end
 
   local file = vim.api.nvim_buf_get_name(0)

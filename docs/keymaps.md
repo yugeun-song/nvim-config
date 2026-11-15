@@ -88,12 +88,12 @@ Panel keys and commands: [debugging](features/dap.md#panels).
 | `<localleader>e` | Haskell | Evaluate every `>>>` example in comments |
 | `<localleader>h` | Haskell | Hoogle search for the signature under the cursor |
 | `<localleader>r` / `<localleader>R` | Haskell | GHCi REPL for the package / for this file |
-| `<localleader>r` | Common Lisp, Racket | Toggle the REPL window, starting it the first time |
-| `<localleader>e` | Common Lisp, Racket | Evaluate the top-level form; in Visual mode, the selection |
-| `<localleader>b` | Common Lisp | Evaluate the whole buffer |
+| `<localleader>r` | Common Lisp, Racket, Ruby | Toggle the REPL window, starting it the first time |
+| `<localleader>e` | Common Lisp, Racket, Ruby | Evaluate the top-level form; in Visual mode, the selection |
+| `<localleader>b` | Common Lisp, Ruby | Evaluate the whole buffer |
 | `<localleader>b` | Racket | Save, run the file as a module and enter its namespace |
-| `<localleader>i` | Common Lisp, Racket | Interrupt (Ctrl-C); in sbcl, type `abort` to return to the top level |
-| `<localleader>q` | Common Lisp, Racket | Quit the REPL |
+| `<localleader>i` | Common Lisp, Racket, Ruby | Interrupt (Ctrl-C); in sbcl, type `abort` to return to the top level |
+| `<localleader>q` | Common Lisp, Racket, Ruby | Quit the REPL |
 
 Details: [languages](features/lang.md#common-lisp).
 

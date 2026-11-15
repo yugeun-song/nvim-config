@@ -86,6 +86,15 @@ local function other_languages()
   status.programs("Haskell lint", { "hlint" }, { "https://github.com/ndmitchell/hlint" })
   status.programs("Lean 4", { "elan" }, { "https://github.com/leanprover/elan" })
   status.programs("Python lint and format", { "ruff" })
+  pcall(require, "mason")
+  status.programs("Ruby REPL", { "irb" }, { "the distribution's irb (Arch: ruby-irb)" })
+  -- ruby-lsp requires Bundler even when it reads no Gemfile.
+  status.programs("Ruby language server", { "ruby-lsp", "bundle" }, {
+    ":MasonInstall ruby-lsp",
+    "the distribution's Bundler (Arch: ruby-bundler)",
+  })
+
+  status.programs("Ruby debugger", { "rdbg" }, { ":MasonInstall rdbg" })
 end
 
 local function parsers()

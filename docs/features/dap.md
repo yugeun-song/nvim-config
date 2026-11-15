@@ -13,6 +13,7 @@ C, C++ and assembly are debugged by GDB itself (`gdb -i dap`), so `~/.gdbinit`, 
 | Rust | rustaceanvim on `codelldb` | `:RustLsp debuggables` |
 | JavaScript, TypeScript | `js-debug-adapter` | `pwa-node`, `pwa-chrome`, `pwa-msedge`; `.ts` on Node's type stripping, or `tsx` or `ts-node` when installed |
 | Elixir | ElixirLS's `mix_task` | `mix test`, `mix run` |
+| Ruby | `rdbg` (`rdbg --open` on a Unix socket in Neovim's private temp folder) | this file; stopped at its first line; with arguments |
 
 `.vscode/launch.json` is read for every language. The rest of this page is about the `gdb` and `gdb_linux_kernel` sessions; an `lldb` session gets the Registers, Memory and Disassembly panels and the function and address breakpoints, and the others plain nvim-dap-view.
 
@@ -93,7 +94,7 @@ Keys: [keymaps](../keymaps.md#debugging).
 | Foreign architectures | a gdb for the target; `qemu-<arch>` (or `qemu-<arch>-static`); a sysroot in `/usr/<triple>` or `/usr/<triple>/sys-root` for dynamic programs |
 | Linux kernels | [kbuildlab](https://github.com/yugeun-song/kbuildlab); without it kernel debugging is off |
 | Early-boot symbols, `cfgjson`, `addr2sym` | [gdbtools](https://github.com/yugeun-song/gdbtools) (optional) |
-| Python, Rust, JS/TS, Elixir | `debugpy`, `codelldb`, `js-debug-adapter`, `elixir-ls` (Mason) |
+| Python, Rust, JS/TS, Elixir, Ruby | `debugpy`, `codelldb`, `js-debug-adapter`, `elixir-ls`, `rdbg` (Mason) |
 
 ## Systems
 
