@@ -68,8 +68,8 @@ Windows only (`c/msvc_toolchain/`).
 - **Server**: ruby-lsp (Mason) for symbols, hover, go-to-definition and completion, with `BUNDLE_GEMFILE` set so it never writes `.ruby-lsp/` into the project nor installs or updates gems from the network: it runs on Mason's pinned gems. It needs Bundler on PATH and starts only when both are there. The root is the folder with `Gemfile` or `.git`, else the file's folder, never `~` or `/` (ruby-lsp indexes the root and loads every `ruby_lsp/**/addon.rb` in it).
 - **Lint and format**: `rubocop --lsp` (Mason) over stdio; ruby-lsp's own formatter and linters are off. Without a `.rubocop.yml`, RuboCop's defaults apply.
 - **Indent**: two spaces, from Neovim's ruby ftplugin (`ruby_recommended_style`), as the Ruby style guide and RuboCop ask.
-- **Debugging**: rdbg (Mason) over a Unix socket in Neovim's private temp folder, never TCP ([debugging](dap.md#adapters)).
-- **REPL**: `irb` in a bottom terminal split, in the nearest folder with `Gemfile` or `.git`. Code goes through a temporary file that irb evaluates in its own binding and deletes, under the buffer's path and line, so locals stay visible and `require_relative` and backtraces point at the buffer. irb also runs a `.irbrc` in that folder, as it does in a terminal.
+- **Debugging**: rdbg (Mason) over a Unix socket in Neovim's private temp folder, never TCP ([debugging](dap.md#adapters)); without rdbg, Ruby has no debug configuration.
+- **REPL**: `irb` in a bottom terminal split (its keys exist only where `irb` does), in the nearest folder with `Gemfile` or `.git`. Code goes through a temporary file that irb evaluates in its own binding and deletes, under the buffer's path and line, so locals stay visible and `require_relative` and backtraces point at the buffer. irb also runs a `.irbrc` in that folder, as it does in a terminal.
 
 ## Haskell
 

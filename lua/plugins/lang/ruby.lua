@@ -58,6 +58,12 @@ return {
     optional = true,
     opts = function()
       local dap = require("dap")
+      local rdbg = require("features.lsp.mason").bin("rdbg")
+
+      -- Without rdbg Ruby offers no debug configuration rather than one that fails to start.
+      if vim.fn.executable(rdbg) ~= 1 then
+        return
+      end
 
       -- rdbg serves DAP on a Unix socket in Neovim's private temp folder, never on TCP. It waits for the client;
       -- the attach request's nonstop says whether to stop at the first line.
@@ -70,7 +76,7 @@ return {
           callback({
             type = "pipe",
             pipe = socket,
-            executable = { command = require("features.lsp.mason").bin("rdbg"), args = args, cwd = config.cwd },
+            executable = { command = rdbg, args = args, cwd = config.cwd },
           })
         end
 
