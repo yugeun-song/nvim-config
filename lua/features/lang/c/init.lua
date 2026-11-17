@@ -1,5 +1,5 @@
--- C and C++ buffers: indentation from the project, gf on #include, and <C-]> through tags. The macro painter
--- starts with the assembly painters (lua/plugins/lang/asm.lua), whose scanner it shares.
+-- C and C++ buffers: indentation from the project, else the C coding style's; gf on #include; <C-]> through tags.
+-- The macro painter starts with the assembly painters (lua/plugins/lang/asm.lua), whose scanner it shares.
 local M = {}
 
 -- gf on #include serves these; the rest serve C and C++ only.
@@ -13,8 +13,9 @@ function M.setup()
     pattern = { "c", "cpp" },
     callback = function(args)
       require("features.lang.c.indentation").apply(args.buf)
+      require("features.lang.c.coding_style").apply(args.buf)
     end,
-    desc = "Indent C/C++ per .clang-format, else 8-col tabs if the file uses tabs, else 4 spaces; .editorconfig still wins",
+    desc = "Indent C/C++ per .clang-format, else tabs if the file uses them, else 4 spaces; C sources without one get 100 columns",
   })
 
   vim.api.nvim_create_autocmd("FileType", {

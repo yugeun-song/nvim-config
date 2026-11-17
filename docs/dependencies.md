@@ -144,7 +144,7 @@ Installed by Mason on every system with a build; with none, a program of the sam
 | Package | For | Needs |
 |---|---|---|
 | clangd | C, C++, CUDA, assembly server | |
-| clang-format | C and C++ formatting | Python 3 |
+| clang-format | C and C++ formatting (16 or later where the project has no `.clang-format`) | Python 3 |
 | codelldb | LLDB debugging (macOS, Windows, Rust) | |
 | lua-language-server | Lua server | |
 | stylua | Lua formatting | |

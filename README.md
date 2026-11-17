@@ -4,7 +4,7 @@ A [LazyVim](https://www.lazyvim.org/)-based Neovim configuration for Linux kerne
 
 ## Highlights
 
-- **C and the kernel**: clangd, cscope and `tags` tuned for big trees; indentation from `.editorconfig` or `.clang-format`, no autoformat; every `#if` branch on request; assembly, linker scripts and device trees highlighted; CUDA and Visual Studio projects in clangd. [Languages](docs/features/lang.md)
+- **C and the kernel**: clangd, cscope and `tags` tuned for big trees; indentation from `.editorconfig` or `.clang-format`, else a built-in C coding style with clangd warnings; no autoformat; every `#if` branch on request; assembly, linker scripts and device trees highlighted; CUDA and Visual Studio projects in clangd. [Languages](docs/features/lang.md)
 - **Debugger on `gdb -i dap`** for programs, QEMU user mode and Linux kernels behind a QEMU gdbstub, with registers, memory, disassembly and control-flow panels; LLDB on macOS and Windows; Python, Rust, JS/TS and Elixir through their own adapters. [Debugging](docs/features/dap.md)
 - **Code search** by a typed pattern: `<leader>i/` picks clangd, cscope, ctags, gtags or ripgrep, whichever the buffer supports. [Code search](docs/features/editor.md#code-search)
 - **Attach rules** turn a language server off per file or directory. [Language servers](docs/features/lsp.md#attach-rules)

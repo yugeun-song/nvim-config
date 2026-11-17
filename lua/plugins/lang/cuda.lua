@@ -34,8 +34,11 @@ return {
       local fallback = cuda.fallback_flags()
 
       if fallback then
-        opts.servers.clangd.init_options =
-          vim.tbl_deep_extend("force", opts.servers.clangd.init_options or {}, { fallbackFlags = fallback })
+        local init_options = opts.servers.clangd.init_options or {}
+
+        -- Appended: tbl_deep_extend would replace the C style's flags (lua/plugins/lang/c.lua).
+        init_options.fallbackFlags = vim.iter({ init_options.fallbackFlags or {}, fallback }):flatten():totable()
+        opts.servers.clangd.init_options = init_options
       end
 
       -- A CUDA buffer whose compile command is nvcc's gets clang's instead.

@@ -15,6 +15,21 @@ local function c_family()
 
   status.programs("C and C++ navigation", { "cscope", "ctags" })
 
+  local style = require("features.lang.c.coding_style")
+  local major = style.clang_format_major()
+  local feature = "C coding style where a project sets none (<leader>cf)"
+  local advice = { ":MasonInstall clang-format" }
+
+  if major and major >= style.CLANG_FORMAT_MAJOR then
+    status.available(feature, ("clang-format %d"):format(major))
+  elseif status.find("clang-format") then
+    local reason = ("clang-format %s; the style needs %d or later"):format(major or "?", style.CLANG_FORMAT_MAJOR)
+
+    status.blocked(feature, reason, advice)
+  else
+    status.blocked(feature, "missing clang-format", advice)
+  end
+
   local cuda = require("features.lang.cuda").toolkit()
 
   if cuda then

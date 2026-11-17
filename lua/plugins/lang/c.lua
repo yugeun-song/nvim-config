@@ -1,17 +1,6 @@
 -- C and C++: clangd, cscope and tags tuned for big trees, gf on #include, indentation from the project and
--- clang-format without autoformat, every #if branch on request, and Visual Studio projects on Windows. The code
--- lives in lua/features/lang/c/.
-local function clang_format_fallback(buf)
-  local bo = vim.bo[buf]
-  local width = bo.shiftwidth > 0 and bo.shiftwidth or bo.tabstop
-
-  return ("{BasedOnStyle: LLVM, IndentWidth: %d, TabWidth: %d, UseTab: %s, BreakBeforeBraces: Custom, BraceWrapping: {AfterFunction: true}, AllowShortFunctionsOnASingleLine: None, SortIncludes: Never}"):format(
-    width,
-    bo.tabstop,
-    bo.expandtab and "Never" or "ForIndentation"
-  )
-end
-
+-- clang-format without autoformat, the C coding style where a project sets none, every #if branch on request, and
+-- Visual Studio projects on Windows. The code lives in lua/features/lang/c/.
 local specs = {
   {
     "nvim-treesitter/nvim-treesitter",
@@ -59,6 +48,12 @@ local specs = {
         end,
       })
 
+      local init_options = opts.servers.clangd.init_options or {}
+      local fallback_flags = require("features.lang.c.coding_style").CLANGD_FALLBACK_FLAGS
+
+      init_options.fallbackFlags = vim.iter({ init_options.fallbackFlags or {}, fallback_flags }):flatten():totable()
+      opts.servers.clangd.init_options = init_options
+
       if vim.fn.has("win32") == 1 then
         local flag = clangd.query_driver()
 
@@ -78,17 +73,13 @@ local specs = {
       formatters = {
         clang_format = {
           prepend_args = function(_, ctx)
-            local found = vim.fs.find({ ".clang-format", "_clang-format" }, {
-              upward = true,
-              path = ctx.dirname,
-              type = "file",
-            })[1]
+            local style = require("features.lang.c.coding_style")
 
-            if found then
+            if style.clang_format_file(ctx.dirname) then
               return {}
             end
 
-            return { "--style=" .. clang_format_fallback(ctx.buf) }
+            return { "--style=" .. style.clang_format_style(ctx.buf) }
           end,
         },
       },

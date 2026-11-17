@@ -69,7 +69,7 @@ A spec and its code share a path: `lua/plugins/<category>/<name>.lua` has its co
 |---|---|
 | `plugins/ui/statusline.lua` | `features/ui/statusline.lua` |
 | `plugins/editor/korean_input.lua` | `features/editor/korean_input/` (`init.lua`, `backends.lua`, `indicator.lua`) |
-| `plugins/lang/c.lua` | `features/lang/c/` (indentation, `#include` gf, clangd, all `#if` branches, macro bodies, MSVC) |
+| `plugins/lang/c.lua` | `features/lang/c/` (indentation, coding style, `#include` gf, clangd, all `#if` branches, macro bodies, MSVC) |
 | `plugins/dap/core.lua` | `features/dap/core/` (`init.lua`, `sessions/`, `panels/`) |
 | `plugins/util/managed_paths.lua` | `features/util/managed_paths.lua` |
 
