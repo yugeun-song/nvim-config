@@ -16,6 +16,24 @@ if vim.fn.has("nvim-0.12") == 0 then
   })
 end
 
+-- require() never looks in the current directory: LuaJIT's package.path and cpath start with ./?.lua and ./?.dll
+-- (./?.so), so requiring a module that is not installed (a plugin lazy.nvim could not fetch) would run a repository's
+-- file or load its library. Neovim finds Lua modules on 'runtimepath' with a loader of its own, before these.
+for _, field in ipairs({ "path", "cpath" }) do
+  local kept = {}
+
+  for template in package[field]:gmatch("[^;]+") do
+    if template:match("^/") or template:match("^%a:[/\\]") or template:match("^[/\\][/\\]") then
+      kept[#kept + 1] = template
+    end
+  end
+
+  package[field] = table.concat(kept, ";")
+end
+
+-- PATH without empty or relative entries, which name the current directory (lua/features/util/path_variable.lua).
+require("features.util.path_variable").clean_environment()
+
 -- Windows: a program named without a directory is started from PATH only, executable() and exepath() remember
 -- their answers (lua/features/util/windows/executable_lookup_cache.lua), and Visual Studio's MSVC environment is set
 -- as a Developer Prompt would (lua/features/lang/c/msvc_toolchain/developer_environment.lua).
@@ -29,6 +47,8 @@ if vim.fn.has("win32") == 1 then
   end
 
   require("features.util.windows.executable_lookup_cache").install()
+  -- vim.ui.open() without cmd.exe, which would read & in a URL as a command.
+  require("features.util.windows.open_target").install()
   require("features.lang.c.msvc_toolchain.developer_environment").setup()
 end
 

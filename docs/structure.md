@@ -27,7 +27,8 @@ nvim-config/
 │   │   │                        typescript, markdown
 │   │   ├── lsp/                 attach rules, line diagnostics, the remaining Mason packages
 │   │   ├── dap/                 core (nvim-dap, gdb, LLDB, panels), linux_kernel
-│   │   └── util/                managed paths, tool paths, feature status, Discord Rich Presence
+│   │   └── util/                managed paths, tool paths, feature status, Discord Rich Presence, cmd.exe
+│   │                            arguments on Windows
 │   └── features/                the configuration's own code, in the same categories and under the same names
 │       ├── ui/ editor/ lang/ lsp/ dap/ util/
 │       └── <category>/health.lua   :checkhealth features.<category>

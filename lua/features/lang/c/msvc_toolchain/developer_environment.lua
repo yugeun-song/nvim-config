@@ -115,7 +115,7 @@ local function apply(data)
   for _, dir in ipairs(data.path or {}) do
     if type(dir) == "string" and not have[key(dir)] then
       have[key(dir)] = true
-      path = path .. ";" .. dir
+      path = require("features.util.path_variable").append(path, dir)
     end
   end
 

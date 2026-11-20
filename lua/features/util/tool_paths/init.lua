@@ -84,7 +84,7 @@ local function add_to_path()
     end
   end
 
-  vim.env.PATH = path .. SEP .. (WIN and SHIMS:gsub("/", "\\") or SHIMS)
+  vim.env.PATH = require("features.util.path_variable").append(path, WIN and SHIMS:gsub("/", "\\") or SHIMS)
 end
 
 -- A registered name: also a file name in the shims directory, so nothing that leaves it (no separator, no "..").

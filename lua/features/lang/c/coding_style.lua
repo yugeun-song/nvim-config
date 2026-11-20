@@ -21,10 +21,11 @@ M.CLANGD_FALLBACK_FLAGS = {
   "-Wno-empty-translation-unit",
 }
 
+-- '^[^<]' is '^"' for an #include: no double quote in --style, where a program started through cmd.exe would read one.
 local INCLUDE_CATEGORIES = table.concat({
   "{Regex: '^<readline/', Priority: 1, SortPriority: 2}",
   "{Regex: '^<', Priority: 1, SortPriority: 1}",
-  "{Regex: '^\"', Priority: 3}",
+  "{Regex: '^[^<]', Priority: 3}",
 }, ", ")
 
 -- None and false are the older spellings of {Empty: false, Inline: false, Other: false} and Block.

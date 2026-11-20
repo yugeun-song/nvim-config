@@ -9,6 +9,11 @@
 -- directory on PATH all the time (IncrediBuild's agent, every few seconds); that costs one listing instead of every
 -- answer. A name with a directory in it goes to the real functions every time, and so does a hit outside PATH,
 -- except one in the current directory (with cmd.exe as 'shell', Neovim may search it first): PATH alone answers then.
+--
+-- Mason puts every program on PATH as a .cmd shim, and a .cmd runs through cmd.exe, which reads & and % in its
+-- arguments as its own syntax whatever quoting libuv gives them (libuv escapes " as \", which cmd.exe does not know):
+-- a formatter handed C:\a&b\x.lua would run b\x.lua. An answer that is the shim of an .exe or .com inside Mason's
+-- packages is that program instead, so it starts without cmd.exe, with the same arguments and DLL search order.
 local M = {}
 
 local uv = vim.uv
@@ -186,6 +191,14 @@ local function entry_for(path)
     checked = uv.now(),
   }
 
+  -- Only a lookup in one of this PATH's directories writes a hit; one naming anything else (the file edited by hand
+  -- or by another program) is dropped and looked up again.
+  for name, hit in pairs(entry.names) do
+    if hit ~= false and not (type(hit) == "string" and index[key(vim.fs.dirname(hit))]) then
+      entry.names[name] = nil
+    end
+  end
+
   live[path] = entry
   revalidate(entry)
 
@@ -238,6 +251,56 @@ local function search_path(name)
   return ""
 end
 
+local MASON = require("features.lsp.mason").ROOT
+-- [shim] = the program each shim runs, false for none, with the shim's mtime and size it was read at.
+local shims = {} ---@type table<string, { stamp: string, target: string|false }>
+
+-- The program a Mason shim runs when it is an .exe or .com inside Mason's packages, else path itself.
+local function unshim(path)
+  if not path:lower():find("%.cmd$") or key(vim.fs.dirname(path)) ~= key(vim.fs.joinpath(MASON, "bin")) then
+    return path
+  end
+
+  local st = uv.fs_stat(path)
+
+  if not st then
+    return path
+  end
+
+  local stamp = ("%d.%d.%d"):format(st.mtime.sec, st.mtime.nsec, st.size)
+  local memo = shims[key(path)]
+
+  if not memo or memo.stamp ~= stamp then
+    memo = { stamp = stamp, target = false }
+    shims[key(path)] = memo
+
+    local fd = io.open(path, "rb")
+    local text = fd and fd:read(8192) or ""
+
+    if fd then
+      fd:close()
+    end
+
+    -- Mason's template ends with: "%dp0%\..\packages\<package>\<program>" %*
+    local rel = text:match([["%%dp0%%\([^"]+)" %%%*%s*$]])
+    local real = rel and uv.fs_realpath(vim.fs.dirname(path) .. "\\" .. rel)
+    local packages = uv.fs_realpath(vim.fs.joinpath(MASON, "packages"))
+    local ext = real and (real:match("%.(%w+)$") or ""):lower()
+
+    if
+      real
+      and packages
+      and (ext == "exe" or ext == "com")
+      and vim.startswith(key(real), key(packages) .. "/")
+      and (uv.fs_stat(real) or {}).type == "file"
+    then
+      memo.target = real
+    end
+  end
+
+  return memo.target or path
+end
+
 -- exepath() can answer with a file Windows cannot start (npm puts an extensionless sh script beside each .cmd it
 -- installs; CreateProcess appends .exe to it), or with one from the current directory, tried before PATH (a cl.exe
 -- planted in a repository would build the helper). PATH alone answers then, the current directory only if listed.
@@ -255,7 +318,9 @@ end
 ---@return string
 function M.exepath(name, ...)
   if type(name) ~= "string" or name == "" or name:find("[/\\]") or select("#", ...) > 0 then
-    return raw_exepath(name, ...)
+    local found = raw_exepath(name, ...)
+
+    return type(found) == "string" and unshim(found) or found
   end
 
   local entry = entry_for(uv.os_getenv("PATH") or "")
@@ -265,7 +330,7 @@ function M.exepath(name, ...)
   if hit == false then
     return ""
   elseif type(hit) == "string" and is_runnable(hit) then
-    return hit
+    return unshim(hit)
   end
 
   local found = runnable_on_path(name, raw_exepath(name))
@@ -278,7 +343,7 @@ function M.exepath(name, ...)
     end
   end
 
-  return found
+  return unshim(found)
 end
 
 ---@param name string

@@ -238,7 +238,7 @@ function M.add_missing_path(dirs)
   local path = vim.env.PATH or ""
 
   for _, dir in ipairs(dirs) do
-    path = path .. ";" .. dir:gsub("/", "\\")
+    path = require("features.util.path_variable").append(path, (dir:gsub("/", "\\")))
   end
 
   vim.env.PATH = path
