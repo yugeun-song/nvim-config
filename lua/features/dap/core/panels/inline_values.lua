@@ -67,9 +67,9 @@ function M.render(session, values)
     return
   end
 
-  local buf = vim.fn.bufnr(path, false)
+  local buf = require("features.util.buffer_by_name").find(path)
 
-  if buf == -1 or not vim.api.nvim_buf_is_valid(buf) then
+  if not buf or not vim.api.nvim_buf_is_valid(buf) then
     return
   end
 

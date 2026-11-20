@@ -78,7 +78,7 @@ function M.open(dir, files)
   end
 
   for _, file in ipairs(files) do
-    vim.cmd.edit(vim.fn.fnameescape(file))
+    require("features.util.edit_file").edit(file)
   end
 end
 

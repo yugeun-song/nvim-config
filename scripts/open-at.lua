@@ -20,14 +20,14 @@ deadline:start(5000, 0, function()
   os.exit(3)
 end)
 
--- The instance picks the window (open_in_running_instance.open); an older instance gets :drop.
+-- The instance picks the window (open_in_running_instance.open); an older instance gets :edit, by the exact name.
 local OPEN = 'local m = require("features.editor.open_in_running_instance") '
   .. "if not m.open then return false end m.open(...) return true"
 
 local function drop_in_current(ch)
   local opened = pcall(function()
     vim.rpcrequest(ch, "nvim_cmd", { cmd = "stopinsert" }, {})
-    vim.rpcrequest(ch, "nvim_cmd", { cmd = "drop", args = { vim.fn.fnameescape(file) } }, {})
+    vim.rpcrequest(ch, "nvim_cmd", { cmd = "edit", args = { file }, magic = { file = false } }, {})
   end)
 
   if opened then

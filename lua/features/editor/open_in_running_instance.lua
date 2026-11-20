@@ -330,7 +330,7 @@ function M.open(file, line, col)
 
   if win then
     vim.api.nvim_set_current_win(win)
-    vim.api.nvim_cmd({ cmd = "drop", args = { vim.fn.fnameescape(file) } }, {})
+    require("features.util.edit_file").drop(file)
   else
     for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
       if vim.api.nvim_win_get_config(w).relative == "" then
@@ -340,7 +340,7 @@ function M.open(file, line, col)
       end
     end
 
-    vim.api.nvim_cmd({ cmd = "vsplit", args = { vim.fn.fnameescape(file) }, mods = { split = "botright" } }, {})
+    require("features.util.edit_file").vsplit(file, { split = "botright" })
   end
 
   local row = math.min(line, vim.api.nvim_buf_line_count(0))

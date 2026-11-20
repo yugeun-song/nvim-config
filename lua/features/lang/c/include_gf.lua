@@ -266,7 +266,7 @@ function M.map(buf)
 
       local function open(target)
         if target then
-          vim.cmd.edit(vim.fn.fnameescape(target))
+          require("features.util.edit_file").edit(target)
         end
       end
 

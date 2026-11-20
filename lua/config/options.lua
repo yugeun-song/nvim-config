@@ -42,7 +42,7 @@ local function backup_filetype(strip)
       return
     end
 
-    local ft, on_detect = vim.filetype.match({ buf = bufnr, filename = vim.fn.fnameescape(root) })
+    local ft, on_detect = vim.filetype.match({ buf = bufnr, filename = root })
 
     if c_family[ft] then
       return "text"

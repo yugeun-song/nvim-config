@@ -27,17 +27,24 @@ local USE_TAB_EXPANDS = {
 -- Language. Older releases read .c as Cpp; everything else (.cu too) is Cpp.
 local LANGUAGE_ORDER = { c = { "C", "", "Cpp" }, h = { "Cpp", "", "C" } }
 
+-- A .clang-format is read up to this size: a repository's could be huge, or a link to /proc/self/pagemap.
+local MAX_BYTES = 1024 * 1024
+
 -- The top-level keys of each YAML document, quotes stripped.
 local function documents(path)
-  local fd = io.open(path, "r")
+  local fd = io.open(path, "rb")
 
   if not fd then
     return nil
   end
 
+  local text = fd:read(MAX_BYTES) or ""
+
+  fd:close()
+
   local docs, doc, indent = {}, nil, nil
 
-  for line in fd:lines() do
+  for line in vim.gsplit(text, "\r?\n") do
     if line:find("^%-%-%-") or line:find("^%.%.%.") then
       doc = nil
     else
@@ -54,8 +61,6 @@ local function documents(path)
       end
     end
   end
-
-  fd:close()
 
   return docs
 end
@@ -87,6 +92,14 @@ local function style_keys(path, extension)
       end
     end
   end
+end
+
+-- A width Neovim takes: a whole number from 1 to 32. -4, 0, 4.5 or 1e10 in a .clang-format would make setting
+-- 'shiftwidth' raise inside FileType, and the rest of the buffer's setup (no autoformat) would not happen.
+local function width(value)
+  local n = tonumber(value)
+
+  return n and n == math.floor(n) and n >= 1 and n <= 32 and n or nil
 end
 
 local function clang_format_indent(bufname)
@@ -130,8 +143,8 @@ local function clang_format_indent(bufname)
   local expands = USE_TAB_EXPANDS[keys.UseTab]
 
   return {
-    shiftwidth = tonumber(keys.IndentWidth) or CLANG_FORMAT_STYLE_INDENT[based] or 2,
-    tabstop = tonumber(keys.TabWidth) or based == "microsoft" and 4 or 8,
+    shiftwidth = width(keys.IndentWidth) or CLANG_FORMAT_STYLE_INDENT[based] or 2,
+    tabstop = width(keys.TabWidth) or based == "microsoft" and 4 or 8,
     expandtab = expands == nil or expands,
   }
 end

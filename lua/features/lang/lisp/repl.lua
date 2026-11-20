@@ -7,6 +7,12 @@ local function quote(s)
   return (s:gsub('[\\"]', "\\%0"))
 end
 
+-- A Ruby string literal in single quotes, where only \\ and \' are escapes: in double quotes, #{...}, #@var and #$var
+-- in a file's name would run as Ruby.
+local function ruby_string(s)
+  return "'" .. s:gsub("[\\']", "\\%0") .. "'"
+end
+
 -- The pty is line-buffered: the kernel cuts a line at 4095 bytes and acts on ^C, ^U and DEL inside it.
 -- Code therefore goes through a file in Neovim's private temp dir; only the short call crosses the pty.
 local sbcl_init = {
@@ -86,10 +92,10 @@ local profiles = {
     -- The workspace binding is the one irb evaluates in, so locals defined here stay visible. The buffer's path and
     -- line make require_relative and backtraces point at the buffer.
     eval = function(path, label, file, line)
-      return ('IRB.CurrentContext.workspace.binding.eval(File.read("%s").tap { File.delete("%s") }, "%s", %d) # %s\n'):format(
-        quote(path),
-        quote(path),
-        quote(file ~= "" and file or "(nvim)"),
+      return ("IRB.CurrentContext.workspace.binding.eval(File.read(%s).tap { File.delete(%s) }, %s, %d) # %s\n"):format(
+        ruby_string(path),
+        ruby_string(path),
+        ruby_string(file ~= "" and file or "(nvim)"),
         line,
         label
       )

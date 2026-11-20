@@ -106,10 +106,10 @@ function M.filter(params)
     if LAUNCH_NOISE[d.code] and d.range then
       if not lines then
         local fname = vim.uri_to_fname(params.uri)
-        local bufnr = vim.fn.bufnr(fname)
+        local bufnr = require("features.util.buffer_by_name").find(fname)
         local ok, text = pcall(vim.fn.readfile, fname)
 
-        lines = bufnr > 0 and vim.api.nvim_buf_is_loaded(bufnr) and vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+        lines = bufnr and vim.api.nvim_buf_is_loaded(bufnr) and vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
           or (ok and text or {})
       end
 

@@ -371,7 +371,7 @@ function M.edit_registry()
     end
   end
 
-  vim.cmd.edit(vim.fn.fnameescape(registry))
+  require("features.util.edit_file").edit(registry)
 end
 
 function M.toggle()

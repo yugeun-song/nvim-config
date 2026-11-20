@@ -918,7 +918,7 @@ function M.show()
 
           if path then
             self:close()
-            vim.cmd.edit(vim.fn.fnameescape(path))
+            require("features.util.edit_file").edit(path)
           end
         end,
         desc = "Open",

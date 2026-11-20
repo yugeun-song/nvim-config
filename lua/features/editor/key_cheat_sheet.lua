@@ -252,7 +252,7 @@ function M.open()
       if item.kind == "built-in" then
         vim.cmd.help(item.tag)
       elseif item.file then
-        vim.cmd.edit(vim.fn.fnameescape(item.file))
+        require("features.util.edit_file").edit(item.file)
         if item.pos then
           pcall(vim.api.nvim_win_set_cursor, 0, { item.pos[1], 0 })
         end
