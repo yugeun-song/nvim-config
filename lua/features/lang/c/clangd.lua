@@ -30,11 +30,18 @@ function M.private_tmp()
   return dir
 end
 
--- Windows: clangd assumes an MSVC target and its headers. A compile database written for MinGW's gcc (or a
--- clang on PATH) needs clangd to ask that compiler for its target and system includes, which it does only for
--- drivers in this allowlist: the directories the compilers on PATH live in, so nothing a repository names runs.
+-- Windows: clangd assumes an MSVC target and its headers. A compile database written for MinGW's gcc (or a clang on
+-- PATH) needs clangd to ask that compiler for its target and system includes, and clangd runs whichever allowed
+-- driver the database names, with the database's own -specs, --sysroot and -target: a gcc -specs file can make gcc
+-- run any program. So it is off unless vim.g.clangd_query_driver is true (for trusted projects), and then allows only
+-- the .exe of each compiler on PATH by its exact path; a directory glob would also allow its neighbours (cmake's
+-- cpack, a .bat) and, on Windows, a path that leaves the directory through "..".
 function M.query_driver()
-  local dirs, seen = {}, {}
+  if vim.g.clangd_query_driver ~= true then
+    return nil
+  end
+
+  local drivers, seen = {}, {}
   -- PATH's own entries only: with cmd.exe as 'shell', exepath() also finds a compiler in the current directory,
   -- which a repository could put there.
   local on_path = {}
@@ -50,17 +57,20 @@ function M.query_driver()
   for _, name in ipairs({ "gcc", "g++", "cc", "c++", "clang", "clang++" }) do
     local path = vim.fn.exepath(name)
 
-    if path ~= "" then
-      local dir = vim.fs.dirname(vim.fs.normalize(path))
+    -- The file's own spelling (exepath() writes the extension as PATHEXT does, .EXE): clangd compares it as given.
+    local real = path ~= "" and vim.uv.fs_realpath(path)
 
-      if on_path[dir:lower()] and not seen[dir:lower()] then
-        seen[dir:lower()] = true
-        dirs[#dirs + 1] = dir .. "/*"
+    if real and real:lower():find("%.exe$") then
+      local exe = vim.fs.normalize(real)
+
+      if on_path[vim.fs.dirname(exe):lower()] and not seen[exe:lower()] and not exe:find("[,*?%[%]{}]") then
+        seen[exe:lower()] = true
+        drivers[#drivers + 1] = exe
       end
     end
   end
 
-  return #dirs > 0 and ("--query-driver=" .. table.concat(dirs, ",")) or nil
+  return #drivers > 0 and ("--query-driver=" .. table.concat(drivers, ",")) or nil
 end
 
 return M

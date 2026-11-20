@@ -6,6 +6,10 @@ Rules that keep a language server off where it should not run, the line diagnost
 
 No language server starts for a buffer without a file (`:enew`, then a filetype): Neovim would send it the URI `file://`, which no server reads (clangd refuses every request, ruff panicked). One gate (`file_buffers.lua`) comes before every enabled server's `root_dir`, whether its spec, nvim-lspconfig or mason-lspconfig set it, and before the `root_markers` of those without one. The last `vim.lsp.config()` wins, so the gate is given to the specs' own before anything is enabled, to each enabled server by name once nvim-lspconfig has set them up, and after each Mason install; nothing is started, so nothing is sent. A server enabled while such a buffer was open leaves it at once. Not through `vim.lsp.config("*")`: rustaceanvim merges that into its rust-analyzer and calls `root_dir` the old way. Writing the buffer to a file and opening it again (`:e`) attaches the servers.
 
+## Programs a repository cannot replace
+
+jsonls, cssls, html, yamlls and oxlint start Mason's or PATH's program, and conform's oxfmt too: nvim-lspconfig and conform would start `<root>/node_modules/.bin/<program>` when a repository ships one, which runs that repository's program on opening or saving a file (`lsp/fixed_commands.lua`, `formatting.lua`). jdtls keeps a workspace per project named by the folder's letters and digits and a hash of the root, not the folder's own name, which reached `cmd.exe` through Mason's `.cmd` on Windows.
+
 ## Attach rules
 
 Attach rules turn a language server off for generated or vendored subtrees.

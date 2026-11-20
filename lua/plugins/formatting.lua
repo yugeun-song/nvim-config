@@ -25,6 +25,11 @@ return {
         html = { "oxfmt" },
         toml = { "taplo" },
       },
+      formatters = {
+        -- Mason's or PATH's oxfmt; conform's own definition prefers <root>/node_modules/.bin/oxfmt, a repository's
+        -- program, which would run on save.
+        oxfmt = { command = "oxfmt" },
+      },
     },
   },
 }

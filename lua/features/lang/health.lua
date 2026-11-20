@@ -15,6 +15,19 @@ local function c_family()
 
   status.programs("C and C++ navigation", { "cscope", "ctags" })
 
+  if vim.fn.has("win32") == 1 then
+    local flag = require("features.lang.c.clangd").query_driver()
+
+    if flag then
+      status.available("MinGW targets in clangd", flag)
+    else
+      vim.health.info(
+        "MinGW targets in clangd: off; vim.g.clangd_query_driver = true lets clangd ask the gcc and clang on PATH, "
+          .. "with a database's own -specs (trusted projects only)"
+      )
+    end
+  end
+
   local style = require("features.lang.c.coding_style")
   local major = style.clang_format_major()
   local feature = "C coding style where a project sets none (<leader>cf)"

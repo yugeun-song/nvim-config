@@ -5,7 +5,7 @@ local M = {}
 
 -- argv[0] when the project names no compiler: the name alone makes clangd read the options as cl's. Either way it
 -- is never run: clangd executes a driver only when --query-driver allows its path, and lua/features/lang/c/clangd.lua
--- allows only the directories of the gcc and clang on PATH.
+-- allows none unless asked, and then only the gcc and clang executables on PATH.
 local DRIVER = "cl.exe"
 
 -- A command line split as cl's runtime and clangd split it (the Windows rules): a backslash is literal unless a
