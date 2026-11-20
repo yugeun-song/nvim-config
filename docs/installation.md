@@ -70,7 +70,7 @@ A Mason package with no build for the machine is reported as not supported; the 
 - Visual Studio 2026 (or its Build Tools) with the C++ tools builds the [IME helper](features/util.md#windows-ime-helper), sets the [MSVC environment](features/lang.md#msvc-toolchain) and writes compile databases. clang targeting MSVC also builds the helper; without either, the IME switch uses `im-select.exe`.
 - Visual Studio's C++ library refuses a clangd older than it was written for, and Mason does not update what it installed: after a Visual Studio update, `:MasonInstall clangd` before opening a C-family file (Mason cannot replace a clangd that runs). `:MsvcCompileDb` says so when it applies.
 - A program named without a directory starts from PATH only, never from the current directory ([why](features/util.md#programs-from-path-only)); in `:terminal`'s `cmd.exe`, a program there takes `.\name`.
-- gdb: MSYS2's `pacman -S mingw-w64-ucrt-x86_64-gdb` (`mingw-w64-ucrt-x86_64-gdb-multiarch` for foreign targets), found under `C:\msys64` when not on PATH.
+- gdb: MSYS2's `pacman -S mingw-w64-ucrt-x86_64-gdb` (`mingw-w64-ucrt-x86_64-gdb-multiarch` for foreign targets), registered by path with `<leader>uX` when not on PATH.
 - cscope has no native build: register one by path with `<leader>uX`, such as MSYS2's ([external programs](features/util.md#programs-registered-by-path)).
 - GHCup installs to `C:\ghcup\bin`, which joins PATH with the first Haskell buffer.
 - Not available: `:Man` highlighting, QEMU user mode, Linux kernels.

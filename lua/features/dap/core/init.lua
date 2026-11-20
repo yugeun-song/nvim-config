@@ -17,7 +17,8 @@ local function input_path(prompt, default)
         return require("dap").ABORT
       end
 
-      answer = vim.fn.expand(answer)
+      -- ~ and $VAR, not expand()'s `command` or wildcards: the default offered may come from the project.
+      answer = vim.fs.normalize(answer, { expand_env = true })
       if vim.fn.filereadable(answer) == 1 and vim.fn.executable(answer) == 1 then
         last_answer[prompt] = answer
 

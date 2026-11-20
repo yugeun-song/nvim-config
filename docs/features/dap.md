@@ -11,15 +11,15 @@ C, C++ and assembly are debugged by GDB itself (`gdb -i dap`), so `~/.gdbinit`, 
 | C, C++ (macOS, Windows) | `lldb` (`lldb-dap` or `codelldb`) | launch, launch to `main`, attach; Registers, Memory, Disassembly; function and address breakpoints |
 | Python | nvim-dap-python on `debugpy` | its configurations, the test under the cursor |
 | Rust | rustaceanvim on `codelldb` | `:RustLsp debuggables` |
-| JavaScript, TypeScript | `js-debug-adapter` | `pwa-node`, `pwa-chrome`, `pwa-msedge`; `.ts` on Node's type stripping, or `tsx` or `ts-node` when installed |
+| JavaScript, TypeScript | `js-debug-adapter` (its server started by Node on `127.0.0.1` and ended with the session and with Neovim, `lang/typescript.lua`) | `pwa-node`, `pwa-chrome`, `pwa-msedge`; `.ts` on Node's type stripping, or `tsx` or `ts-node` when installed |
 | Elixir | ElixirLS's `mix_task` | `mix test`, `mix run` |
-| Ruby | `rdbg` (`rdbg --open` on a Unix socket in Neovim's private temp folder) | this file; stopped at its first line; with arguments |
+| Ruby | `rdbg` (`rdbg --open` on a Unix socket in Neovim's private temp folder); none on Windows, where Neovim reaches only named pipes and rdbg's TCP has no authentication | this file; stopped at its first line; with arguments |
 
 `.vscode/launch.json` is read for every language. The rest of this page is about the `gdb` and `gdb_linux_kernel` sessions; an `lldb` session gets the Registers, Memory and Disassembly panels and the function and address breakpoints, and the others plain nvim-dap-view.
 
 ## Choosing gdb and LLDB
 
-- **gdb** for a target: `vim.g.dbg_gdb` (a name or path, or a table by architecture), else the first `<triple>-gdb`, `gdb-multiarch` or host `gdb` that runs DAP (gdb 14 or later with Python) and knows the architecture. One run of each candidate tells; a broken one is skipped with a notice. With none, the session does not start and names the package to install. Windows also looks in MSYS2 (`C:\msys64\ucrt64\bin`, `mingw64`, `clang64`). Kernel sessions run kbuildlab's gdb.
+- **gdb** for a target: `vim.g.dbg_gdb` (a name or path, or a table by architecture), else the first `<triple>-gdb`, `gdb-multiarch` or host `gdb` that runs DAP (gdb 14 or later with Python) and knows the architecture. One run of each candidate tells; a broken one is skipped with a notice. With none, the session does not start and names the package to install. On Windows MSYS2's gdb is not on PATH: register it by path (`<leader>uX` lists it from the installed programs); `C:\msys64` is not searched, since any user may create it where MSYS2 is not installed. Kernel sessions run kbuildlab's gdb.
 - **LLDB**: `vim.g.dbg_lldb`, else Xcode's `lldb-dap`, Mason's `codelldb`, an `lldb-dap` on PATH, or Homebrew's llvm. Offered on macOS and Windows; setting `vim.g.dbg_lldb` offers it anywhere.
 - **kbuildlab**: `vim.g.dbg_kbuildlab` or `$KBUILDLAB`, else the one on PATH, else the checkout its installer recorded. **gdbtools**: `$GDBTOOLS_PATH`, else the checkout its `setup.sh` recorded; sourced into each gdb when installed. A stale pointer is reported once; gdb starts without it.
 

@@ -1,6 +1,7 @@
 -- ghcup's bin directory, added at the end of PATH when Haskell is first needed (a Haskell buffer, :checkhealth):
--- ghcup installs there (https://www.haskell.org/ghcup/install/: ~/.ghcup/bin, C:\ghcup\bin on Windows) without the
--- environment Neovim started from always knowing. GHCUP_INSTALL_BASE_PREFIX, ghcup's variable for its base, moves it.
+-- ghcup installs there (https://www.haskell.org/ghcup/install/) without the environment Neovim started from always
+-- knowing. GHCUP_INSTALL_BASE_PREFIX, ghcup's variable for its base, names it; else ~/.ghcup/bin. On Windows only that
+-- variable, which ghcup's installer sets: any user may create C:\ghcup where ghcup is not installed.
 local M = {}
 
 local WIN = vim.fn.has("win32") == 1
@@ -13,7 +14,7 @@ function M.bin_directory()
     return vim.fs.joinpath(base, WIN and "ghcup" or ".ghcup", "bin")
   end
 
-  return WIN and "C:/ghcup/bin" or vim.fs.joinpath(vim.uv.os_homedir() or "", ".ghcup", "bin")
+  return not WIN and vim.fs.joinpath(vim.uv.os_homedir() or "", ".ghcup", "bin") or nil
 end
 
 function M.add_to_path()
@@ -25,7 +26,7 @@ function M.add_to_path()
 
   local bin = M.bin_directory()
 
-  if not vim.uv.fs_stat(bin) then
+  if not bin or not vim.uv.fs_stat(bin) then
     return
   end
 

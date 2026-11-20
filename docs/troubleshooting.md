@@ -32,6 +32,8 @@
 - **Early-boot arming can take tens of seconds** (direct boots, x86 UEFI with KASLR); the session sits at the reset vector meanwhile, not hung.
 - **An x86 UEFI guest with KASLR needs a QEMU monitor and two of the four hardware breakpoints.**
 - **Opening a Haskell project runs its code**: haskell-language-server builds it, so Template Haskell and a custom `Setup.hs` execute. Treat untrusted repositories accordingly.
+- **Other servers and formatters run a project's code too**, as they are made to: rust-analyzer (`build.rs`, procedural macros), ruby-lsp and RuboCop (the `Gemfile`, `require:`), Expert (`mix.exs`), jdtls and kotlin-lsp (Gradle), elp (rebar3), Lean (`lakefile`), and oxfmt's and oxlint's own configurations. Nothing here asks first; open untrusted repositories elsewhere.
+- **A JavaScript or TypeScript debug session listens on loopback TCP**: js-debug asks no credentials, so another local user can drive it while it runs; nvim-dap connects js-debug's child sessions only over TCP, so no pipe can replace it. On a shared machine, debug elsewhere.
 - **`:MsvcCompileDb` runs a Visual Studio project's code**: MSBuild evaluates the project and what it imports. It runs unasked only for a project whose database you made once.
 - **`error STL1000` in every C++ file of a Visual Studio project**: the toolset's C++ library asks for a newer clangd. `:MasonInstall clangd` while clangd is not running (before a C-family file is opened, or after `:lsp stop`): Mason removes the old one first, and Windows does not let go of a running program.
 - **`cmd.exe` in `:terminal` does not find a program of the current directory**: it takes `.\name` ([programs from PATH only](features/util.md#programs-from-path-only)).

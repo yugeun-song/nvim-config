@@ -109,7 +109,14 @@ local function other_languages()
     "the distribution's Bundler (Arch: ruby-bundler)",
   })
 
-  status.programs("Ruby debugger", { "rdbg" }, { ":MasonInstall rdbg" })
+  if vim.fn.has("win32") == 1 then
+    status.unsupported(
+      "Ruby debugger",
+      "rdbg serves a Unix socket, which Neovim reaches only as a named pipe here, or TCP without authentication"
+    )
+  else
+    status.programs("Ruby debugger", { "rdbg" }, { ":MasonInstall rdbg" })
+  end
 end
 
 local function parsers()

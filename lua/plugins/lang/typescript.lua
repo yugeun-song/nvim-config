@@ -12,28 +12,26 @@ return {
     -- js-debug is a mason package with no plugin to load.
     opts = function()
       local dap = require("dap")
-      local command = require("features.lsp.mason").bin("js-debug-adapter")
+      local js_debug = require("features.lang.typescript")
+
+      js_debug.watch()
 
       for _, kind in ipairs({ "node", "chrome", "msedge" }) do
         local pwa = "pwa-" .. kind
 
+        -- js-debug's server, started and ended by lua/features/lang/typescript.lua.
         if not dap.adapters[pwa] then
-          dap.adapters[pwa] = {
-            type = "server",
-            host = "localhost",
-            port = "${port}",
-            executable = { command = command, args = { "${port}" } },
-          }
+          dap.adapters[pwa] = js_debug.adapter
         end
 
         -- A launch.json written for VS Code names the adapter without the prefix.
         if not dap.adapters[kind] then
-          dap.adapters[kind] = function(cb, config)
+          dap.adapters[kind] = function(cb, config, parent)
             local native = dap.adapters[pwa]
 
             config.type = pwa
             if type(native) == "function" then
-              native(cb, config)
+              native(cb, config, parent)
             else
               cb(native)
             end

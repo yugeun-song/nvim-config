@@ -60,8 +60,10 @@ return {
       local dap = require("dap")
       local rdbg = require("features.lsp.mason").bin("rdbg")
 
-      -- Without rdbg Ruby offers no debug configuration rather than one that fails to start.
-      if vim.fn.executable(rdbg) ~= 1 then
+      -- Without rdbg Ruby offers no debug configuration rather than one that fails to start. Nor on Windows: rdbg
+      -- serves a Unix socket, which Neovim reaches there only as a named pipe, or TCP, which any local process could
+      -- reach and drive (no authentication; rdbg outlives Neovim when started through Mason's .cmd).
+      if vim.fn.has("win32") == 1 or vim.fn.executable(rdbg) ~= 1 then
         return
       end
 

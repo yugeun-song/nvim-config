@@ -333,20 +333,11 @@ function M.gdb_version(bin)
   return probe(bin).version
 end
 
--- MSYS2 puts nothing on PATH.
-local MSYS2 = { "C:/msys64/ucrt64/bin", "C:/msys64/mingw64/bin", "C:/msys64/clang64/bin" }
-
+-- From PATH only. MSYS2 puts nothing there, but C:\msys64 is no place to look unasked: any user may create it where
+-- MSYS2 is not installed. Its gdb is registered once by path (<leader>uX lists MSYS2 from the installed programs).
 local function candidates(key)
-  local names = key == HOST_ARCH and { "gdb", "gdb-multiarch" }
+  return key == HOST_ARCH and { "gdb", "gdb-multiarch" }
     or vim.list_extend(vim.list_extend({}, GDB_CANDIDATES[key] or {}), { "gdb-multiarch", "gdb" })
-
-  if vim.fn.has("win32") == 1 then
-    for _, dir in ipairs(MSYS2) do
-      vim.list_extend(names, { dir .. "/gdb.exe", dir .. "/gdb-multiarch.exe" })
-    end
-  end
-
-  return names
 end
 
 local release
@@ -392,7 +383,9 @@ local function install_hint(key)
   end
 
   if vim.fn.has("win32") == 1 then
-    return ("pacman -S mingw-w64-ucrt-x86_64-gdb%s in MSYS2"):format(native and "" or "-multiarch")
+    return ("pacman -S mingw-w64-ucrt-x86_64-gdb%s in MSYS2, then register its gdb with <leader>uX"):format(
+      native and "" or "-multiarch"
+    )
   elseif MAC then
     return "use the (lldb) configurations, or brew install gdb and codesign it"
   elseif distro_is("debian") or distro_is("ubuntu") then
