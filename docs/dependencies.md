@@ -185,3 +185,5 @@ Not from Mason: `ruff` (PATH), haskell-language-server (GHCup), alive-lsp (ocicl
 ## Parsers
 
 Built by nvim-treesitter with the `tree-sitter` CLI and a C compiler: asm, awk, bash, c, commonlisp, cpp, css, cuda, devicetree, diff, dockerfile, eex, elixir, erlang, git_config, git_rebase, gitattributes, gitcommit, haskell, heex, html, java, javascript, jsdoc, json, julia, kconfig, kotlin, linkerscript, lua, luadoc, luap, make, markdown, markdown_inline, printf, python, query, racket, regex, ruby, rust, toml, tsx, typescript, vim, vimdoc, xml, yaml.
+
+On Windows, `:TSUpdate` cannot delete a parser DLL a running Neovim has loaded; nvim-treesitter leaves it as `<lang>.so<number>`, and once the number prints as `2.96e+14` it lists the copy as a language (`Parser not available for language "markdown.so2"`). Each start deletes those copies in the background (`lua/plugins/treesitter.lua`); one another Neovim still holds goes at a later start.
