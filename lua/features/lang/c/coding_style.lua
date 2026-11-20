@@ -1,4 +1,4 @@
--- The C coding style where a project sets none: clang-format's style for a C source (.c, .h) without a
+-- The C coding style where a project sets none, in C, C++ and CUDA buffers: clang-format's style without a
 -- .clang-format, clangd's warnings for a file without a compile command, and a 100-column limit.
 local M = {}
 
@@ -28,8 +28,9 @@ local INCLUDE_CATEGORIES = table.concat({
   "{Regex: '^[^<]', Priority: 3}",
 }, ", ")
 
--- None and false are the older spellings of {Empty: false, Inline: false, Other: false} and Block.
-local C_STYLE = table.concat({
+-- None and false are the older spellings of {Empty: false, Inline: false, Other: false} and Block. clang-format finds
+-- the main header of .c, .cc, .cpp, .cxx, .m and .mm files by itself; IncludeIsMainSourceRegex adds .cu.
+local STYLE = table.concat({
   "BasedOnStyle: LLVM",
   "ColumnLimit: 0",
   "BreakBeforeBraces: Custom",
@@ -44,20 +45,9 @@ local C_STYLE = table.concat({
   "PPIndentWidth: 1",
   "IncludeBlocks: Regroup",
   "IncludeCategories: [" .. INCLUDE_CATEGORIES .. "]",
+  "IncludeIsMainSourceRegex: '\\.cu$'",
   "InsertNewlineAtEOF: true",
 }, ", ")
-
-local CPP_STYLE = table.concat({
-  "BasedOnStyle: LLVM",
-  "BreakBeforeBraces: Custom",
-  "BraceWrapping: {AfterFunction: true}",
-  "AllowShortFunctionsOnASingleLine: None",
-  "SortIncludes: Never",
-}, ", ")
-
-function M.is_c_source(buf)
-  return vim.bo[buf].filetype == "c" or vim.api.nvim_buf_get_name(buf):sub(-2) == ".h"
-end
 
 function M.clang_format_file(dir)
   return vim.fs.find({ ".clang-format", "_clang-format" }, { upward = true, path = dir, type = "file" })[1]
@@ -68,20 +58,16 @@ function M.clang_format_style(buf)
   local bo = vim.bo[buf]
 
   return ("{%s, IndentWidth: %d, TabWidth: %d, UseTab: %s}"):format(
-    M.is_c_source(buf) and C_STYLE or CPP_STYLE,
+    STYLE,
     bo.shiftwidth > 0 and bo.shiftwidth or bo.tabstop,
     bo.tabstop,
     bo.expandtab and "Never" or "ForIndentation"
   )
 end
 
--- Called from FileType, after the indentation. A project .editorconfig applies after this and wins.
+-- Called from FileType in a C, C++ or CUDA buffer, after the indentation. A project .editorconfig applies after
+-- this and wins.
 function M.apply(buf)
-  if not M.is_c_source(buf) then
-    return
-  end
-
-  local bo = vim.bo[buf]
   local name = vim.api.nvim_buf_get_name(buf)
 
   if not M.clang_format_file(name == "" and vim.fn.getcwd() or vim.fs.dirname(name)) then

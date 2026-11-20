@@ -1,21 +1,28 @@
--- C and C++ buffers: indentation from the project, else the C coding style's; gf on #include; <C-]> through tags.
+-- C-family buffers: indentation from the project, else the C coding style's; gf on #include; <C-]> through tags.
 -- The macro painter starts with the assembly painters (lua/plugins/lang/asm.lua), whose scanner it shares.
 local M = {}
 
--- gf on #include serves these; the rest serve C and C++ only.
-M.FILETYPES = { "c", "cpp", "objc", "objcpp", "cuda", "asm", "ld" }
+-- The C coding style (its indentation, clang-format's style, 100 columns) and <C-]> through tags serve these.
+M.STYLED = { "c", "cpp", "cuda" }
+
+-- clangd's languages: the styled ones and Objective-C, which keeps clang-format's defaults. lua/config/options.lua
+-- and all_ifdef_branches/filetypes.lua read them.
+M.C_FAMILY = vim.list_extend(vim.list_slice(M.STYLED), { "objc", "objcpp" })
+
+-- gf on #include serves these.
+M.FILETYPES = vim.list_extend(vim.list_slice(M.C_FAMILY), { "asm", "ld" })
 
 function M.setup()
   local group = vim.api.nvim_create_augroup("c_and_cpp", { clear = true })
 
   vim.api.nvim_create_autocmd("FileType", {
     group = group,
-    pattern = { "c", "cpp" },
+    pattern = M.STYLED,
     callback = function(args)
       require("features.lang.c.indentation").apply(args.buf)
       require("features.lang.c.coding_style").apply(args.buf)
     end,
-    desc = "Indent C/C++ per .clang-format, else tabs if the file uses them, else 4 spaces; C sources without one get 100 columns",
+    desc = "Indent C, C++ and CUDA per .clang-format, else tabs if the file uses them, else 4 spaces; 100 columns without one",
   })
 
   vim.api.nvim_create_autocmd("FileType", {
@@ -32,11 +39,11 @@ function M.setup()
     callback = function(args)
       local ft = vim.bo[args.buf].filetype
 
-      if ft == "c" or ft == "cpp" or ft == "asm" then
+      if ft == "asm" or vim.list_contains(M.STYLED, ft) then
         vim.bo[args.buf].tagfunc = ""
       end
     end,
-    desc = "Clear LSP tagfunc on C/C++ and assembler buffers so <C-]> falls back to tags file",
+    desc = "Clear LSP tagfunc on C, C++, CUDA and assembler buffers so <C-]> falls back to tags file",
   })
 end
 

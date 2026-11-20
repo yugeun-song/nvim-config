@@ -21,11 +21,13 @@ Options, motions, the file explorer, formatting, linting, following changes on d
 |---|---|---|
 | JavaScript, TypeScript, JSON, CSS, SCSS, Less, HTML | `oxfmt` | format |
 | TOML | `taplo` | format |
-| C, C++ | `clang-format` | format on request; no autoformat |
+| C, C++, CUDA, Objective-C | `clang-format` | format on request; no autoformat |
 | Kotlin | `ktlint`; `detekt` only where the project ships `config/detekt/detekt.yml` or `detekt.yml` | lint on read and save |
 | YAML | `yamllint` | lint |
 
-clang-format takes a `.clang-format` or `_clang-format` found upward; without one, the buffer's indentation with function braces on their own line, other braces attached, no one-line functions and includes left in order. yamllint takes the nearest `.yamllint`, `.yamllint.yaml` or `.yamllint.yml`, else `$YAMLLINT_CONFIG_FILE` or `~/.config/yamllint/config`, else `relaxed` without line length. Formatters for other languages are in [languages](lang.md).
+clang-format takes a `.clang-format` or `_clang-format` found upward; without one, the [C coding style](lang.md#c-and-c) in C, C++ and CUDA, and its own defaults (LLVM) in Objective-C. yamllint takes the nearest `.yamllint`, `.yamllint.yaml` or `.yamllint.yml`, else `$YAMLLINT_CONFIG_FILE` or `~/.config/yamllint/config`, else `relaxed` without line length. Formatters for other languages are in [languages](lang.md).
+
+On Windows, a linter, or a formatter that starts through `cmd.exe`, is not run for a file whose path holds `& | % ^ < > "`; Mason's programs start without `cmd.exe` ([why](util.md#no-cmdexe-between-neovim-and-a-tool)).
 
 ### Changes on disk
 

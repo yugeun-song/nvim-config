@@ -1,6 +1,15 @@
 -- C and C++: clangd, cscope and tags tuned for big trees, gf on #include, indentation from the project and
--- clang-format without autoformat, the C coding style where a project sets none, every #if branch on request, and
--- Visual Studio projects on Windows. The code lives in lua/features/lang/c/.
+-- clang-format without autoformat, the C coding style where a project sets none (C, C++, CUDA), every #if branch on
+-- request, and Visual Studio projects on Windows. The code lives in lua/features/lang/c/.
+local c = require("features.lang.c")
+local clang_format_by_ft = {}
+
+-- clang-format formats every language of clangd: without an entry a format request would go to clangd, whose fallback
+-- style (below) is not the C coding style.
+for _, ft in ipairs(c.C_FAMILY) do
+  clang_format_by_ft[ft] = { "clang_format" }
+end
+
 local specs = {
   {
     "nvim-treesitter/nvim-treesitter",
@@ -26,6 +35,10 @@ local specs = {
           "--clang-tidy",
           "--completion-style=detailed",
           "--header-insertion=never",
+          -- What clangd formats and writes (code actions, fixes) where no .clang-format is found. It takes only a
+          -- predefined style, not the C coding style itself (lua/features/lang/c/coding_style.lua), which clang-format
+          -- applies; WebKit is the nearest: 4 spaces, function braces alone, no column limit ({ 1 } spaced).
+          "--fallback-style=WebKit",
           -- Preambles on disk: a kernel preamble is 10-15 MB per open file, and seven
           -- trees open at once filled a 16 GB machine.
           "--pch-storage=disk",
@@ -66,16 +79,14 @@ local specs = {
   {
     "stevearc/conform.nvim",
     opts = {
-      formatters_by_ft = {
-        c = { "clang_format" },
-        cpp = { "clang_format" },
-      },
+      formatters_by_ft = clang_format_by_ft,
       formatters = {
         clang_format = {
+          -- The project's .clang-format, else the C coding style; Objective-C keeps clang-format's defaults (LLVM).
           prepend_args = function(_, ctx)
             local style = require("features.lang.c.coding_style")
 
-            if style.clang_format_file(ctx.dirname) then
+            if style.clang_format_file(ctx.dirname) or not vim.list_contains(c.STYLED, vim.bo[ctx.buf].filetype) then
               return {}
             end
 

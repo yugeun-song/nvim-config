@@ -28,7 +28,11 @@ vim.g.loaded_ruby_provider = 0
 
 -- Neovim types a backup (a.c.orig, a.c~) by the suffix it strips, but clangd picks the language from the last
 -- suffix, finds none, and answers every request with "invalid AST". A C-family backup stays plain text.
-local c_family = { c = true, cpp = true, objc = true, objcpp = true, cuda = true }
+local c_family = {}
+
+for _, ft in ipairs(require("features.lang.c").C_FAMILY) do
+  c_family[ft] = true
+end
 
 local function backup_filetype(strip)
   return function(path, bufnr)

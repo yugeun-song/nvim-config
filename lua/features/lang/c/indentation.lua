@@ -1,4 +1,4 @@
--- Indentation of a C or C++ buffer: a .clang-format found upward, else 8-column tabs when the file starts more
+-- Indentation of a C, C++ or CUDA buffer: a .clang-format found upward, else 8-column tabs when the file starts more
 -- lines with a tab than with two spaces, else 4 spaces. A project .editorconfig applies after this and wins.
 local M = {}
 
@@ -24,7 +24,7 @@ local USE_TAB_EXPANDS = {
 }
 
 -- The .clang-format documents clang-format 23 uses per extension, in order; "" is a first document without
--- Language. Older releases read .c as Cpp.
+-- Language. Older releases read .c as Cpp; everything else (.cu too) is Cpp.
 local LANGUAGE_ORDER = { c = { "C", "", "Cpp" }, h = { "Cpp", "", "C" } }
 
 -- The top-level keys of each YAML document, quotes stripped.
