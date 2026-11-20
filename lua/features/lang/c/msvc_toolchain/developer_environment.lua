@@ -12,6 +12,16 @@ local M = {}
 local uv = vim.uv
 local FILE = require("features.util.storage").path("state", "msvc_developer_environment.json")
 local RECHECK_NONE = 24 * 3600
+-- Records of format 1 diffed VsDevCmd's environment against Neovim's own and so also kept NVIM, the server address
+-- Neovim gives what it starts: every Neovim then took a gone instance's pipe and looked nested.
+local FORMAT = 2
+-- The line between the environment before VsDevCmd and the one after, in the capture's output.
+local MARK = "::nvim-config-vsdevcmd::"
+
+-- Neovim's own variables, never taken from a record.
+local function neovim_own(name)
+  return name:upper():find("^NVIM") ~= nil
+end
 
 local capturing = false
 
@@ -80,6 +90,10 @@ end
 -- The record still describes this machine: its toolset is there, and nothing was installed or removed beside the
 -- toolset and the SDK it chose. One from before the listings were kept is captured again, once.
 local function valid(data)
+  if data.format ~= FORMAT then
+    return false
+  end
+
   local dir = type(data.vars) == "table" and data.vars.VCToolsInstallDir
 
   if type(dir) ~= "string" or not uv.fs_stat(dir) or type(data.listings) ~= "table" then
@@ -100,7 +114,7 @@ end
 -- libuv's environment calls, not vim.env: no Vimscript round trip for forty variables at every start.
 local function apply(data)
   for name, value in pairs(data.vars or {}) do
-    if type(value) == "string" and (uv.os_getenv(name) or "") == "" then
+    if type(value) == "string" and not neovim_own(name) and (uv.os_getenv(name) or "") == "" then
       uv.os_setenv(name, value)
     end
   end
@@ -201,9 +215,22 @@ function M.capture(cb)
     vim.schedule(function()
       local script = vim.fn.tempname() .. ".cmd"
 
+      -- cmd.exe reads its script's path as a command line: & or % in it (a user name, TEMP) would run something else.
+      if require("features.util.windows.cmd_arguments").unsafe(script) then
+        return done(nil, ("the temporary directory %s holds a character cmd.exe reads as a command"):format(script))
+      end
+
+      -- The environment before and after VsDevCmd, in the same cmd.exe: what VsDevCmd changed, and only that. % is
+      -- doubled, or cmd.exe would expand it in the path.
       vim.fn.writefile({
         "@chcp 65001 >nul",
-        ('@call "%s" -arch=%s -host_arch=%s -no_logo >nul 2>&1'):format(devcmd:gsub("/", "\\"), a, a),
+        "@set",
+        "@echo " .. MARK,
+        ('@call "%s" -arch=%s -host_arch=%s -no_logo >nul 2>&1'):format(
+          devcmd:gsub("/", "\\"):gsub("%%", "%%%%"),
+          a,
+          a
+        ),
         "@set",
       }, script)
 
@@ -211,13 +238,15 @@ function M.capture(cb)
         vim.schedule(function()
           os.remove(script)
 
-          local after = parse_set(dev.stdout or "")
+          local out = dev.stdout or ""
+          local at = out:find(MARK, 1, true)
+          local after = parse_set(at and out:sub(at + #MARK) or "")
 
-          if dev.code ~= 0 or not after.VCToolsInstallDir then
+          if dev.code ~= 0 or not at or not after.VCToolsInstallDir then
             return done(nil, "VsDevCmd did not set up the MSVC tools")
           end
 
-          local before, seen = vim.fn.environ(), {}
+          local before, seen = parse_set(out:sub(1, at - 1)), {}
 
           for name, value in pairs(before) do
             seen[name:lower()] = value
@@ -228,7 +257,13 @@ function M.capture(cb)
           for name, value in pairs(after) do
             local lower = name:lower()
 
-            if lower ~= "path" and lower ~= "prompt" and not name:find("^__") and seen[lower] ~= value then
+            if
+              lower ~= "path"
+              and lower ~= "prompt"
+              and not name:find("^__")
+              and not neovim_own(name)
+              and seen[lower] ~= value
+            then
               vars[name] = value
             end
           end
@@ -251,6 +286,7 @@ function M.capture(cb)
           end
 
           local data = {
+            format = FORMAT,
             vs = { name = vs.displayName, version = vs.installationVersion, path = vs.installationPath },
             vars = vars,
             path = path,

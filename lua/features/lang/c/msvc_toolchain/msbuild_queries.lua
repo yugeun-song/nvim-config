@@ -286,7 +286,17 @@ local function ask(msbuild, lines, hooks, opts, done)
     return done({ code = -1, stdout = "", stderr = "could not write MSBuild's project: " .. tostring(why) })
   end
 
-  local cmd = { msbuild, files.project, "-nologo", "-nr:false", "-t:" .. TARGET, "-getTargetResult:" .. TARGET }
+  -- -noAutoResponse: MSBuild would also read a Directory.Build.rsp in any directory above the generated project, which
+  -- sits in the temporary directory.
+  local cmd = {
+    msbuild,
+    files.project,
+    "-nologo",
+    "-noAutoResponse",
+    "-nr:false",
+    "-t:" .. TARGET,
+    "-getTargetResult:" .. TARGET,
+  }
 
   if opts.parallel then
     cmd[#cmd + 1] = "-m"
