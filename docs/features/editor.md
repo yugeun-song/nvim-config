@@ -88,6 +88,7 @@ Korean input without leaving Normal mode in Hangul.
 ### What it does
 
 - **`langmap`** maps the Dubeolsik jamo to their QWERTY keys, so Normal-mode keys typed in Hangul mode work.
+
 - **English on leaving Insert.** On `InsertLeave` and `FocusGained` the IME is set to English, never to Korean, and never while another program has the focus or no UI is attached (the switch acts on the foreground window, which a headless Neovim does not have). Tools are tried in order; a failing one hands over to the next, and the last working one goes first:
 
   | System | Tools, in order |
@@ -98,7 +99,9 @@ Korean input without leaving Normal mode in Hangul.
   | WSL | `im-select.exe 1033` |
 
   On Windows the switch is a line to the running indicator watcher's stdin, starting no process.
+
 - **foot**: its private IME mode sequence (through `nvim_ui_send`) keeps the IME on only in Insert mode.
+
 - **Statusline**: `󰬈 CAPS` while Caps Lock is on, and `한`, `EN` (Caps Lock on) or `en`; no IME mark while the input method does not answer. `vim.g.caps_state` and `vim.g.im_state` hold the same. Every reader pauses while Neovim is unfocused.
 
   | System | Caps Lock | IME |

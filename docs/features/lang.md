@@ -15,9 +15,13 @@ C and the Linux kernel first: clangd, cscope and `tags` tuned for big trees, ass
 ## Assembly
 
 - **Filetypes**: `.S`, `.s`, `.sx` are `asm`; `*.lds` and `*.lds.S` are `ld`. Parsers: `asm`, `c`, `cpp`, `linkerscript`, `devicetree`.
+
 - **`.S` and `.s`**: a line that starts with a preprocessor directive is parsed as C (`after/queries/asm/injections.scm`); a `#` comment after an instruction stays a comment. This is injection, not preprocessing: `#if 0` bodies stay highlighted.
+
 - **Assembly colours** (`asm/syntax_highlighting.lua`) in `asm` buffers and in the `asm("…")` templates of C, C++ and CUDA, since tree-sitter-asm misparses labels, dotted mnemonics and GCC operands (`queries/asm/highlights.scm` keeps only its comments and strings). CUDA's device templates are PTX: its registers (`%r1`, `%rd1`, `%%tid.x`), operand types (`.u32`, `.pred`), guards (`@p`) and `{ }` scopes read as such. A token it does not know stays plain.
+
 - **Macro bodies** (`c/macro_body_highlighting.lua`): after `#x`, `a##b` or a macro used as an `asm` template, tree-sitter can drop a quote and swap strings and code. A `#define` body is re-parsed with those constructs masked, a function line gets lexer colours, and `asm` templates keep their assembly colours.
+
 - **`gd` and `K` in assembler** (`asm/definition_navigation.lua`), in order:
   1. clangd's answer for a word's `#define` or on an `#include` line;
   2. the definitions in the file itself, from `tags` or spelled on a line (label, `=`, `.set`, `.equ`, `.macro`, `.req`), alone unless `#if` or `.if` encloses them;
@@ -50,7 +54,9 @@ Windows only (`c/msvc_toolchain/`).
 ## Common Lisp
 
 - The `commonlisp` parser highlights `lisp` buffers. [alive-lsp](https://github.com/nobody-famous/alive-lsp) runs in SBCL as the language server, enabled when `sbcl` is on PATH and its directory holds `ocicl.csv`. `ocicl lint` adds INFO diagnostics on read and write when `ocicl` is on PATH. `'` and `` ` `` are not auto-paired and nothing is formatted on save. `.el` files get neither server, linter nor REPL keys.
+
 - `scripts/alive_lsp_over_stdio.lisp` runs alive-lsp over stdio instead of a TCP port, turns `*read-eval*` off, and reshapes the hover, definition, formatting and shutdown replies. It calls alive's internal `create-deps`: re-check it before moving the pin.
+
 - Install alive-lsp into `stdpath("data")/nvim-config/alive_lsp` (`~/.local/share/nvim/nvim-config/alive_lsp` on Linux), pinned to the v0.4.5 commit:
 
   ```sh
