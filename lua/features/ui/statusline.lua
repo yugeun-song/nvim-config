@@ -179,6 +179,33 @@ local function watch()
   })
 end
 
+-- Text shown as it is. lualine puts a component's text into 'statusline', where %{expr} runs Vimscript (system()
+-- included), and escapes only its own components (branch, filename); a git tag, a directory or a debug configuration's
+-- name comes from a repository.
+function M.escape(text)
+  return type(text) == "string" and (text:gsub("%%", "%%%%")) or text
+end
+
+-- Every function component in opts gets M.escape after its own fmt, except those in keep, which build statusline
+-- syntax on purpose (LazyVim's pretty_path, which escapes its own text).
+function M.escape_components(opts, keep)
+  for _, kind in ipairs({ "sections", "inactive_sections", "winbar", "inactive_winbar", "tabline" }) do
+    for _, section in pairs(type(opts[kind]) == "table" and opts[kind] or {}) do
+      for i, component in ipairs(type(section) == "table" and section or {}) do
+        if type(component) == "function" then
+          section[i] = { component, fmt = M.escape }
+        elseif type(component) == "table" and type(component[1]) == "function" and not keep[component] then
+          local fmt = component.fmt
+
+          component.fmt = fmt and function(text, ctx)
+            return M.escape(fmt(text, ctx))
+          end or M.escape
+        end
+      end
+    end
+  end
+end
+
 -- Adds the tag to lualine's section b; nothing where git is not installed.
 function M.add_git_tag(opts)
   if vim.fn.executable("git") ~= 1 then

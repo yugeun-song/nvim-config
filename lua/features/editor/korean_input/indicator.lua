@@ -300,7 +300,7 @@ function M.statusline_components()
   if has_caps then
     components[#components + 1] = {
       function()
-        return state.caps
+        return require("features.ui.statusline").escape(state.caps)
       end,
       color = { fg = "#f7768e", gui = "bold" },
       cond = function()
@@ -313,7 +313,7 @@ function M.statusline_components()
   if has_im then
     components[#components + 1] = {
       function()
-        return state.im
+        return require("features.ui.statusline").escape(state.im)
       end,
       color = function()
         return { fg = state.im == "한" and "#ff9e64" or "#7aa2f7", gui = "bold" }

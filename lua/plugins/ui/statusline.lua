@@ -1,8 +1,12 @@
--- The statusline: the full path, an encoding and line-ending flag, and the latest git tag after the branch.
+-- The statusline: the full path, an encoding and line-ending flag, and the latest git tag after the branch; no
+-- component's text is read as statusline syntax (lua/features/ui/statusline.lua).
 return {
   "nvim-lualine/lualine.nvim",
   opts = function(_, opts)
-    opts.sections.lualine_c[4] = { LazyVim.lualine.pretty_path({ length = 0 }) }
+    local statusline = require("features.ui.statusline")
+    local path = { LazyVim.lualine.pretty_path({ length = 0 }) }
+
+    opts.sections.lualine_c[4] = path
 
     local FMT_LABEL = { unix = "LF", dos = "CRLF", mac = "CR" }
     local cache = {}
@@ -81,6 +85,9 @@ return {
     })
 
     -- After the branch, the latest git tag (lua/features/ui/statusline.lua).
-    require("features.ui.statusline").add_git_tag(opts)
+    statusline.add_git_tag(opts)
+
+    -- LazyVim's and these; a component added later (the IME marks) escapes its own text.
+    statusline.escape_components(opts, { [path] = true })
   end,
 }
