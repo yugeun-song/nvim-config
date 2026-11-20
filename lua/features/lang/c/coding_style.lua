@@ -83,10 +83,6 @@ function M.apply(buf)
   local bo = vim.bo[buf]
   local name = vim.api.nvim_buf_get_name(buf)
 
-  if bo.buftype == "" and bo.modifiable and not name:find("://", 1, true) and not vim.uv.fs_stat(name) then
-    bo.fileformat = "unix"
-  end
-
   if not M.clang_format_file(name == "" and vim.fn.getcwd() or vim.fs.dirname(name)) then
     vim.opt_local.textwidth = M.TEXT_WIDTH
     vim.opt_local.colorcolumn = "+1"
