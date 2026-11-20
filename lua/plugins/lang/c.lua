@@ -52,13 +52,6 @@ local specs = {
           "-j=" .. vim.uv.available_parallelism(),
         },
         cmd_env = { TMPDIR = tmp, TMP = tmp, TEMP = tmp },
-        -- A buffer with no file (:enew, then a C filetype) has no URI clangd can read, and it would refuse every
-        -- request ("unresolvable URI"). Others find their root by the root markers, as Neovim does without this.
-        root_dir = function(bufnr, on_dir)
-          if vim.api.nvim_buf_get_name(bufnr) ~= "" then
-            on_dir(vim.fs.root(bufnr, vim.lsp.config.clangd.root_markers or {}))
-          end
-        end,
       })
 
       local init_options = opts.servers.clangd.init_options or {}

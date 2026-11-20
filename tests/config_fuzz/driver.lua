@@ -594,6 +594,17 @@ local function after(step)
   end
 
   held = #recorder.held_back
+
+  -- A buffer without a file reaches a server as the URI "file://", which none can read
+  -- (lua/features/lsp/file_buffers.lua).
+  for _, client in ipairs(vim.lsp.get_clients()) do
+    for buf in pairs(client.attached_buffers) do
+      if vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_buf_get_name(buf) == "" then
+        fail_once(("a language server on a buffer without a file: %s"):format(client.name), step)
+      end
+    end
+  end
+
   watch_notify()
 end
 

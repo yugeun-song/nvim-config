@@ -2,6 +2,10 @@
 
 Rules that keep a language server off where it should not run, the line diagnostics it shows, and the Mason packages the configuration installs. The servers themselves are set up per language ([languages](lang.md)). Specs: `lua/plugins/lsp/`; code: `lua/features/lsp/`.
 
+## Buffers without a file
+
+No language server starts for a buffer without a file (`:enew`, then a filetype): Neovim would send it the URI `file://`, which no server reads (clangd refuses every request, ruff panicked). One gate (`file_buffers.lua`) comes before every enabled server's `root_dir`, whether its spec, nvim-lspconfig or mason-lspconfig set it, and before the `root_markers` of those without one. The last `vim.lsp.config()` wins, so the gate is given to the specs' own before anything is enabled, to each enabled server by name once nvim-lspconfig has set them up, and after each Mason install; nothing is started, so nothing is sent. A server enabled while such a buffer was open leaves it at once. Not through `vim.lsp.config("*")`: rustaceanvim merges that into its rust-analyzer and calls `root_dir` the old way. Writing the buffer to a file and opening it again (`:e`) attaches the servers.
+
 ## Attach rules
 
 Attach rules turn a language server off for generated or vendored subtrees.
