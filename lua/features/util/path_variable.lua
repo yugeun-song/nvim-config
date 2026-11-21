@@ -11,10 +11,18 @@ M.SEP = WIN and ";" or ":"
 
 local function absolute(dir)
   if WIN then
-    -- A drive path or a UNC path, possibly quoted as cmd.exe accepts it.
+    dir = vim.trim(dir)
+
+    -- A drive path or a UNC path, possibly quoted as cmd.exe accepts it. A quote left open makes libuv read the rest of
+    -- PATH as one directory.
+    if select(2, dir:gsub('"', "")) % 2 == 1 then
+      return false
+    end
+
     return dir:match('^"?%a:[/\\]') ~= nil or dir:match('^"?[/\\][/\\]') ~= nil
   end
 
+  -- As written: execvp() and Neovim read " /usr/bin" as a directory below the current one.
   return dir:sub(1, 1) == "/"
 end
 
@@ -30,13 +38,38 @@ local function home_expanded(dir)
   return dir
 end
 
+-- PATH's entries. Windows: cmd.exe and libuv read a quoted part as one directory, ; included, so ; splits only outside
+-- quotes; split there, one half of "C:\a;b" kept without the other would leave a quote open.
+local function entries(path)
+  if not WIN then
+    return vim.split(path, M.SEP, { plain = true })
+  end
+
+  local out, from, quoted = {}, 1, false
+
+  for i = 1, #path do
+    local c = path:sub(i, i)
+
+    if c == '"' then
+      quoted = not quoted
+    elseif c == ";" and not quoted then
+      out[#out + 1] = path:sub(from, i - 1)
+      from = i + 1
+    end
+  end
+
+  out[#out + 1] = path:sub(from)
+
+  return out
+end
+
 function M.clean(path)
   local kept = {}
 
-  for dir in vim.gsplit(path or "", M.SEP, { plain = true }) do
+  for _, dir in ipairs(entries(path or "")) do
     dir = home_expanded(dir)
 
-    if vim.trim(dir) ~= "" and absolute(vim.trim(dir)) then
+    if absolute(dir) then
       kept[#kept + 1] = dir
     end
   end
@@ -44,11 +77,12 @@ function M.clean(path)
   return table.concat(kept, M.SEP)
 end
 
--- path with dir after it, never leaving an empty entry; a dir that is not absolute is left out.
+-- path with dir after it, never leaving an empty entry; a dir that is not absolute, or holds the separator (which would
+-- split it into entries, relative ones among them), is left out.
 function M.append(path, dir)
   path = path or ""
 
-  if type(dir) ~= "string" or not absolute(vim.trim(dir)) then
+  if type(dir) ~= "string" or dir:find(M.SEP, 1, true) or not absolute(dir) then
     return path
   end
 
