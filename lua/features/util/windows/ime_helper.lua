@@ -26,6 +26,23 @@ local COMPILER_WAIT_MS = 20000
 local SELFTEST_TIMEOUT_MS = 5000
 local RECHECK_MS = 2000
 
+-- The cl of the toolset the MSVC environment names (Neovim's, from a Developer prompt or the captured one in
+-- lua/features/lang/c/msvc_toolchain/developer_environment.lua), by its full path: PATH can list folders other
+-- users may write before the toolset's own.
+local function cl_in_toolset()
+  local dir = uv.os_getenv("VCToolsInstallDir")
+
+  if not dir or dir == "" then
+    return nil
+  end
+
+  local host = (uv.os_uname().machine or ""):lower():find("arm") and "Hostarm64" or "Hostx64"
+  local cl = vim.fs.joinpath(dir, "bin", host, "x64", "cl.exe")
+  local st = uv.fs_stat(cl)
+
+  return st and st.type == "file" and cl or nil
+end
+
 -- cl first, as the source is written for it. Warnings fail the build (/WX, -Werror), the linker's too: a library
 -- for another machine is only a warning otherwise. The C runtime is linked in, so the program loads no DLL but
 -- the system's own.
@@ -33,9 +50,10 @@ local COMPILERS = {
   {
     name = "cl",
     version = "msvc",
-    args = function(out)
+    locate = cl_in_toolset,
+    args = function(out, program)
       return {
-        "cl",
+        program,
         "/nologo",
         -- The object beside the build's own temporary .exe: another Neovim may be building at the same time.
         "/Fo" .. out:sub(1, -5) .. ".obj",
@@ -58,9 +76,14 @@ local COMPILERS = {
   {
     name = "clang",
     version = "clang",
-    args = function(out)
+    locate = function()
+      local clang = vim.fn.exepath("clang")
+
+      return clang ~= "" and clang or nil
+    end,
+    args = function(out, program)
       return {
-        "clang",
+        program,
         "--target=x86_64-pc-windows-msvc",
         "-O2",
         "-fms-runtime-lib=static",
@@ -87,15 +110,73 @@ local LOAD_ERRORS = {
   [0xC0000005] = "it crashed",
 }
 
+-- What the build takes from the environment but its own arguments: cl's and link's extra options.
+local BUILD_ENV = { CL = "", _CL_ = "", LINK = "", _LINK_ = "" }
+
+-- A failed build is tried again once a day, or at once when something it depends on changed (retry_key).
+local RETRY_AFTER_S = 24 * 3600
+
 local exe_path, failure
 local checked_at = 0
 local building = false
 local waiting = {}
+local stamped = {}
 
+-- A build's name: a hash of the source and of how each compiler is run, and the source's size, so a changed flag
+-- builds anew as a changed source does. Hashed again only when the source's time or size moves; nil in a libuv
+-- callback before the first hash.
 local function stamp()
   local st = uv.fs_stat(SRC)
 
-  return st and st.type == "file" and ("%x-%x"):format(st.mtime.sec, st.size)
+  if not st or st.type ~= "file" then
+    return nil
+  end
+
+  if stamped.sec == st.mtime.sec and stamped.nsec == st.mtime.nsec and stamped.size == st.size then
+    return stamped.value
+  end
+
+  if vim.in_fast_event() then
+    return stamped.value
+  end
+
+  local f = io.open(SRC, "rb")
+  local text = f and f:read("*a")
+
+  if f then
+    f:close()
+  end
+
+  if not text then
+    return nil
+  end
+
+  local how = {}
+
+  for _, c in ipairs(COMPILERS) do
+    how[#how + 1] = table.concat(c.args("OUT", c.name), " ")
+  end
+
+  local value = ("%s-%x"):format(vim.fn.sha256(text .. "\0" .. table.concat(how, "\n")):sub(1, 16), #text)
+
+  stamped = { sec = st.mtime.sec, nsec = st.mtime.nsec, size = st.size, value = value }
+
+  return value
+end
+
+-- What could make a failed build pass now: the compilers there are, and the PATH, INCLUDE and LIB they read.
+local function retry_key()
+  local parts = {}
+
+  for _, c in ipairs(COMPILERS) do
+    parts[#parts + 1] = c.locate() or ""
+  end
+
+  for _, name in ipairs({ "PATH", "INCLUDE", "LIB" }) do
+    parts[#parts + 1] = uv.os_getenv(name) or ""
+  end
+
+  return vim.fn.sha256(table.concat(parts, "\n")):sub(1, 16)
 end
 
 local function exe_for(s)
@@ -115,6 +196,26 @@ local function valid_exe(path)
   local st = uv.fs_stat(path)
 
   return st ~= nil and st.type == "file" and st.size > 0 and vim.fs.basename(path):match(EXE_NAME) ~= nil
+end
+
+-- The newest build in DIR but except: what ran before a newer source failed to build (prune() removes older
+-- builds only after one succeeds).
+local function newest_build(except)
+  local best, best_time
+
+  for name in vim.fs.dir(DIR) do
+    local path = vim.fs.joinpath(DIR, name)
+
+    if path ~= except and valid_exe(path) then
+      local st = uv.fs_stat(path)
+
+      if st and (not best_time or st.mtime.sec > best_time) then
+        best, best_time = path, st.mtime.sec
+      end
+    end
+  end
+
+  return best
 end
 
 local function finish(exe, why)
@@ -224,9 +325,15 @@ local function announce(compiler)
 end
 
 local function compile(s, is_second_try)
-  local found = vim.tbl_filter(function(c)
-    return vim.fn.executable(c.name) == 1
-  end, COMPILERS)
+  local found = {}
+
+  for _, c in ipairs(COMPILERS) do
+    local program = c.locate()
+
+    if program then
+      found[#found + 1] = { compiler = c, program = program }
+    end
+  end
 
   if #found == 0 then
     -- cl comes with the MSVC environment, which a first start, or one after a Visual Studio update, captures in
@@ -237,7 +344,10 @@ local function compile(s, is_second_try)
       end, COMPILER_WAIT_MS)
     end
 
-    return finish(nil, "no Visual Studio cl, nor clang targeting MSVC, on PATH; the features that need it are off")
+    return finish(
+      nil,
+      "no Visual Studio cl (its MSVC environment), nor clang targeting MSVC on PATH; the features that need it are off"
+    )
   end
 
   vim.fn.mkdir(DIR, "p")
@@ -248,16 +358,17 @@ local function compile(s, is_second_try)
   local transcript = {}
 
   local function try(i)
-    local c = found[i]
+    local c = found[i] and found[i].compiler
 
     if not c then
       os.remove(tmp)
-      pcall(vim.fn.writefile, transcript, log)
+      -- The first line: what to compare with later, and when.
+      pcall(vim.fn.writefile, vim.list_extend({ ("retry %s %d"):format(retry_key(), os.time()) }, transcript), log)
 
-      return finish(nil, "no compiler built it; " .. log .. " has their output, delete it to retry")
+      return finish(nil, "no compiler built it; " .. log .. " has their output")
     end
 
-    local cmd = c.args(tmp)
+    local cmd = c.args(tmp, found[i].program)
 
     local function failed(why, res)
       vim.list_extend(transcript, { "$ " .. table.concat(cmd, " "), why })
@@ -268,7 +379,9 @@ local function compile(s, is_second_try)
       return try(i + 1)
     end
 
-    local ok = pcall(vim.system, cmd, { cwd = DIR, text = true, timeout = BUILD_TIMEOUT_MS }, function(res)
+    local options = { cwd = DIR, text = true, timeout = BUILD_TIMEOUT_MS, env = BUILD_ENV }
+
+    local ok = pcall(vim.system, cmd, options, function(res)
       vim.schedule(function()
         os.remove(object)
 
@@ -355,6 +468,10 @@ function M.path(opts)
   local s = stamp()
 
   if not s then
+    if vim.in_fast_event() then
+      return nil, "not looked for yet"
+    end
+
     exe_path, failure = false, "native/windows_ime_helper.c is missing"
 
     return nil, failure
@@ -368,10 +485,40 @@ function M.path(opts)
     return exe
   end
 
-  if uv.fs_stat(log_for(s)) then
-    exe_path, failure = false, "build failed; " .. log_for(s) .. " has the compiler output, delete it to retry"
+  local log = log_for(s)
 
-    return nil, failure
+  if uv.fs_stat(log) then
+    local f = io.open(log, "rb")
+    local first = f and f:read("*l") or ""
+
+    if f then
+      f:close()
+    end
+
+    local key, when = first:match("^retry (%x+) (%d+)$")
+
+    -- Something the build depends on changed, or a day passed: it is tried again below.
+    if not vim.in_fast_event() and (key ~= retry_key() or os.time() - (tonumber(when) or 0) > RETRY_AFTER_S) then
+      os.remove(log)
+    else
+      local older = newest_build(exe)
+
+      failure = "the build of the current source failed; " .. log .. " has the compiler output"
+      M.report(
+        "windows_ime_helper: " .. failure .. (older and "; the previous build runs meanwhile" or ""),
+        vim.log.levels.ERROR
+      )
+
+      if older then
+        exe_path, checked_at = older, uv.now()
+
+        return older
+      end
+
+      exe_path = false
+
+      return nil, failure
+    end
   end
 
   if opts and opts.build == false then
@@ -393,31 +540,44 @@ local watch_failure
 -- why the output is refused, if it is (anything but two binary digits, or a line that never ends).
 local function accept_output(pending, data)
   local lines = {}
+  local text = (pending or "") .. (data or "")
+  local start = 1
 
-  pending = (pending or "") .. (data or "")
-  if #pending > 64 then
-    return lines, "", "watch-input-state: output without line ends"
-  end
-
+  -- Every whole line first: Neovim may read a burst of them at once, after a while busy.
   while true do
-    local line, rest = pending:match("^([^\n]*)\n(.*)$")
+    local stop = text:find("\n", start, true)
 
-    if not line then
-      return lines, pending, nil
+    if not stop then
+      break
     end
 
-    pending = rest
+    local line = text:sub(start, stop - 1)
+
     if not line:match("^[01][01]$") then
       return lines, "", "watch-input-state: unexpected output"
     end
 
     lines[#lines + 1] = line
+    start = stop + 1
   end
+
+  local rest = text:sub(start)
+
+  -- Only what follows the last line end is unfinished, and a line is three bytes.
+  if #rest > 64 then
+    return lines, "", "watch-input-state: output without line ends"
+  end
+
+  return lines, rest, nil
 end
 
 M._accept_output = accept_output
 M._valid_exe = valid_exe
 M._describe = describe
+M._stamp = stamp
+M._retry_key = retry_key
+M._exe_for = exe_for
+M._log_for = log_for
 
 -- The one long-lived `windows_ime_helper watch-input-state`: on_data gets each "<caps><ime>" line. Reused while it
 -- runs. Anything else on its stdout means the two sides disagree, and the watcher is stopped rather than believed.
@@ -433,6 +593,7 @@ function M.watch(on_data)
   end
 
   local pending = ""
+  local said, said_pending = "", ""
   local proc
 
   local function reject(why)
@@ -447,7 +608,30 @@ function M.watch(on_data)
 
   local is_spawned, started = pcall(vim.system, { exe, "watch-input-state", tostring(vim.fn.getpid()) }, {
     stdin = true,
-    stderr = true,
+    -- Kept for the report when it ends; an IME that did not switch is said at once, and the watcher goes on.
+    stderr = function(_, data)
+      if not data then
+        return
+      end
+
+      said = (said .. data):sub(-4096)
+      said_pending = said_pending .. data
+
+      while true do
+        local line, rest = said_pending:match("^([^\n]*)\n(.*)$")
+
+        if not line then
+          break
+        end
+
+        said_pending = rest
+        if line:find("did not take the mode", 1, true) then
+          M.report("windows_ime_helper " .. vim.trim(line))
+        end
+      end
+
+      said_pending = said_pending:sub(-1024)
+    end,
     text = true,
     stdout = function(_, data)
       if not data then
@@ -475,7 +659,7 @@ function M.watch(on_data)
     -- 0 is Neovim closing it, 15 this side stopping it; anything else is the watcher failing.
     if res.code ~= 0 and res.signal ~= 15 and not watch_failure then
       watch_failure = "watch-input-state: " .. describe(res)
-      M.report_exit("watch-input-state", res)
+      M.report_exit("watch-input-state", vim.tbl_extend("force", res, { stderr = said }))
     end
   end)
 

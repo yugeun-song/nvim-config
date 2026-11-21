@@ -56,6 +56,12 @@ check(#lines == 1 and why ~= nil, "lines before a bad one are kept, the bad one 
 lines, rest, why = accept("", ("1"):rep(65))
 check(why ~= nil and rest == "", "a line that never ends is refused")
 
+lines, rest, why = accept("", ("01\n"):rep(40))
+check(#lines == 40 and rest == "" and not why, "a burst of 40 whole lines read at once is taken")
+
+lines, rest, why = accept("", ("01\n"):rep(40) .. "1")
+check(#lines == 40 and rest == "1" and not why, "a burst, then half a line that waits")
+
 lines, rest, why = accept(nil, nil)
 check(#lines == 0 and rest == "" and not why, "nothing is nothing")
 

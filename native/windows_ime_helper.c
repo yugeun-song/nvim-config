@@ -162,6 +162,7 @@ typedef enum _SHIM_RESULT
     SHIM_TARGET_IS_SHIM,
     SHIM_TARGET_IS_SELF,
     SHIM_CANNOT_IDENTIFY,
+    SHIM_DIRECTORY_SPLITS_PATH,
     SHIM_BAD_ARGUMENT
 } SHIM_RESULT;
 
@@ -228,8 +229,8 @@ static BOOL IsImeNative(void)
     return isNative;
 }
 
-// Clears only the native bit, so the keyboard layout and the user's other IME modes survive. No IME, or one
-// already alphanumeric, is success: there is nothing to change.
+// Clears only the native bit, so the keyboard layout and the user's other IME modes survive. No IME window, or an
+// IME already alphanumeric, is success: there is nothing to change. An IME window that does not answer is not.
 static int SetImeEnglish(void)
 {
     HWND ime = GetForegroundImeWindow(NULL);
@@ -237,10 +238,17 @@ static int SetImeEnglish(void)
     LPARAM english = 0;
     int result = EXIT_DONE;
 
-    if (QueryIme(ime, IMC_GETCONVERSIONMODE, 0, &conversionMode) && (conversionMode & IME_CMODE_NATIVE))
+    if (ime != NULL && IsWindow(ime))
     {
-        english = (LPARAM)(conversionMode & ~(DWORD_PTR)IME_CMODE_NATIVE);
-        result = QueryIme(ime, IMC_SETCONVERSIONMODE, english, NULL) ? EXIT_DONE : EXIT_FAILED;
+        if (!QueryIme(ime, IMC_GETCONVERSIONMODE, 0, &conversionMode))
+        {
+            result = EXIT_FAILED;
+        }
+        else if (conversionMode & IME_CMODE_NATIVE)
+        {
+            english = (LPARAM)(conversionMode & ~(DWORD_PTR)IME_CMODE_NATIVE);
+            result = QueryIme(ime, IMC_SETCONVERSIONMODE, english, NULL) ? EXIT_DONE : EXIT_FAILED;
+        }
     }
 
     SecureZeroMemory(&english, sizeof(english));
@@ -443,9 +451,11 @@ static int WatchIndicatorState(_In_ DWORD ownerPid, _In_ DWORD intervalMs)
             break;
         }
 
-        if (InterlockedExchange(&gs_isEnglishWanted, 0))
+        // Said, and the watcher goes on: Neovim shows the line while it runs.
+        if (InterlockedExchange(&gs_isEnglishWanted, 0) && SetImeEnglish() != EXIT_DONE)
         {
-            SetImeEnglish();
+            fwprintf(stderr, L"watch-input-state: the foreground window's IME did not take the mode in %d ms\n",
+                     IME_TIMEOUT_MS);
         }
 
         if (mode == MODE_PAUSE)
@@ -941,6 +951,8 @@ static const wchar_t *DescribeShimResult(_In_ SHIM_RESULT result)
         return L"the program is this shim";
     case SHIM_CANNOT_IDENTIFY:
         return L"cannot identify the program's file";
+    case SHIM_DIRECTORY_SPLITS_PATH:
+        return L"the program's directory holds a ';', which would split it on PATH";
     case SHIM_BAD_ARGUMENT:
     default:
         return L"invalid argument";
@@ -1168,8 +1180,8 @@ _Success_(return != FALSE) static BOOL GetFileId(_In_opt_z_ const wchar_t *path,
 }
 
 // An existing .exe or .com on a local disk that is neither this shim nor another one: shims naming each other
-// would start one another forever, and a mapped network drive is a share by another name. What cannot be checked
-// is refused.
+// would start one another forever, and a mapped network drive is a share by another name. Its directory goes first
+// on its PATH, where a ';' would split it and leave the rest relative. What cannot be checked is refused.
 static SHIM_RESULT CheckShimTarget(_In_opt_z_ const wchar_t *target, _In_opt_z_ const wchar_t *self,
                                    _Out_ DWORD *lastError)
 {
@@ -1203,6 +1215,11 @@ static SHIM_RESULT CheckShimTarget(_In_opt_z_ const wchar_t *target, _In_opt_z_ 
          CompareStringOrdinal(extension, -1, L".com", -1, TRUE) != CSTR_EQUAL))
     {
         return SHIM_NOT_A_PROGRAM;
+    }
+
+    if (wmemchr(target, L';', (size_t)(separator - target)) != NULL)
+    {
+        return SHIM_DIRECTORY_SPLITS_PATH;
     }
 
     root[0] = target[0];
@@ -1449,7 +1466,9 @@ static const wchar_t *SkipProgramName(_In_opt_z_ const wchar_t *commandLine)
 }
 
 // The program's own directory first on its PATH, as where it ships: MSYS2's cscope needs MSYS2's sort, not
-// Windows'. FALSE when it cannot be done whole; the caller does not run the program then.
+// Windows'. Only as an absolute entry: a drive's root keeps its separator, since "C:" alone is drive C's current
+// directory, and a directory holding a ';' is refused, since it would split into a relative entry. FALSE when it
+// cannot be done whole; the caller does not run the program then.
 static BOOL PrependOwnDirectory(_In_opt_z_ const wchar_t *target, _Out_ DWORD *lastError)
 {
     const wchar_t *separator = NULL;
@@ -1477,7 +1496,19 @@ static BOOL PrependOwnDirectory(_In_opt_z_ const wchar_t *target, _Out_ DWORD *l
         return FALSE;
     }
 
+    // C:\tool.exe lives in C:\, never in C:.
     directoryLength = (size_t)(separator - target);
+    if (directoryLength == 2)
+    {
+        directoryLength = 3;
+    }
+
+    if (wmemchr(target, L';', directoryLength) != NULL)
+    {
+        *lastError = ERROR_BAD_PATHNAME;
+        return FALSE;
+    }
+
     SetLastError(ERROR_SUCCESS);
     oldLength = GetEnvironmentVariableW(L"PATH", NULL, 0);
     if (oldLength == 0 && GetLastError() != ERROR_ENVVAR_NOT_FOUND && GetLastError() != ERROR_SUCCESS)
@@ -1542,10 +1573,8 @@ static void LogShimFailure(_In_opt_z_ const wchar_t *shim, _In_opt_z_ const wcha
     wchar_t *separator = NULL;
     SYSTEMTIME now;
     LARGE_INTEGER size = { 0 };
-    LARGE_INTEGER zero = { 0 };
     HANDLE file = INVALID_HANDLE_VALUE;
     DWORD written = 0;
-    BOOL isPositioned = FALSE;
     int bytes = 0;
 
     ZeroMemory(&now, sizeof(now));
@@ -1581,20 +1610,28 @@ static void LogShimFailure(_In_opt_z_ const wchar_t *shim, _In_opt_z_ const wcha
         goto Cleanup;
     }
 
-    file = CreateFileW(path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_ALWAYS,
-                       FILE_ATTRIBUTE_NORMAL, NULL);
+    // Opened to append only, every write lands at the end, whatever another shim wrote meanwhile.
+    file = CreateFileW(path, FILE_APPEND_DATA | FILE_READ_ATTRIBUTES,
+                       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL,
+                       NULL);
     if (file == INVALID_HANDLE_VALUE || GetFileType(file) != FILE_TYPE_DISK || !GetFileSizeEx(file, &size))
     {
         goto Cleanup;
     }
 
-    isPositioned = size.QuadPart > SHIM_LOG_MAX_BYTES
-                       ? SetFilePointerEx(file, zero, NULL, FILE_BEGIN) && SetEndOfFile(file)
-                       : SetFilePointerEx(file, zero, NULL, FILE_END);
-    if (isPositioned)
+    // Past its limit the log starts over: a line another shim writes between the two opens goes with the rest.
+    if (size.QuadPart > SHIM_LOG_MAX_BYTES)
     {
-        WriteFile(file, utf8, (DWORD)(bytes - 1), &written, NULL);
+        CloseHandle(file);
+        file = CreateFileW(path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
+                           TRUNCATE_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (file == INVALID_HANDLE_VALUE || GetFileType(file) != FILE_TYPE_DISK)
+        {
+            goto Cleanup;
+        }
     }
+
+    WriteFile(file, utf8, (DWORD)(bytes - 1), &written, NULL);
 
 Cleanup:
     if (file != INVALID_HANDLE_VALUE)
@@ -1680,8 +1717,8 @@ static int RunShim(_In_opt_z_ const wchar_t *shim, _In_opt_z_ const wchar_t *sel
         goto Cleanup;
     }
 
-    // Held until the program runs, shared for reading only: the file checked cannot be written, replaced or renamed
-    // before CreateProcessW opens it.
+    // Held until the program is created, shared for reading only: the file checked cannot be written, replaced or
+    // renamed before CreateProcessW opens it.
     targetFile = CreateFileW(target, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (targetFile == INVALID_HANDLE_VALUE)
     {
@@ -1816,6 +1853,10 @@ static int RunShim(_In_opt_z_ const wchar_t *shim, _In_opt_z_ const wchar_t *sel
         exitCode = (DWORD)FailShim(shim, L"cannot start the program", GetLastError());
         goto Cleanup;
     }
+
+    // Its image is mapped now. Held while it runs, the file could not be renamed by an updater.
+    CloseHandle(targetFile);
+    targetFile = INVALID_HANDLE_VALUE;
 
     if (!AssignProcessToJobObject(job, process.hProcess))
     {

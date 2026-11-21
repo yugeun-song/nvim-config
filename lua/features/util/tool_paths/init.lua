@@ -92,6 +92,31 @@ local function is_valid_name(name)
   return type(name) == "string" and name:match("^[%w][%w._+-]*$") ~= nil
 end
 
+-- A .shim's text, written only when it changes and then whole: written over in place, it could be read empty by a
+-- shim starting meanwhile (in another Neovim, say).
+local function write_shim_text(path, target)
+  local f = io.open(path, "rb")
+  local old = f and f:read("*a")
+
+  if f then
+    f:close()
+  end
+
+  if old == target then
+    return true
+  end
+
+  local tmp = ("%s.%d.tmp"):format(path, uv.os_getpid())
+
+  if pcall(vim.fn.writefile, { target }, tmp, "b") and uv.fs_rename(tmp, path) then
+    return true
+  end
+
+  os.remove(tmp)
+
+  return false
+end
+
 -- The .shim goes first: a launcher copy without one would run as the helper itself.
 local function make_shim(name, target, launcher)
   vim.fn.mkdir(SHIMS, "p")
@@ -103,13 +128,20 @@ local function make_shim(name, target, launcher)
     return uv.fs_symlink(target, shim)
   end
 
-  if not pcall(vim.fn.writefile, { target }, vim.fs.joinpath(SHIMS, name .. ".shim"), "b") then
+  if not write_shim_text(vim.fs.joinpath(SHIMS, name .. ".shim"), target) then
     return nil, "could not write " .. name .. ".shim"
   end
 
   launcher = launcher or require("features.util.windows.ime_helper").path()
   if not launcher then
     return nil, "the shim launcher (windows_ime_helper) is not built yet; it is created once the helper is"
+  end
+
+  -- A copy keeps the launcher's time: one of the same size and time is that launcher already.
+  local have, want = uv.fs_stat(shim), uv.fs_stat(launcher)
+
+  if have and want and have.size == want.size and have.mtime.sec == want.mtime.sec then
+    return true
   end
 
   -- A running shim cannot be replaced; it is the same launcher and reads the new .shim on its next start.
@@ -168,6 +200,8 @@ local function check(name, target)
     return nil, target .. ": drive-relative, rooted, device and network paths are refused"
   elseif WIN and target:find(":", 3, true) then
     return nil, target .. ": alternate data streams are refused"
+  elseif WIN and vim.fs.dirname(target):find(";", 1, true) then
+    return nil, target .. ": the program's directory holds a ';', which would split it on PATH"
   end
 
   local st = uv.fs_stat(target)

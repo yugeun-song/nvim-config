@@ -18,7 +18,7 @@
 |---|---|
 | A debug session | `:DbgLog` (the last 400 messages and the tail of nvim-dap's log), `:DbgState` |
 | A Mason install | `mason.log` in `stdpath("log")`; `:MasonInstall NAME` retries one held back |
-| The Windows IME helper's build | `windows_ime_helper-*.log` in `stdpath("data")/nvim-config/windows_ime_helper`; delete it to retry |
+| The Windows IME helper's build | `windows_ime_helper-*.log` in `stdpath("data")/nvim-config/windows_ime_helper`; tried again by itself a day later, or once a compiler, PATH, INCLUDE or LIB changes |
 | A Windows shim | `windows_ime_helper_shims.log` in `stdpath("data")/nvim-config/registered_program_shims` |
 | A Visual Studio compile database | the notification names the cause; MSBuild's output is `msvc_compile_database.log` in `stdpath("state")/nvim-config` |
 | A language server where it should not run | `<leader>cLl`: the attach rule that decided |

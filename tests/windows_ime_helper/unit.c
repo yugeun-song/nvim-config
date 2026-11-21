@@ -217,6 +217,17 @@ static void TestFiles(void)
 
     Check(CheckShimTarget(self, self, &lastError) == SHIM_TARGET_IS_SELF, "target: itself");
 
+    JoinPath(path, ARRAYSIZE(path), dir, L"semi;colon.exe");
+    Check(CopyFileW(self, path, FALSE), "copy a program whose name holds ';'");
+    Check(CheckShimTarget(path, self, &lastError) == SHIM_OK, "target: a ';' in the program's name only");
+
+    JoinPath(path, ARRAYSIZE(path), dir, L"semi;colon");
+    JoinPath(other, ARRAYSIZE(other), path, L"prog.exe");
+    Check(CreateDirectoryW(path, NULL) && CopyFileW(self, other, FALSE), "copy a program into a directory holding ';'");
+    Check(CheckShimTarget(other, self, &lastError) == SHIM_DIRECTORY_SPLITS_PATH, "target: a ';' in its directory");
+    DeleteFileW(other);
+    RemoveDirectoryW(path);
+
     JoinPath(path, ARRAYSIZE(path), dir, L"hardlink.exe");
     if (CreateHardLinkW(path, self, NULL))
     {
@@ -340,6 +351,18 @@ static void TestMisc(void)
     Check(PrependOwnDirectory(L"C:\\tools\\x.exe", &lastError), "prepend the program's directory");
     Check(GetEnvironmentVariableW(L"PATH", path, ARRAYSIZE(path)) != 0 && wcscmp(path, L"C:\\tools;C:\\old") == 0,
           "PATH starts with the program's directory");
+
+    // C: alone would be drive C's current directory, which the caller chose.
+    Check(SetEnvironmentVariableW(L"PATH", L"C:\\old") && PrependOwnDirectory(L"C:\\rg.exe", &lastError) &&
+              GetEnvironmentVariableW(L"PATH", path, ARRAYSIZE(path)) != 0 && wcscmp(path, L"C:\\;C:\\old") == 0,
+          "a program in a drive's root puts the root on PATH, not the drive");
+    Check(SetEnvironmentVariableW(L"PATH", NULL) && PrependOwnDirectory(L"d:\\rg.exe", &lastError) &&
+              GetEnvironmentVariableW(L"PATH", path, ARRAYSIZE(path)) != 0 && wcscmp(path, L"d:\\") == 0,
+          "a drive's root as the whole PATH");
+    Check(SetEnvironmentVariableW(L"PATH", L"C:\\old") && !PrependOwnDirectory(L"C:\\a;b\\x.exe", &lastError) &&
+              lastError == ERROR_BAD_PATHNAME && GetEnvironmentVariableW(L"PATH", path, ARRAYSIZE(path)) != 0 &&
+              wcscmp(path, L"C:\\old") == 0,
+          "prepend refuses a directory holding ';' and leaves PATH alone");
     Check(!PrependOwnDirectory(L"x.exe", &lastError), "prepend refuses a relative program");
     Check(!PrependOwnDirectory(NULL, &lastError), "prepend refuses NULL");
     Check(!PrependOwnDirectory(L"C:\\x.exe", NULL), "prepend refuses a NULL error");
