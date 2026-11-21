@@ -25,7 +25,7 @@ C, C++ and assembly are debugged by GDB itself (`gdb -i dap`), so `~/.gdbinit`, 
 
 ## Programs
 
-Launch, launch to `main`, attach by PID, *Run on QEMU user* and *Attach to a QEMU user gdbstub* (Linux: `qemu-<arch> -g` on a private Unix socket with the toolchain's sysroot, stopped at `_start`; x86_64, aarch64, riscv64, arm). Its output goes to the debug console; stdin is at end of file. On Linux gdb is not attached to a localhost gdbstub port that another user's process listens on: gdb reads and writes this user's files when a remote stub asks it to. The executable and shell-quoted arguments are remembered: `<leader>dc` with no session replays the last run, `<leader>dn` asks again.
+Launch, launch to `main`, attach by PID, *Run on QEMU user* and *Attach to a QEMU user gdbstub* (Linux: `qemu-<arch> -g` on a private Unix socket with the toolchain's sysroot, stopped at `_start`; x86_64, aarch64, riscv64, arm). Its output goes to the debug console; stdin is at end of file. On Linux gdb is not attached to a localhost gdbstub port that another user's process listens on, a kernel guest's too: gdb reads and writes this user's files when a remote stub asks it to. root's is allowed (`sudo qemu-system-x86_64 -s`), since root may change those files anyway. The executable and shell-quoted arguments are remembered: `<leader>dc` with no session replays the last run, `<leader>dn` asks again.
 
 ## Linux kernels
 

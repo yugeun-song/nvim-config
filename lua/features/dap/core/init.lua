@@ -490,6 +490,15 @@ function M.setup()
           return
         end
 
+        -- kbuildlab's guests and a port typed in are gdbstubs on localhost too.
+        local foreign = require("features.dap.core.sessions.gdbstub_watchdog").foreign_listener(spec.target)
+
+        if foreign then
+          notify.error(foreign)
+
+          return
+        end
+
         config.program = spec.vmlinux
         config.target = spec.target
         config.kernel_root = spec.src

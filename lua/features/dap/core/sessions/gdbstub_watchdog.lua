@@ -53,8 +53,10 @@ function M.saw_text(text, session)
   end
 end
 
+-- gdb's forms: host:port, [host]:port, :port, each also after tcp:, tcp4: or tcp6:.
 local function split_target(target)
-  local host, port = tostring(target or ""):match("^%[?([^%]]*)%]?:(%d+)$")
+  local text = tostring(target or ""):gsub("^tcp[46]?:", "")
+  local host, port = text:match("^%[?([^%]]*)%]?:(%d+)$")
 
   if not port then
     return nil, nil
@@ -63,42 +65,94 @@ local function split_target(target)
   return (host == "" and "localhost" or host), tonumber(port)
 end
 
-local LOCAL_HOSTS = { localhost = true, ["127.0.0.1"] = true, ["::1"] = true }
+-- The hosts that reach this machine's own listeners: the loopback range, and 0.0.0.0 and ::, which Linux connects to
+-- the loopback address.
+local function is_local(host)
+  host = host:lower()
+
+  return host == "localhost"
+    or host == "::1"
+    or host == "0.0.0.0"
+    or host == "::"
+    or host:match("^127%.") ~= nil
+    or host:match("^::ffff:127%.") ~= nil
+end
+
+local LITTLE_ENDIAN = (function()
+  local ok, ffi = pcall(require, "ffi")
+
+  return not ok or ffi.abi("le")
+end)()
+
+-- Whether a listener bound to addr, as /proc/net/tcp and tcp6 write it (each 32-bit word in host byte order), takes a
+-- connection to a loopback address: one bound in the loopback range, or to every address.
+local function takes_loopback(addr)
+  if LITTLE_ENDIAN then
+    addr = addr:gsub("(%x%x)(%x%x)(%x%x)(%x%x)", "%4%3%2%1")
+  end
+
+  if #addr == 8 then
+    return addr == "00000000" or addr:sub(1, 2) == "7F"
+  end
+
+  local mapped = addr:sub(1, 24) == ("0"):rep(20) .. "FFFF"
+
+  return addr == ("0"):rep(32)
+    or addr == ("0"):rep(31) .. "1"
+    or (mapped and (addr:sub(25, 26) == "7F" or addr:sub(25) == "00000000"))
+end
+
+-- The uids of the processes listening on port at an address a loopback connection reaches; nil where the socket
+-- table cannot be read (not Linux, or /proc/net closed to apps as on Android).
+---@param opts? { paths?: string[] } for tests: other procfs files
+---@return integer[]?
+function M.loopback_listeners(port, opts)
+  local want, uids, read = ("%04X"):format(port), {}, false
+
+  for _, path in ipairs(opts and opts.paths or { "/proc/net/tcp", "/proc/net/tcp6" }) do
+    local fd = io.open(path, "r")
+
+    if fd then
+      read = true
+
+      for line in fd:lines() do
+        local addr, at, st, uid = line:match("^%s*%d+:%s+(%x+):(%x+)%s+%S+%s+(%x%x)%s+%S+%s+%S+%s+%S+%s+(%d+)")
+
+        if addr and at == want and st == "0A" and takes_loopback(addr) then
+          uids[#uids + 1] = tonumber(uid)
+        end
+      end
+
+      fd:close()
+    end
+  end
+
+  return read and uids or nil
+end
 
 -- Linux: why gdb is not to attach to target, a localhost port that another user's process listens on (the guest's QEMU
 -- had not bound it, or had ended): gdb serves a remote stub's File-I/O requests, reading and writing this user's
--- files. nil for this user's port, for anything but a local TCP target, and where procfs cannot tell.
+-- files. root's is allowed (sudo qemu-system-x86_64 -s): root may change this user's files anyway. nil for an allowed
+-- listener, for anything but a local TCP target, and where procfs cannot tell.
 ---@param opts? { paths?: string[], uid?: integer } for tests: other procfs files, another user
 function M.foreign_listener(target, opts)
   opts = opts or {}
 
-  if not opts.paths and jit.os ~= "Linux" then
+  if not opts.paths and vim.uv.os_uname().sysname ~= "Linux" then
     return nil
   end
 
   local host, port = split_target(target)
 
-  if not port or not LOCAL_HOSTS[host] then
+  if not port or not is_local(host) then
     return nil
   end
 
-  local want, me = ("%04X"):format(port), opts.uid or vim.uv.getuid()
+  local me = opts.uid or vim.uv.getuid()
 
-  for _, path in ipairs(opts.paths or { "/proc/net/tcp", "/proc/net/tcp6" }) do
-    local fd = io.open(path, "r")
-
-    if fd then
-      for line in fd:lines() do
-        local local_addr, st, uid = line:match("^%s*%d+:%s+(%S+)%s+%S+%s+(%S%S)%s+%S+%s+%S+%s+%S+%s+(%d+)")
-
-        if local_addr and st == "0A" and local_addr:match(":(%x+)$") == want and tonumber(uid) ~= me then
-          fd:close()
-
-          return ("%s is served by another user's process (uid %s): gdb is not attached"):format(target, uid)
-        end
-      end
-
-      fd:close()
+  for _, uid in ipairs(M.loopback_listeners(port, opts) or {}) do
+    if uid ~= me and uid ~= 0 then
+      return ("%s is served by another user's process (uid %d): gdb is not attached"):format(target, uid)
     end
   end
 
@@ -167,7 +221,7 @@ function M.start(session)
   watches[session] = watch
   -- Unparseable, or on another host or network namespace (absent from this one's port table): the message-based
   -- half only.
-  if not port or not (host == "localhost" or host == "::1" or tostring(host):match("^127%.")) then
+  if not port or not is_local(host) then
     return
   end
 
