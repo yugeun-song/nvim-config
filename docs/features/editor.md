@@ -49,7 +49,7 @@ Without `yazi` on PATH, neither the dashboard entry nor `<leader>fo` exists; Pro
 
 A Neovim or Neovide with a UI records its RPC address (`v:servername`) under `running_instances/<pid>` in this configuration's `stdpath("run")` directory (`stdpath("state")` without `$XDG_RUNTIME_DIR`) when its UI attaches or gains focus, and removes it on exit.
 
-`nvim -l scripts/open-at.lua FILE [LINE [COLUMN]]` sends FILE to the most recently focused instance, puts the cursor on LINE and COLUMN, and raises the window of its nearest ancestor that owns one. FILE opens with `:drop` in an editing window (current, else last used; never a float, terminal, explorer or picker), or in a new window at the right. With no instance it starts `neovide -- +LINE FILE`. Nothing listens on TCP.
+`nvim -l scripts/open-at.lua FILE [LINE [COLUMN]]` sends FILE to the most recently focused instance, puts the cursor on LINE and COLUMN, and raises the window of its nearest ancestor that owns one. FILE opens with `:drop` in an editing window (current, else last used; never a float, terminal, explorer or picker), or in a new window at the right. With no instance it starts `neovide -- +LINE FILE`. Nothing listens on TCP. On Windows an instance is sent the file only when its pipe is served by that instance's process, run as this user (`util/windows/pipe_peer.lua`): another account can create the pipe name of an instance that has gone.
 
 The raise goes by process id: the windows of one kitty process or foot server share it, so a sibling may come forward, and inside tmux none does.
 

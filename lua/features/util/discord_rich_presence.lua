@@ -124,9 +124,11 @@ local function socket_paths()
   return paths
 end
 
+-- Discord's socket or pipe is this user's. On Windows another account can create discord-ipc-N while Discord is not
+-- running, and would get the presence and could act as this user (lua/features/util/windows/pipe_peer.lua).
 local function path_owner_ok(path)
   if current_os() == "windows" then
-    return true
+    return require("features.util.windows.pipe_peer").served_by_me(path)
   end
 
   local st = uv.fs_stat(path)

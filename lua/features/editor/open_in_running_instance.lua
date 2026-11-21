@@ -25,11 +25,20 @@ local function record()
   end
 end
 
--- Whether a Neovim answers at addr: a record outlives a Neovim that was killed (no VimLeavePre), and Windows reuses
--- its process id for any other program.
-local function answers(addr)
-  local mode = addr:find("^[%w%.%-]+:%d+$") and "tcp" or "pipe"
-  local ok, channel = pcall(vim.fn.sockconnect, mode, addr, { rpc = true })
+-- Whether the Neovim of a record answers at addr: a record outlives a Neovim that was killed (no VimLeavePre), and
+-- Windows reuses its process id for any other program. On Windows the pipe's server must be that process, of this
+-- user, before anything is sent: another account can create a gone Neovim's pipe name. A TCP address is not taken:
+-- nothing tells who listens there, and files are opened over a pipe.
+local function answers(addr, pid)
+  if addr:find("^[%w%.%-]+:%d+$") then
+    return false
+  end
+
+  if vim.fn.has("win32") == 1 then
+    return require("features.util.windows.pipe_peer").served_by_me(addr, pid)
+  end
+
+  local ok, channel = pcall(vim.fn.sockconnect, "pipe", addr, { rpc = true })
 
   if not ok or channel == 0 then
     return false
@@ -54,7 +63,7 @@ function M.targets()
       local ok, lines = pcall(vim.fn.readfile, path)
 
       if stat and ok and lines[1] and lines[1] ~= "" then
-        if pid == own or answers(lines[1]) then
+        if pid == own or answers(lines[1], pid) then
           found[#found + 1] = { addr = lines[1], pid = pid, mtime = stat.mtime.sec * 1e9 + stat.mtime.nsec }
         else
           vim.uv.fs_unlink(path)
