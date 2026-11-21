@@ -202,9 +202,9 @@ local function project_items()
     local st = uv.fs_lstat(rec.db)
 
     if st then
-      -- Rewritten since (by CMake, say), replaced by a link, or recorded without the time it was written: not
+      -- Rewritten since (by CMake, say), replaced by a link, or recorded without a matching fingerprint: not
       -- provably this configuration's file.
-      local ours = st.type == "file" and type(rec.generated) == "number" and st.mtime.sec <= rec.generated + 5
+      local ours = rec.ours == true
 
       items[#items + 1] = {
         group = "In projects (:MsvcCompileDb)",
@@ -223,11 +223,9 @@ end
 
 local function environment_items()
   local items = {}
-  local path = os.getenv("PATH") or ""
-  local sep = WIN and ";" or ":"
   local on_path = {}
 
-  for dir in vim.gsplit(path, sep, { plain = true, trimempty = true }) do
+  for _, dir in ipairs(require("features.util.path_variable").directories(os.getenv("PATH"))) do
     on_path[key(dir)] = true
   end
 

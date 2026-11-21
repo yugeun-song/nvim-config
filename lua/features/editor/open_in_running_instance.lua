@@ -44,6 +44,11 @@ local function answers(addr, pid)
   return true
 end
 
+-- IPv4, hostname or IPv6 (with or without brackets) with a port; never a Unix socket or Windows pipe path.
+local function is_tcp(addr)
+  return addr:find("^[%w%.%-]+:%d+$") ~= nil or addr:find("^%[?[%x:]+:[%x:]*%]?:%d+$") ~= nil
+end
+
 -- The running Neovims of this configuration with a UI, the last focused first. Stale records are removed. A TCP address
 -- (nvim --listen host:port) is never sent a file, since nothing tells who listens there: its record stays while its
 -- process lives, sendable false, so that the reset still counts that Neovim as running.
@@ -60,7 +65,7 @@ function M.targets()
       local ok, lines = pcall(vim.fn.readfile, path)
 
       if stat and ok and lines[1] and lines[1] ~= "" then
-        local tcp = lines[1]:find("^[%w%.%-]+:%d+$") ~= nil
+        local tcp = is_tcp(lines[1])
 
         if pid == own or tcp or answers(lines[1], pid) then
           found[#found + 1] = {

@@ -1177,14 +1177,19 @@ function M.complete(line)
   return candidates
 end
 
--- The databases this wrote, { db, project, generated } each (lua/features/util/managed_paths.lua lists
+-- The databases this wrote, { db, project, generated, ours } each (lua/features/util/managed_paths.lua lists
 -- them).
 function M.databases()
   local list = {}
 
   for _, rec in pairs(read_state()) do
     if type(rec) == "table" and rec.db then
-      list[#list + 1] = { db = rec.db, project = rec.project, generated = rec.generated }
+      list[#list + 1] = {
+        db = rec.db,
+        project = rec.project,
+        generated = rec.generated,
+        ours = is_ours(rec.db, rec),
+      }
     end
   end
 
