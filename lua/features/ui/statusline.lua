@@ -179,30 +179,187 @@ local function watch()
   })
 end
 
--- Text shown as it is. lualine puts a component's text into 'statusline', where %{expr} runs Vimscript (system()
--- included), and escapes only its own components (branch, filename); a git tag, a directory or a debug configuration's
--- name comes from a repository.
+-- Statusline code: %{expr}, %-N{expr} and %{%expr%} run Vimscript (system() included), %!expr does at the start of an
+-- option, and %@Func@ calls Func on a click. The other items only format: an escaped % (%%), highlights (%#Group#,
+-- %*, %N*), alignment (%=, %<), item groups (%(, %)) and tab page labels (%T, %X).
+local FORMATS = "%%[-0-9.]*[%%#*=<()TX]"
+local RUNS = { ["{"] = true, ["!"] = true, ["@"] = true, [""] = true }
+
+-- Components, plugin modules and functions already guarded here.
+local guarded = setmetatable({}, { __mode = "k" })
+
+-- Text shown as it is: every % doubled.
 function M.escape(text)
   return type(text) == "string" and (text:gsub("%%", "%%%%")) or text
 end
 
--- Every function component in opts gets M.escape after its own fmt, except those in keep, which build statusline
--- syntax on purpose (LazyVim's pretty_path, which escapes its own text).
-function M.escape_components(opts, keep)
-  for _, kind in ipairs({ "sections", "inactive_sections", "winbar", "inactive_winbar", "tabline" }) do
-    for _, section in pairs(type(opts[kind]) == "table" and opts[kind] or {}) do
-      for i, component in ipairs(type(section) == "table" and section or {}) do
-        if type(component) == "function" then
-          section[i] = { component, fmt = M.escape }
-        elseif type(component) == "table" and type(component[1]) == "function" and not keep[component] then
-          local fmt = component.fmt
+-- Statusline code with the items that run something turned into text, their % doubled; so is a % that ends the code,
+-- which would join what follows it.
+local function defuse(code)
+  local out, i = {}, 1
 
-          component.fmt = fmt and function(text, ctx)
-            return M.escape(fmt(text, ctx))
-          end or M.escape
+  while true do
+    local at = code:find("%", i, true)
+
+    if not at then
+      out[#out + 1] = code:sub(i)
+
+      break
+    end
+
+    out[#out + 1] = code:sub(i, at - 1)
+
+    if code:sub(at + 1, at + 1) == "%" then
+      out[#out + 1] = "%%"
+      i = at + 2
+    else
+      local flags = code:match("^[-0-9.]*", at + 1)
+
+      out[#out + 1] = RUNS[code:sub(at + 1 + #flags, at + 1 + #flags)] and "%%" or "%"
+      i = at + 1
+    end
+  end
+
+  return table.concat(out)
+end
+
+-- What a component shows, safe in 'statusline'. Text with no statusline code in it (a git tag, a folder name, a debug
+-- configuration's name, a typed command) is escaped whole. Code a component builds on purpose (trouble's symbols,
+-- LazyVim's path, lualine's escaped branch) keeps its highlights and alignment; only the items that run something
+-- become text. Applying it twice changes nothing.
+function M.sanitize(text)
+  if type(text) ~= "string" or not text:find("%", 1, true) then
+    return text
+  end
+
+  return text:find(FORMATS) and defuse(text) or M.escape(text)
+end
+
+local KINDS = { "sections", "inactive_sections", "winbar", "inactive_winbar", "tabline" }
+
+local function guard(component)
+  local kind = type(component)
+
+  if kind == "string" or kind == "function" then
+    return { component, fmt = M.sanitize }
+  end
+
+  if kind == "table" and component[1] ~= nil and not guarded[component] then
+    local fmt = component.fmt
+
+    component.fmt = fmt and function(text, ctx)
+      return M.sanitize(fmt(text, ctx))
+    end or M.sanitize
+
+    guarded[component] = true
+  end
+
+  return component
+end
+
+local function guard_sections(sections)
+  for _, kind in ipairs(KINDS) do
+    for _, section in pairs(type(sections[kind]) == "table" and sections[kind] or {}) do
+      if type(section) == "table" then
+        for i, component in ipairs(section) do
+          section[i] = guard(component)
         end
       end
     end
+  end
+end
+
+-- lualine puts a component's text into 'statusline' and escapes only some of its own (branch, filename): every
+-- component of opts and of its extensions (neo-tree's shows the working directory, fzf's a file) goes through
+-- M.sanitize after its own fmt.
+function M.sanitize_components(opts)
+  guard_sections(opts)
+
+  local extensions = type(opts.extensions) == "table" and opts.extensions or {}
+
+  for i, extension in ipairs(extensions) do
+    if type(extension) == "string" then
+      local ok, loaded = pcall(require, "lualine.extensions." .. extension)
+
+      extension = ok and type(loaded) == "table" and vim.deepcopy(loaded) or extension
+    end
+
+    if type(extension) == "table" then
+      guard_sections(extension)
+      extensions[i] = extension
+    end
+  end
+end
+
+-- lualine's branch reads a terminal's directory from its buffer name, term://<cwd>//<pid>:<cmd>, through expand(),
+-- which on Linux and macOS runs a `command` in it through the shell, and a repository's folder name can hold one. The
+-- directory is resolved here without expand() and handed over.
+function M.guard_git_branch()
+  local ok, git_branch = pcall(require, "lualine.components.branch.git_branch")
+
+  if not ok or guarded[git_branch] then
+    return
+  end
+
+  guarded[git_branch] = true
+
+  local find_git_dir = git_branch.find_git_dir
+
+  ---@diagnostic disable-next-line: duplicate-set-field
+  git_branch.find_git_dir = function(dir_path)
+    if dir_path == nil then
+      local cwd = vim.api.nvim_buf_get_name(0):match("^term://(.-)//")
+
+      if cwd then
+        dir_path = vim.fs.normalize(cwd, { expand_env = false })
+      end
+    end
+
+    return find_git_dir(dir_path)
+  end
+end
+
+-- bufferline puts the folder of a duplicate file name in front of it unescaped (it escapes the name itself).
+function M.guard_bufferline()
+  local ok, duplicates = pcall(require, "bufferline.duplicates")
+
+  if not ok or guarded[duplicates] then
+    return
+  end
+
+  guarded[duplicates] = true
+
+  local component = duplicates.component
+
+  ---@diagnostic disable-next-line: duplicate-set-field
+  duplicates.component = function(context)
+    local segment = component(context)
+
+    if type(segment) == "table" and type(segment.text) == "string" then
+      segment.text = M.escape(segment.text)
+    end
+
+    return segment
+  end
+end
+
+-- snacks' picker input shows the search in its statuscolumn, and its escape (gsub("%%", "%%")) leaves every % as it
+-- is; the items that run something become text.
+function M.guard_snacks_input()
+  local ok, input = pcall(require, "snacks.picker.core.input")
+
+  if not ok or guarded[input] then
+    return
+  end
+
+  guarded[input] = true
+
+  local statuscolumn = input.statuscolumn
+
+  input.statuscolumn = function(self)
+    local code = statuscolumn(self)
+
+    return type(code) == "string" and defuse(code) or code
   end
 end
 
