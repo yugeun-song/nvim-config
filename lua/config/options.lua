@@ -11,31 +11,38 @@ opt.spelllang = { "en", "cjk" }
 -- a project .editorconfig wins. A new file that only Windows programs read gets CRLF: cmd.exe misreads labels and GOTO
 -- in an LF batch file, and PowerShell's editors, regedit and Visual Studio write CRLF.
 opt.fileformats = { "unix", "dos" }
+
+local crlf_files = {
+  -- cmd.exe, PowerShell
+  "*.bat",
+  "*.ps1",
+  "*.psm1",
+  "*.psd1",
+  -- regedit, Setup, Windows Script Host
+  "*.reg",
+  "*.inf",
+  "*.vbs",
+  "*.wsf",
+  -- Visual Studio: solutions, C++ projects and their property sheets, debugger views
+  "*.sln",
+  "*.slnx",
+  "*.vcxproj",
+  "*.vcxproj.filters",
+  "*.vcxitems",
+  "*.props",
+  "*.targets",
+  "*.natvis",
+}
+
+-- cmd.exe's .cmd and Visual Studio's resources only on Windows: elsewhere a .cmd is also U-Boot's boot script and an
+-- .rc Android's init file, both read as LF.
+if vim.fn.has("win32") == 1 then
+  vim.list_extend(crlf_files, { "*.cmd", "*.rc" })
+end
+
 vim.api.nvim_create_autocmd("BufNewFile", {
   group = vim.api.nvim_create_augroup("crlf_windows_files", { clear = true }),
-  pattern = {
-    -- cmd.exe, PowerShell
-    "*.bat",
-    "*.cmd",
-    "*.ps1",
-    "*.psm1",
-    "*.psd1",
-    -- regedit, Setup, Windows Script Host
-    "*.reg",
-    "*.inf",
-    "*.vbs",
-    "*.wsf",
-    -- Visual Studio: solutions, C++ projects and their property sheets, resources, debugger views
-    "*.sln",
-    "*.slnx",
-    "*.vcxproj",
-    "*.vcxproj.filters",
-    "*.vcxitems",
-    "*.props",
-    "*.targets",
-    "*.rc",
-    "*.natvis",
-  },
+  pattern = crlf_files,
   callback = function(args)
     vim.bo[args.buf].fileformat = "dos"
   end,
