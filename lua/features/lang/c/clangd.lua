@@ -3,12 +3,15 @@
 local M = {}
 
 -- clangd's preambles and other temporary files, in a 0700 directory of this Neovim that goes when it exits; the
--- directories of Neovims that are gone are removed on the way.
+-- directories of Neovims that are gone are removed on the way. Each is named <host>-<pid>: on a home that several
+-- machines share, another machine's process ids say nothing here, and its live directories stay.
 function M.private_tmp()
   local base = require("features.util.storage").path("cache", "clangd_temporary_files")
+  local host = (vim.uv.os_gethostname() or "host"):gsub("[^%w.-]", "_") .. "-"
 
   for name in vim.fs.dir(base) do
-    local pid = tonumber(name)
+    -- A name of the process id alone is from before hosts were named.
+    local pid = tonumber(name:sub(1, #host) == host and name:sub(#host + 1) or name)
 
     -- Only ESRCH means gone; EPERM is a live Neovim this user may not signal.
     if pid and pid ~= vim.fn.getpid() and select(3, vim.uv.kill(pid, 0)) == "ESRCH" then
@@ -16,7 +19,7 @@ function M.private_tmp()
     end
   end
 
-  local dir = vim.fs.joinpath(base, tostring(vim.fn.getpid()))
+  local dir = vim.fs.joinpath(base, host .. vim.fn.getpid())
 
   ---@diagnostic disable-next-line: param-type-mismatch
   vim.fn.mkdir(dir, "p", tonumber("700", 8))
