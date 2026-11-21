@@ -41,7 +41,7 @@ Every 2 s while Neovim has focus, and on `BufEnter` and `CursorHold`, buffers th
 - `Q` cancels; `<CR>` on a file opens it, with the working directory at its git root, else its folder.
 - `nvim DIR` and `neovide DIR` start the same way: in DIR, with its session or the dashboard, and no directory buffer or explorer (`:e DIR` later still opens the explorer).
 - A session is Vimscript that `:mksession` writes and `:source` runs, and `:mksession` writes a line break in a file name so that what follows runs as a command. No session is saved while a buffer's name holds a control character (possible on Linux and macOS), none is saved or loaded under a file name with one (persistence names it after the working directory), and none with a line that ends in a backslash is loaded (`session_guard.lua`).
-- Folders opened either way are remembered (the newest 50) and listed by Projects (`p` on the dashboard, `<leader>fp`) beside the git roots of recent files; picking one switches the same way.
+- Folders opened either way are remembered (the newest 100) and listed by Projects (`p` on the dashboard, `<leader>fp`), the last one opened on top, above the git roots of recent files; picking one switches the same way.
 
 Without `yazi` on PATH, neither the dashboard entry nor `<leader>fo` exists; Projects still works.
 

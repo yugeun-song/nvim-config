@@ -25,6 +25,9 @@ end
 
 local history = require("features.util.storage").path("state", "open_folder_history")
 
+local HISTORY_LIMIT = 100
+
+-- Newest first.
 function M.recent()
   local ok, dirs = pcall(vim.fn.readfile, history)
 
@@ -40,11 +43,24 @@ local function key(dir)
   return fold and dir:lower() or dir
 end
 
+-- A folder's place in dirs, a list M.recent() returned (1: the folder opened last), or nil.
+function M.place_in(dirs)
+  local places = {}
+
+  for place, dir in ipairs(dirs) do
+    places[key(dir)] = place
+  end
+
+  return function(dir)
+    return places[key(normalize(dir))]
+  end
+end
+
 local function remember(dir)
   local dirs = { normalize(dir) }
 
   for _, old in ipairs(M.recent()) do
-    if key(old) ~= key(dirs[1]) and #dirs < 50 then
+    if key(old) ~= key(dirs[1]) and #dirs < HISTORY_LIMIT then
       dirs[#dirs + 1] = old
     end
   end
