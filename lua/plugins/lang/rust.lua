@@ -18,6 +18,9 @@ return {
     config = function()
       local opts = {
         server = {
+          -- rustaceanvim would connect rust-analyzer to 127.0.0.1:27631 whenever `pgrep lspmux` finds a process of
+          -- that name, another user's too, who would then read the code and could edit files.
+          lspmux = { enable = false },
           settings = function(project_root, default_settings)
             local settings = require("rustaceanvim.config.server").load_rust_analyzer_settings(project_root, {
               default_settings = default_settings,
@@ -47,5 +50,25 @@ return {
     -- rustaceanvim runs its own rust-analyzer; lspconfig's would be a second one.
     "neovim/nvim-lspconfig",
     opts = { servers = { rust_analyzer = { enabled = false } } },
+  },
+  {
+    -- rustaceanvim debugs through the adapter named codelldb when one is there: codelldb as a TCP server on
+    -- 127.0.0.1, started and ended by lua/features/dap/managed_server.lua instead of nvim-dap.
+    "mfussenegger/nvim-dap",
+    optional = true,
+    opts = function()
+      require("dap").adapters.codelldb = require("features.dap.managed_server").adapter({
+        name = "codelldb",
+        cmd = function(port)
+          local codelldb = vim.fn.exepath("codelldb")
+
+          if codelldb == "" then
+            return nil, "codelldb is not installed: :MasonInstall codelldb"
+          end
+
+          return { codelldb, "--port", tostring(port) }
+        end,
+      })
+    end,
   },
 }

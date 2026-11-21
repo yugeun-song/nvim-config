@@ -41,7 +41,51 @@ function M.add_to_path()
     end
   end
 
-  vim.env.PATH = (vim.env.PATH or "") .. sep .. bin
+  vim.env.PATH = require("features.util.path_variable").append(vim.env.PATH or "", bin)
+end
+
+local debugger_guarded = false
+
+-- haskell-tools registers the Haskell debugger at each discovery as a server adapter that nvim-dap starts and ends:
+-- hdb listening on 0.0.0.0 (it takes its address only from DAP_HOST), left running on Windows. Each time, the adapter
+-- becomes one of lua/features/dap/managed_server.lua with the same program, on 127.0.0.1.
+function M.guard_debugger()
+  local ok, htdap = pcall(require, "haskell-tools.dap")
+
+  if debugger_guarded or not ok or type(htdap.discover_configurations) ~= "function" then
+    return
+  end
+
+  debugger_guarded = true
+
+  local discover = htdap.discover_configurations
+
+  ---@diagnostic disable-next-line: duplicate-set-field
+  htdap.discover_configurations = function(...)
+    local result = discover(...)
+    local dap = package.loaded.dap
+    local adapter = dap and dap.adapters["haskell-debugger"]
+
+    if type(adapter) == "table" and adapter.type == "server" and type(adapter.executable) == "table" then
+      local executable = adapter.executable
+
+      dap.adapters["haskell-debugger"] = require("features.dap.managed_server").adapter({
+        name = "the Haskell debugger",
+        env = { DAP_HOST = "127.0.0.1" },
+        cmd = function(port)
+          local cmd = { executable.command }
+
+          for _, arg in ipairs(executable.args or {}) do
+            cmd[#cmd + 1] = (tostring(arg):gsub("%${port}", tostring(port)))
+          end
+
+          return cmd
+        end,
+      })
+    end
+
+    return result
+  end
 end
 
 return M

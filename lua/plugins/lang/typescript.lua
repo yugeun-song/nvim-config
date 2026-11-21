@@ -14,8 +14,6 @@ return {
       local dap = require("dap")
       local js_debug = require("features.lang.typescript")
 
-      js_debug.watch()
-
       for _, kind in ipairs({ "node", "chrome", "msedge" }) do
         local pwa = "pwa-" .. kind
 

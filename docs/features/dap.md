@@ -10,8 +10,8 @@ C, C++ and assembly are debugged by GDB itself (`gdb -i dap`), so `~/.gdbinit`, 
 | Linux kernel | `gdb_linux_kernel` (`gdb -i dap`; `gdb_kernel` is its older name, kept for older `launch.json` files) | the same, plus kernel attach |
 | C, C++ (macOS, Windows) | `lldb` (`lldb-dap` or `codelldb`) | launch, launch to `main`, attach; Registers, Memory, Disassembly; function and address breakpoints |
 | Python | nvim-dap-python on `debugpy` | its configurations, the test under the cursor |
-| Rust | rustaceanvim on `codelldb` | `:RustLsp debuggables` |
-| JavaScript, TypeScript | `js-debug-adapter` (its server started by Node on `127.0.0.1` and ended with the session and with Neovim, `lang/typescript.lua`) | `pwa-node`, `pwa-chrome`, `pwa-msedge`; `.ts` on Node's type stripping, or `tsx` or `ts-node` when installed |
+| Rust | rustaceanvim on `codelldb` (a server on `127.0.0.1`, as below) | `:RustLsp debuggables` |
+| JavaScript, TypeScript | `js-debug-adapter` (its server started by Node on `127.0.0.1`) | `pwa-node`, `pwa-chrome`, `pwa-msedge`; `.ts` on Node's type stripping, or `tsx` or `ts-node` when installed |
 | Elixir | ElixirLS's `mix_task` | `mix test`, `mix run` |
 | Ruby | `rdbg` (`rdbg --open` on a Unix socket in Neovim's private temp folder); none on Windows, where Neovim reaches only named pipes and rdbg's TCP has no authentication | this file; stopped at its first line; with arguments |
 

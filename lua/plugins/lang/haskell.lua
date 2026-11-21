@@ -10,7 +10,10 @@ return {
     ft = { "haskell", "lhaskell", "cabal", "cabalproject" },
     -- haskell-tools is set up through vim.g; loading it is when its programs have to be found.
     config = function()
-      require("features.lang.haskell").add_to_path()
+      local haskell = require("features.lang.haskell")
+
+      haskell.add_to_path()
+      haskell.guard_debugger()
     end,
     keys = {
       { "<localleader>e", "<cmd>Haskell hls evalAll<cr>", desc = "Evaluate All", ft = "haskell" },
