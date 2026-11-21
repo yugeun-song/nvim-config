@@ -91,6 +91,15 @@ local function names_a_target(arg)
   return arg:find("^%-%-target=") ~= nil or arg == "-target" or arg == "--target" or arg == "-m32" or arg == "-m64"
 end
 
+-- An item that is not one of the project's sources as a build compiles it: /ClRemove marks a file the design-time
+-- targets hide from IntelliSense (a custom unity file, whose sources have items of their own), /dE an option for
+-- IntelliSense's own front end (CUDA 13.5 gives each .cu file such an item, /dE--cuda; its entry is the CUDA one),
+-- and /libraryModuleName a module unit of a library, std.ixx and std.compat.ixx, which MSBuild adds to every C++20
+-- project and a build compiles only where a source imports it.
+local function not_a_source(arg)
+  return is_switch(arg, "ClRemove") or arg:find("^[/-]dE") ~= nil or arg:find("^[/-]libraryModuleName") ~= nil
+end
+
 ---@class MsvcProjectFacts
 ---@field driver string? the compiler the project builds with (a full path to cl.exe or clang-cl.exe)
 ---@field target string? the clang target switch Microsoft's targets define for the project's platform
@@ -104,6 +113,10 @@ function M.entries(item, project)
   local switches, ignores_standard_includes, has_target = {}, false, false
 
   for _, arg in ipairs(M.split(item.Identity or "")) do
+    if not_a_source(arg) then
+      return {}
+    end
+
     if not is_external_warning_level(arg) then
       switches[#switches + 1] = arg
       ignores_standard_includes = ignores_standard_includes or is_switch(arg, "X")

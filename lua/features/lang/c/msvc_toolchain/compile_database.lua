@@ -1,15 +1,17 @@
 -- Windows only: compile_commands.json for a Visual Studio project, from the settings IntelliSense itself reads,
 -- kept up to date the way a kernel tree's database is kept for clangd.
--- MSBuild is asked twice (msbuild_queries.lua): what the nearest .sln or .slnx (else .vcxproj) offers, with each
--- project's own configuration under the solution's; then, for one configuration, every project's cl switches (the
--- design-time target GetClCommandLines), include directories and clang target, evaluated as a solution build
--- evaluates it ($(SolutionDir) and the rest). Each source becomes one entry (clangd_command.lua); a CUDA project's
--- .cu files come from the same run, with what its CUDA build customization resolves. The database goes beside
--- that file, where clangd looks; clangd restarts on it and indexes in the background on every core.
+-- MSBuild is asked twice (msbuild_queries.lua): what the nearest .sln or .slnx (else .vcxproj; project_file says
+-- which) offers, with each project's own configuration under the solution's; then, for one configuration, every
+-- project's cl switches (GetClCommandLines, in a design-time build as IntelliSense runs it), include directories
+-- and clang target, evaluated as a solution build evaluates it ($(SolutionDir) and the rest). Each source becomes
+-- one entry (clangd_command.lua); a CUDA project's .cu files come from the same run, with what its CUDA build
+-- customization resolves. The database goes beside that file, where clangd looks; clangd restarts on it and
+-- indexes in the background on every core.
 -- Opening a C, C++ or CUDA file of such a project rebuilds the database when it is missing or behind: an input
 -- changed (the solution, each .vcxproj, the .props and .targets they import, Directory.Build.*), the toolchain its
 -- entries name changed (a Visual Studio or Windows SDK update), or this file writes it differently now. When it is
--- current that costs a few stats. A compile_commands.json this did not write (CMake's, say) is left alone, and
+-- current that costs a few stats. Only the file it wrote is replaced unasked, known by the size, time and hash its
+-- record keeps: a compile_commands.json this did not write (CMake's, say) or one changed since is left alone, and
 -- vim.g.msvc_compiledb_auto = false keeps it to :MsvcCompileDb.
 -- A run that cannot give a whole database says why, with MSBuild's own errors, and keeps MSBuild's output in
 -- stdpath("state")/nvim-config/msvc_compile_database.log.
@@ -21,7 +23,7 @@ local STATE = storage.path("state", "msvc_compile_databases.json")
 local LOG = storage.path("state", "msvc_compile_database.log")
 
 -- How this file writes a database; a recorded one of another number is rebuilt.
-local FORMAT = 2
+local FORMAT = 3
 local LOG_MAX_BYTES = 256 * 1024
 local SHOWN_ERRORS = 6
 
@@ -68,8 +70,62 @@ end
 
 local project_for_dir = {}
 
--- The nearest solution, else the nearest project, above dir, in one walk up that reads each directory once;
--- remembered per directory for the session.
+local function in_repository(dir)
+  for parent in vim.fs.parents(vim.fs.joinpath(dir, "x")) do
+    if uv.fs_lstat(vim.fs.joinpath(parent, ".git")) then
+      return true
+    end
+  end
+
+  return false
+end
+
+-- Whether a solution lists a project: a .sln's Project("{type}") = "name", "path", "{guid}" lines, a .slnx's
+-- <Project Path="path" />, each path relative to the solution or absolute.
+local function lists(solution, project)
+  local f = io.open(solution, "rb")
+  local text = f and f:read("*a") or ""
+
+  if f then
+    f:close()
+  end
+
+  local base, want = vim.fs.dirname(solution), key(project)
+
+  local function names(path)
+    path = path:gsub("\\", "/")
+
+    local absolute = path:match("^%a:/") or path:match("^//")
+
+    if not absolute then
+      return key(vim.fs.joinpath(base, path)) == want
+    end
+
+    return key(path) == want or canonical(path) == canonical(project)
+  end
+
+  for path in text:gmatch('Project%("[^"]*"%)%s*=%s*"[^"]*"%s*,%s*"([^"]*)"') do
+    if names(path) then
+      return true
+    end
+  end
+
+  local unescape_xml = require("features.lang.c.msvc_toolchain.msbuild_queries").unescape_xml
+
+  for _, path in text:gmatch("<Project%s[^>]-%f[%w]Path%s*=%s*([\"'])(.-)%1") do
+    if names(unescape_xml(path)) then
+      return true
+    end
+  end
+
+  return false
+end
+
+-- The file a database is made from, for a file in dir: the nearest .sln or .slnx above it, else the nearest
+-- .vcxproj, in one walk up that reads each directory once. The walk ends at the repository dir is in (the nearest
+-- directory with a .git, a worktree's or submodule's file too): what is outside it takes none of its projects.
+-- Outside a repository, a solution further up than the nearest project is taken only when it lists that project,
+-- so one in a directory others can write cannot claim a project it does not build. Remembered per directory.
 local function project_file(dir)
   local hit = project_for_dir[dir]
 
@@ -77,27 +133,39 @@ local function project_file(dir)
     return hit or nil
   end
 
-  local project
+  local project, solution, repository
 
   for parent in vim.fs.parents(vim.fs.joinpath(dir, "x")) do
     for name, kind in vim.fs.dir(parent) do
-      if kind == "file" then
-        if name:match("%.slnx?$") then
-          hit = vim.fs.joinpath(parent, name)
-
-          break
+      if name == ".git" then
+        repository = true
+      elseif kind == "file" then
+        if not solution and name:match("%.slnx?$") then
+          solution = vim.fs.joinpath(parent, name)
         elseif not project and name:match("%.vcxproj$") then
           project = vim.fs.joinpath(parent, name)
         end
       end
     end
 
-    if hit then
+    if solution or repository then
       break
     end
   end
 
-  hit = hit or project or false
+  hit = solution or project or false
+
+  if
+    solution
+    and project
+    and vim.fs.dirname(project) ~= vim.fs.dirname(solution)
+    and not repository
+    and not in_repository(vim.fs.dirname(solution))
+    and not lists(solution, project)
+  then
+    hit = project
+  end
+
   project_for_dir[dir] = hit
 
   return hit or nil
@@ -380,11 +448,65 @@ end
 
 M._as_json = as_json
 
+-- What a database file is, to know it again: its size and time, and a hash of its text.
+---@param st uv.fs_stat.result the file's
+---@param text string what it holds
+local function fingerprint(st, text)
+  return { size = st.size, mtime = { st.mtime.sec, st.mtime.nsec }, sha256 = vim.fn.sha256(text) }
+end
+
+-- Whether db is still the file a fingerprint describes: the same size and time, or, when only its time moved (it
+-- was touched, or copied back), the same text. A link, a directory or a record without one is not.
+local function still_ours(db, written)
+  local st = uv.fs_lstat(db)
+
+  if not st or st.type ~= "file" or type(written) ~= "table" or st.size ~= written.size then
+    return false
+  end
+
+  if type(written.mtime) == "table" and st.mtime.sec == written.mtime[1] and st.mtime.nsec == written.mtime[2] then
+    return true
+  end
+
+  local f = io.open(db, "rb")
+  local text = f and f:read("*a")
+
+  if f then
+    f:close()
+  end
+
+  return text ~= nil and vim.fn.sha256(text) == written.sha256
+end
+
+M._still_ours = still_ours
+
+-- Whether db is the file a project's record says this wrote. A record from before fingerprints were kept has only
+-- the time it was made, the second the file was written: a file whose time is within two seconds of it is taken for
+-- that one, and gets a fingerprint when it is rebuilt.
+local function is_ours(db, record)
+  if type(record) ~= "table" then
+    return false
+  end
+
+  if record.written ~= nil then
+    return still_ours(db, record.written)
+  end
+
+  local st = uv.fs_lstat(db)
+
+  return st ~= nil
+    and st.type == "file"
+    and type(record.generated) == "number"
+    and math.abs(st.mtime.sec - record.generated) <= 2
+end
+
+M._is_ours = is_ours
+
 -- compile_commands.json, whole or not at all: written beside itself and moved over, and left alone when it says
 -- the same already. A link or a directory of that name is not written through, and the temporary file is made
 -- anew, never opened where something waits under its name.
 ---@return boolean? changed true when written, false when it said the same already, nil when it could not be
----@return string? why
+---@return table|string written the file's fingerprint as it is now, or why it could not be written
 local function write_database(db, entries)
   local st = uv.fs_lstat(db)
 
@@ -395,12 +517,12 @@ local function write_database(db, entries)
   local text = as_json(entries)
   local old = st and io.open(db, "rb")
 
-  if old then
+  if st and old then
     local same_text = old:read("*a") == text
 
     old:close()
     if same_text then
-      return false
+      return false, fingerprint(st, text)
     end
   end
 
@@ -418,20 +540,26 @@ local function write_database(db, entries)
 
   uv.fs_close(fd)
 
-  local moved, move_error
+  -- The file as written, before it is moved: a rename keeps its size and time, and whatever writes the name
+  -- afterwards is not taken for it.
+  local as_written = written == #text and uv.fs_lstat(partial) or nil
+  local move_error
 
-  if written == #text then
+  if as_written then
+    local moved
+
     moved, move_error = uv.fs_rename(partial, db)
+    if moved then
+      return true, fingerprint(as_written, text)
+    end
   end
 
-  if not moved then
-    os.remove(partial)
+  os.remove(partial)
 
-    return nil, tostring(write_error or move_error or "the disk took only part of it")
-  end
-
-  return true
+  return nil, tostring(write_error or move_error or "the disk took only part of it")
 end
+
+M._write_database = write_database
 
 -- The entries of every project MSBuild answered for, and what to tell about the others.
 ---@param projects { path: string, configuration: string?, platform: string? }[]
@@ -517,8 +645,19 @@ local function entries_of(projects, items)
         system_includes = includes,
       }
 
+      -- A .cu file's entry is the CUDA one, whatever ClCompile item the design-time targets also give it.
+      local cuda_files = {}
+
+      for _, item in ipairs(answer.cuda) do
+        cuda_files[key(item.Identity)] = true
+      end
+
       for _, item in ipairs(answer.commands) do
-        vim.list_extend(entries, clangd_command.entries(item, facts_for_clangd))
+        for _, entry in ipairs(clangd_command.entries(item, facts_for_clangd)) do
+          if not cuda_files[key(entry.file)] then
+            entries[#entries + 1] = entry
+          end
+        end
       end
 
       for _, item in ipairs(answer.cuda) do
@@ -557,6 +696,8 @@ local function entries_of(projects, items)
 
   return entries, { notes = notes, silent = silent, system_includes = system }
 end
+
+M._entries_of = entries_of
 
 -- The oldest Clang the toolset's C++ library accepts, as the library's own check says it (yvals_core.h: STL1000,
 -- "Unexpected compiler version, expected Clang 22 or newer.").
@@ -668,6 +809,23 @@ local function in_steps(body, failed)
   end)
 
   coroutine.resume(co)
+end
+
+-- A database not known to be the one :MsvcCompileDb wrote (another program's since, a link, or one written before
+-- records kept a fingerprint) is left alone: the record goes, so MSBuild no longer runs for it unasked, and that is
+-- said once.
+local function disown(root, file)
+  local state = read_state()
+
+  state[key(root)] = nil
+  write_state(state)
+  M.notify_when_ready(
+    (
+      "compile_commands.json for %s is not known to be the one :MsvcCompileDb wrote (changed since, or written "
+      .. "before its fingerprint was kept): it is left alone and no longer rebuilt unasked; :MsvcCompileDb replaces it"
+    ):format(vim.fn.fnamemodify(file, ":~:.")),
+    vim.log.levels.WARN
+  )
 end
 
 ---@param opts? { configuration?: string, platform?: string, dir?: string, auto?: boolean }
@@ -832,12 +990,22 @@ function M.generate(opts)
     end
 
     local db = vim.fs.joinpath(root, "compile_commands.json")
+    -- Asked for, any database there is replaced, and one this did not write is named. Unasked, only the one it
+    -- wrote: another program may have written its own meanwhile.
+    local foreign = uv.fs_lstat(db) ~= nil and not is_ours(db, last)
+
+    if opts.auto and foreign then
+      running[key(root)] = nil
+
+      return disown(root, file)
+    end
+
     -- A project directory may be read-only (a mounted share, a checkout of someone else's).
-    local changed, write_error = write_database(db, entries)
+    local changed, written = write_database(db, entries)
 
     if changed == nil then
       return finish(vim.log.levels.ERROR, {
-        ("Could not write %s: %s"):format(db, tostring(write_error)),
+        ("Could not write %s: %s"):format(db, tostring(written)),
       }, found.msbuild_version)
     end
 
@@ -851,12 +1019,14 @@ function M.generate(opts)
       configurations = names(found),
       inputs = inputs,
       toolchain = toolchain_of(told.system_includes),
+      written = written,
       format = FORMAT,
       generated = os.time(),
     }
 
     write_state(state)
 
+    local replaced = changed and foreign
     local summary = {
       ("compile_commands.json for %s%s: %d files of %d project(s), %s|%s, %.1f s"):format(
         shown,
@@ -867,6 +1037,7 @@ function M.generate(opts)
         chosen.platform,
         (uv.hrtime() - started) / 1e9
       ),
+      replaced and "It replaced a compile_commands.json not known to be the one :MsvcCompileDb wrote." or nil,
     }
 
     if #told.silent > 0 then
@@ -896,7 +1067,7 @@ function M.generate(opts)
       vim.list_extend(summary, clangd_too_old(version, exe, wanted))
     end
 
-    local level = whole and not too_old and vim.log.levels.INFO or vim.log.levels.WARN
+    local level = whole and not too_old and not replaced and vim.log.levels.INFO or vim.log.levels.WARN
 
     -- The same database again has nothing for clangd to read anew, and nothing to tell when Neovim asked by itself.
     finish(level, summary, found.msbuild_version, not whole, opts.auto and not changed and level == vim.log.levels.INFO)
@@ -940,11 +1111,11 @@ function M.ensure(buf)
   checked[k] = true
 
   local db = vim.fs.joinpath(root, "compile_commands.json")
-  local db_time = mtime(db)
+  local present = uv.fs_lstat(db) ~= nil
   local mine = read_state()[k]
 
   -- Someone else's database: not this one's to replace.
-  if db_time and not mine then
+  if present and not mine then
     return
   end
 
@@ -964,7 +1135,7 @@ function M.ensure(buf)
 
   -- Behind when an input's mtime is not the one recorded: compared for change, not for order, so a file stamped
   -- in the future (a clock off, an archive) does not rebuild at every start.
-  local behind = not db_time or mine.format ~= FORMAT or toolchain_changed(mine.toolchain)
+  local behind = not present or mine.format ~= FORMAT or toolchain_changed(mine.toolchain)
 
   for _, input in ipairs(not behind and mine.inputs or {}) do
     if type(input) ~= "table" or mtime(input.path) ~= input.mtime then
@@ -974,9 +1145,16 @@ function M.ensure(buf)
     end
   end
 
-  if behind then
-    M.generate({ dir = vim.fs.dirname(name), auto = true })
+  if not behind then
+    return
   end
+
+  -- Rebuilt unasked only while it is the file :MsvcCompileDb wrote, as its record's fingerprint says.
+  if present and not is_ours(db, mine) then
+    return disown(root, file)
+  end
+
+  M.generate({ dir = vim.fs.dirname(name), auto = true })
 end
 
 -- :MsvcCompileDb's completion: the configurations, then the platforms, the last run found the project to have.

@@ -1,6 +1,7 @@
 -- Windows only: what MSBuild itself says about a Visual Studio solution and its projects. Each question is a small
--- project of our own in Neovim's temporary directory, run with -getTargetResult (MSBuild 17.8 or later); nothing is
--- written beside a solution or a project, and neither is modified.
+-- project of our own in Neovim's temporary directory, run with -getTargetResult (MSBuild 17.8 or later). The
+-- projects are read in a design-time build (DESIGN_TIME_PROPERTIES), so nothing is compiled, nothing is written
+-- beside a solution or a project or into its $(IntDir) and $(OutDir), and neither is modified.
 --   configurations(): a solution's configurations and, under each, every project's own configuration and platform,
 --     as MSBuild reads .sln and .slnx, with the configuration it would build by default; or a lone project's.
 --   compile_options(): per project, cl's switches for every source (GetClCommandLines), the directories a build
@@ -130,6 +131,8 @@ local function unescape_xml(s)
   )
 end
 
+M.unescape_xml = unescape_xml
+
 -- The projects of one solution configuration, from the XML MSBuild builds for it:
 -- <ProjectConfiguration Project="{guid}" AbsolutePath="..." BuildProjectInSolution="True">Debug|Win32</...>
 ---@param contents string
@@ -243,7 +246,10 @@ local function project_hook(previous)
   })
 
   vim.list_extend(lines, CUDA_TARGET)
-  lines[#lines + 1] = "</Project>"
+  -- A C++/CLI project's COM references: even at design time, Microsoft's ResolveComReferences runs tlbimp, writes
+  -- the interop assemblies beside the project (Interop\) and keeps a cache in $(IntDir). Defined again here, after
+  -- Microsoft's, it does nothing; the command lines lose only those assemblies' /FU, which clang cannot use.
+  vim.list_extend(lines, { '  <Target Name="ResolveComReferences" />', "</Project>" })
 
   return lines
 end
@@ -427,6 +433,18 @@ function M.configurations(msbuild, file, done)
   end)
 end
 
+-- What every project is read with: a design-time build, as Visual Studio's IntelliSense reads it. Outside one,
+-- GetClCommandLines does a build's work on the way: a unity build writes unity_*.cpp into $(IntDir) and lists those
+-- instead of the sources, a C++20 project makes $(IntDir) and its tlog directories and runs cl to scan its modules,
+-- and a C++/CLI project builds the projects it references. Two files a C++/CLI project still writes into $(IntDir)
+-- at design time are turned off as well: its AssemblyAttributes.cpp and its assembly reference cache.
+M.DESIGN_TIME_PROPERTIES = {
+  "DesignTimeBuild=true",
+  "BuildingProject=false",
+  "GenerateTargetFrameworkAttribute=false",
+  "DisableRarCache=true",
+}
+
 ---@class MsvcCompileRequest
 ---@field projects { path: string, configuration: string?, platform: string? }[]
 ---@field solution table<string, string>? the solution's properties (MsvcConfigurations.solution)
@@ -458,7 +476,7 @@ function M.compile_options(msbuild, request, done)
       )
     end
 
-    local properties = {}
+    local properties = vim.deepcopy(M.DESIGN_TIME_PROPERTIES)
 
     if request.solution then
       properties[#properties + 1] = "BuildingSolutionFile=true"

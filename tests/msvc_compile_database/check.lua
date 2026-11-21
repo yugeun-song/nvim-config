@@ -1,9 +1,11 @@
 -- lua/features/lang/c/msvc_toolchain/: compile_commands.json for Visual Studio projects.
 --   nvim -l tests/msvc_compile_database/check.lua
--- Everywhere: how a cl command line becomes a clangd entry and how a configuration is chosen, with nothing run.
+-- Everywhere: how a cl command line becomes a clangd entry, how a configuration is chosen, which solution or
+-- project a file's database is made from, and how a database it wrote is known again, with nothing run.
 -- On Windows with Visual Studio: solutions it writes itself (.sln and .slnx, under a directory named with a
--- space, Korean and "&") go through MSBuild for real, and clangd, when there is one, must read a source of them
--- without an error. Elsewhere those steps print SKIP. Everything it writes is in a throwaway root.
+-- space, Korean and "&") go through MSBuild for real, a unity build, C++20 modules and C++/CLI must leave nothing
+-- behind, and clangd, when there is one, must read a source of them without an error. Elsewhere those steps print
+-- SKIP. Everything it writes is in a throwaway root.
 local script = vim.fs.normalize(vim.fn.fnamemodify(arg[0], ":p"))
 local repo = vim.fs.dirname(vim.fs.dirname(vim.fs.dirname(script)))
 
@@ -53,6 +55,13 @@ local function same(got, want, what)
   local ok = vim.deep_equal(got, want)
 
   check(ok, ok and what or ("%s\n     want %s\n     got  %s"):format(what, vim.inspect(want), vim.inspect(got)))
+end
+
+local root = vim.fs.normalize(assert(os.getenv("MSVC_COMPILE_DATABASE_TEST_ROOT")))
+
+local function write(path, lines)
+  vim.fn.mkdir(vim.fs.dirname(path), "p")
+  vim.fn.writefile(lines, path)
 end
 
 local clangd_command = require("features.lang.c.msvc_toolchain.clangd_command")
@@ -144,6 +153,25 @@ same(
   "an item without files gives no entry"
 )
 
+-- What the design-time targets list besides the sources a build compiles.
+for _, case in ipairs({
+  { "/c /TP /ClRemove", "a custom unity file they hide from IntelliSense (/ClRemove)" },
+  { "/c /dE--cuda -D__CUDACC__ /TP", "a .cu file's item for IntelliSense's own front end (/dE)" },
+  { '/scanModules /libraryModuleName"std" /c /TP', "the standard library's module unit (/libraryModuleName)" },
+}) do
+  same(
+    clangd_command.entries({ Identity = case[1], Files = [[C:\p\a.cpp]], WorkingDirectory = [[C:\p]] }, {}),
+    {},
+    case[2] .. ": no entry"
+  )
+end
+
+same(
+  arguments([[/c /D "X=/ClRemove" /DdE]]),
+  { "cl.exe", "/c", "/D", "X=/ClRemove", "/DdE", [[C:\p\a.c]] },
+  "a definition that merely spells one of those stays"
+)
+
 local queries = require("features.lang.c.msvc_toolchain.msbuild_queries")
 
 same(
@@ -164,6 +192,12 @@ same(
   queries._literal([[C:\50% (x86);a$b@c'd*e?f & "g" <h>]]),
   [[C:\50%25 %28x86%29%3Ba%24b%40c%27d%2Ae%3Ff &amp; &quot;g&quot; &lt;h&gt;]],
   "text MSBuild must take literally: its special characters, then XML's"
+)
+
+check(
+  vim.list_contains(queries.DESIGN_TIME_PROPERTIES, "DesignTimeBuild=true")
+    and vim.list_contains(queries.DESIGN_TIME_PROPERTIES, "BuildingProject=false"),
+  "the projects are read in a design-time build, as IntelliSense reads them (what it changes: below, with MSBuild)"
 )
 
 local database = require("features.lang.c.msvc_toolchain.compile_database")
@@ -257,6 +291,178 @@ check(
   "another clangd: named as Windows writes it, and Mason is not"
 )
 
+-- At design time CUDA 13.5's targets give each .cu file a ClCompile item for IntelliSense too: its entry is the
+-- CUDA one, once.
+local function from(target, item)
+  return vim.tbl_extend(
+    "force",
+    { MSBuildSourceProjectFile = [[C:\p\p.vcxproj]], MSBuildSourceTargetName = target },
+    item
+  )
+end
+
+same(
+  vim.tbl_map(
+    function(entry)
+      return entry.file .. " " .. entry.arguments[1]
+    end,
+    database._entries_of({ { path = [[C:\p\p.vcxproj]] } }, {
+      from("GetClCommandLines", { Identity = "/c /TP", Files = [[C:\p\Kernel.cu;C:\p\main.cpp]] }),
+      from("GetProjectDirectories", { IncludePath = "", ExternalIncludePath = "" }),
+      from("NvimProjectFacts", { NvimToolsetFound = "true" }),
+      from("NvimCudaCompile", { Identity = [[C:\p\kernel.cu]], NvimDirectory = [[C:\p]], NvimToolkit = [[C:\cuda]] }),
+    })
+  ),
+  { [[C:\p\main.cpp cl.exe]], [[C:\p\kernel.cu clang++]] },
+  "a .cu file the CUDA target answers for has its CUDA entry only"
+)
+
+-- Which file a database is made from.
+local search = vim.fs.joinpath(root, "search")
+
+local function solution_listing(path, ...)
+  local lines = { "", "Microsoft Visual Studio Solution File, Format Version 12.00" }
+
+  for _, project in ipairs({ ... }) do
+    lines[#lines + 1] = ('Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "%s", "%s", "%s"'):format(
+      vim.fn.fnamemodify(project, ":t:r"),
+      project,
+      "{11111111-1111-4111-8111-111111111111}"
+    )
+
+    lines[#lines + 1] = "EndProject"
+  end
+
+  write(vim.fs.joinpath(search, path), lines)
+end
+
+local function project_for(dir)
+  database.forget()
+
+  local file = database.project_file(vim.fs.joinpath(search, dir))
+
+  return file and vim.fs.normalize(file):sub(#search + 2) or nil
+end
+
+local outside = true
+
+for parent in vim.fs.parents(vim.fs.joinpath(search, "x")) do
+  outside = outside and not uv.fs_lstat(vim.fs.joinpath(parent, ".git"))
+end
+
+write(vim.fs.joinpath(search, "same", "s.vcxproj"), {})
+solution_listing("same/S.sln")
+same(project_for("same"), "same/S.sln", "a solution beside the project: the solution")
+
+write(vim.fs.joinpath(search, "header", "include", "h.h"), {})
+solution_listing("header/H.sln")
+same(project_for("header/include"), "header/H.sln", "no project below the solution: the solution")
+
+write(vim.fs.joinpath(search, "repo", ".git", "HEAD"), {})
+write(vim.fs.joinpath(search, "repo", "p", "p.vcxproj"), {})
+solution_listing("repo/All.sln")
+same(project_for("repo/p"), "repo/All.sln", "in a repository, its solution above the project, listed or not")
+
+write(vim.fs.joinpath(search, "repo2", ".git", "HEAD"), {})
+write(vim.fs.joinpath(search, "repo2", "sub", "p", "p.vcxproj"), {})
+solution_listing("repo2/sub/S.sln")
+same(project_for("repo2/sub/p"), "repo2/sub/S.sln", "a solution below the repository's root is in it too")
+
+-- A worktree's or submodule's .git is a file.
+write(vim.fs.joinpath(search, "top", "repo3", ".git"), { "gitdir: elsewhere" })
+write(vim.fs.joinpath(search, "top", "repo3", "p", "p.vcxproj"), {})
+write(vim.fs.joinpath(search, "top", "repo3", "notes", "x.c"), {})
+solution_listing("top/Evil.sln", [[repo3\p\p.vcxproj]])
+same(
+  project_for("top/repo3/p"),
+  "top/repo3/p/p.vcxproj",
+  "a solution above the repository is never taken, listing or not"
+)
+
+same(project_for("top/repo3/notes"), nil, "and a file of the repository outside every project has none")
+
+if not outside then
+  print("SKIP a solution above a project outside a repository: the test's root is inside one")
+else
+  write(vim.fs.joinpath(search, "plain", "proj", "proj.vcxproj"), {})
+  solution_listing("plain/Other.sln", [[elsewhere\x.vcxproj]])
+  same(project_for("plain/proj"), "plain/proj/proj.vcxproj", "outside a repository, a solution that does not list it")
+
+  write(vim.fs.joinpath(search, "listed", "app", "app.vcxproj"), {})
+  solution_listing("listed/All.sln", [[lib\lib.vcxproj]], [[x\..\APP\app.vcxproj]])
+  same(
+    project_for("listed/app"),
+    "listed/All.sln",
+    "outside a repository, a .sln that lists it, as a normal layout has"
+  )
+
+  write(vim.fs.joinpath(search, "listedx", "a & b", "a.vcxproj"), {})
+  write(vim.fs.joinpath(search, "listedx", "All.slnx"), {
+    "<Solution>",
+    '  <Folder Name="/x/">',
+    "    <Project Id='22222222-2222-4222-8222-222222222222' Path='a &amp; b/a.vcxproj' />",
+    "  </Folder>",
+    "</Solution>",
+  })
+
+  same(project_for("listedx/a & b"), "listedx/All.slnx", "and a .slnx that lists it")
+end
+
+-- Only the database it wrote is replaced unasked: known by its size, time and text.
+local fingerprinted = vim.fs.joinpath(root, "fingerprint", "compile_commands.json")
+local one = { { directory = [[C:\p]], file = [[C:\p\a.c]], arguments = { "cl.exe", [[C:\p\a.c]] } } }
+
+vim.fn.mkdir(vim.fs.dirname(fingerprinted), "p")
+
+local wrote, print_of_one = database._write_database(fingerprinted, one)
+
+check(
+  wrote == true and database._still_ours(fingerprinted, print_of_one),
+  "a database as written is known by its fingerprint"
+)
+
+local wrote_again, print_again = database._write_database(fingerprinted, one)
+
+check(
+  wrote_again == false and vim.deep_equal(print_again, print_of_one),
+  "written again the same: not touched, and the same fingerprint"
+)
+
+uv.fs_utime(fingerprinted, os.time() - 3600, os.time() - 3600)
+check(database._still_ours(fingerprinted, print_of_one), "touched, its text the same: still the one it wrote")
+
+local function overwrite(text)
+  local f = assert(io.open(fingerprinted, "wb"))
+
+  f:write(text)
+  f:close()
+  -- Another time than the recorded one, whatever the file system's clock resolution.
+  uv.fs_utime(fingerprinted, print_of_one.mtime[1] + 7, print_of_one.mtime[1] + 7)
+end
+
+overwrite((database._as_json(one):gsub("a%.c", "b.c")))
+check(not database._still_ours(fingerprinted, print_of_one), "another program's text of the same size: not its own")
+overwrite("[]\n")
+check(not database._still_ours(fingerprinted, print_of_one), "another size: not its own")
+check(not database._still_ours(fingerprinted, nil), "a record without a fingerprint: not known as its own")
+
+local made = assert(uv.fs_stat(fingerprinted)).mtime.sec
+
+check(
+  database._is_ours(fingerprinted, { generated = made }),
+  "a record from before fingerprints, made the second its file was written: its own"
+)
+check(
+  not database._is_ours(fingerprinted, { generated = made - 60 }),
+  "a record from before fingerprints, a minute off its file: not its own"
+)
+check(not database._is_ours(fingerprinted, nil), "no record: not its own")
+
+local directory = vim.fs.joinpath(root, "fingerprint-directory", "compile_commands.json")
+
+vim.fn.mkdir(directory, "p")
+check(not database._still_ours(directory, print_of_one), "a directory of that name: not its own")
+
 -- From here on MSBuild runs for real.
 local msbuild = vim.fn.has("win32") == 1 and queries.find_now() or nil
 
@@ -276,14 +482,11 @@ vim.notify = function(message, level)
   told[#told + 1] = { message = tostring(message), level = level }
 end
 
-local function write(path, lines)
-  vim.fn.mkdir(vim.fs.dirname(path), "p")
-  vim.fn.writefile(lines, path)
-end
-
 local APP, LIB = "{11111111-1111-4111-8111-111111111111}", "{22222222-2222-4222-8222-222222222222}"
 
----@param opts { guid: string, kind: string, sources: string[], toolset: string?, sdk: string? }
+-- globals, configuration, compile and items: more lines for the Globals and Configuration property groups, the
+-- ClCompile item definition and the item group.
+---@param opts { guid: string, kind: string, sources: string[], toolset: string?, sdk: string?, globals: string[]?, configuration: string[]?, compile: string[]?, items: string[]? }
 local function vcxproj(opts)
   local lines = {
     '<?xml version="1.0" encoding="utf-8"?>',
@@ -307,6 +510,10 @@ local function vcxproj(opts)
     '  <PropertyGroup Label="Globals">',
     ("    <ProjectGuid>%s</ProjectGuid>"):format(opts.guid),
     opts.sdk and ("    <WindowsTargetPlatformVersion>%s</WindowsTargetPlatformVersion>"):format(opts.sdk) or "",
+  })
+
+  vim.list_extend(lines, opts.globals or {})
+  vim.list_extend(lines, {
     "  </PropertyGroup>",
     '  <Import Project="$(VCTargetsPath)\\Microsoft.Cpp.Default.props" />',
     '  <PropertyGroup Label="Configuration">',
@@ -314,20 +521,25 @@ local function vcxproj(opts)
     -- Whatever toolset the Visual Studio that runs this has.
     ("    <PlatformToolset>%s</PlatformToolset>"):format(opts.toolset or "$(DefaultPlatformToolset)"),
     "    <CharacterSet>Unicode</CharacterSet>",
+  })
+
+  vim.list_extend(lines, opts.configuration or {})
+  vim.list_extend(lines, {
     "  </PropertyGroup>",
     '  <Import Project="$(VCTargetsPath)\\Microsoft.Cpp.props" />',
     "  <ItemDefinitionGroup>",
     "    <ClCompile>",
     "      <LanguageStandard>stdcpp20</LanguageStandard>",
     '      <PreprocessorDefinitions>FIXTURE_TEXT="a b";%(PreprocessorDefinitions)</PreprocessorDefinitions>',
-    "    </ClCompile>",
-    "  </ItemDefinitionGroup>",
-    "  <ItemGroup>",
   })
 
+  vim.list_extend(lines, opts.compile or {})
+  vim.list_extend(lines, { "    </ClCompile>", "  </ItemDefinitionGroup>", "  <ItemGroup>" })
   for _, source in ipairs(opts.sources) do
     lines[#lines + 1] = ('    <ClCompile Include="%s" />'):format(source)
   end
+
+  vim.list_extend(lines, opts.items or {})
 
   return vim.list_extend(lines, {
     "  </ItemGroup>",
@@ -500,7 +712,6 @@ local function edit_state(change)
 end
 
 local INFO, WARN, ERROR = vim.log.levels.INFO, vim.log.levels.WARN, vim.log.levels.ERROR
-local root = vim.fs.normalize(assert(os.getenv("MSVC_COMPILE_DATABASE_TEST_ROOT")))
 local machine_is_x64 = (uv.os_uname().machine or ""):lower() == "x86_64"
 
 -- 1. A .sln under a directory named with a space, Korean and "&".
@@ -674,7 +885,89 @@ local stamp = vim.fs.joinpath(sln, "app", "app.vcxproj")
 uv.fs_utime(stamp, os.time() + 10, os.time() + 10)
 check(opened() ~= nil, "a project file changed since: rebuilt")
 
--- 5. A database someone else wrote is never replaced unasked.
+-- 5. Only the database it wrote is rebuilt unasked; asked for, any is replaced, and one it did not write is named.
+-- What opening a file did: whether MSBuild ran, and what was said, if anything.
+local function opened_and_told()
+  local count = #told
+
+  database.forget()
+  database.ensure(buf)
+
+  local ran = database._busy()
+
+  vim.wait(600000, function()
+    return not database._busy()
+  end, 20)
+
+  vim.wait(300, function()
+    return #told > count
+  end, 20)
+
+  return ran, #told > count and told[#told] or nil
+end
+
+local function recorded(db_path)
+  for _, record in ipairs(database.databases()) do
+    if vim.fs.normalize(record.db):lower() == vim.fs.normalize(db_path):lower() then
+      return true
+    end
+  end
+
+  return false
+end
+
+-- Another program writes its own database there, and an input changes.
+write(sln_db, { "[]" })
+uv.fs_utime(stamp, os.time() + 20, os.time() + 20)
+
+local ran, said_now = opened_and_told()
+
+check(
+  not ran
+    and said_now ~= nil
+    and said_now.level == WARN
+    and said_now.message:find("not known to be the one :MsvcCompileDb wrote", 1, true) ~= nil
+    and #read_database(sln) == 0,
+  "another program's database where it wrote one: left alone, MSBuild not run, and that is said"
+)
+
+check(not recorded(sln_db), "and its record is gone, so MSBuild runs for it unasked no more")
+ran, said_now = opened_and_told()
+check(not ran and said_now == nil, "and nothing is said of it again")
+
+said = generate({ dir = vim.fs.joinpath(sln, "app"), configuration = "Debug", platform = "x64" })
+check(
+  said.level == WARN
+    and said.message:find("It replaced a compile_commands.json not known to be the one :MsvcCompileDb wrote.", 1, true) ~= nil
+    and #read_database(sln) == 3,
+  "asked for, it replaces any database, and names one it did not write: " .. said.message
+)
+
+check(opened() == nil, "and that one is its own again: current")
+
+uv.fs_utime(sln_db, os.time() - 3600, os.time() - 3600)
+uv.fs_utime(stamp, os.time() + 30, os.time() + 30)
+renewed = opened()
+check(renewed ~= nil and renewed.quiet, "touched, its text the same: still its own, rebuilt unasked, nothing said")
+
+edit_state(function(record)
+  record.written = nil
+end)
+
+uv.fs_utime(stamp, os.time() + 40, os.time() + 40)
+ran, said_now = opened_and_told()
+check(
+  not ran and said_now ~= nil and said_now.level == WARN and #read_database(sln) == 3,
+  "a record from before fingerprints: not known as its own, so left alone"
+)
+
+said = generate({ dir = vim.fs.joinpath(sln, "app"), configuration = "Debug", platform = "x64" })
+check(
+  said.level == INFO and said.message:find("says the same as before", 1, true) ~= nil and recorded(sln_db),
+  "asked for, a database that says the same is taken as its own, nothing replaced: " .. said.message
+)
+
+-- 6. A database someone else wrote is never replaced unasked.
 local foreign = vim.fs.joinpath(root, "foreign")
 
 solution(foreign, "sln")
@@ -691,7 +984,7 @@ check(
   "another tool's compile_commands.json: left alone, MSBuild not run"
 )
 
--- 6. .slnx, the same solution.
+-- 7. .slnx, the same solution.
 local slnx = vim.fs.joinpath(root, "한글 & space", "slnx")
 
 solution(slnx, "slnx")
@@ -703,7 +996,7 @@ check(
   ".slnx: $(SolutionDir)Include is the solution's directory"
 )
 
--- 7. What a machine may lack is said, not passed over.
+-- 8. What a machine may lack is said, not passed over.
 local no_toolset = vim.fs.joinpath(root, "no toolset")
 
 solution(no_toolset, "sln", { toolset = "v999" })
@@ -733,7 +1026,200 @@ check(
   "a project MSBuild cannot read costs its own entries only, and is named: " .. said.message
 )
 
--- 8. clangd reads a source of the first solution without an error.
+-- 9. Read at design time, as IntelliSense reads a project: nothing appears beside a project or in its $(IntDir)
+-- and $(OutDir), nothing is built, and the entries are the sources a build compiles.
+local function tree(dir)
+  local list = {}
+
+  for name, kind in vim.fs.dir(dir, { depth = 50 }) do
+    local st = uv.fs_lstat(vim.fs.joinpath(dir, name))
+
+    list[name] = st and ("%s %d %d.%d"):format(kind, st.size, st.mtime.sec, st.mtime.nsec) or kind
+  end
+
+  return list
+end
+
+-- generate(opts) to its last word, and what appeared, vanished or changed under dir meanwhile besides
+-- compile_commands.json.
+local function generate_watching(dir, opts)
+  local before = tree(dir)
+  local result = generate(opts)
+  local after, moved = tree(dir), {}
+
+  for name, what in pairs(after) do
+    if before[name] ~= what and vim.fs.basename(name) ~= "compile_commands.json" then
+      moved[#moved + 1] = name
+    end
+  end
+
+  for name in pairs(before) do
+    if not after[name] then
+      moved[#moved + 1] = name
+    end
+  end
+
+  table.sort(moved)
+
+  return result, moved
+end
+
+local function files_of(entries)
+  local list = vim.tbl_map(function(entry)
+    return vim.fs.basename(vim.fs.normalize(entry.file))
+  end, entries or {})
+
+  table.sort(list)
+
+  return list
+end
+
+-- A unity build: outside design time, CreateUnityFiles writes unity_*.cpp into $(IntDir) and lists those.
+local unity = vim.fs.joinpath(root, "unity")
+
+for _, name in ipairs({ "a", "b", "c" }) do
+  write(vim.fs.joinpath(unity, name .. ".cpp"), { ("int %s() { return 0; }"):format(name) })
+end
+
+write(vim.fs.joinpath(unity, "custom_unity.cpp"), { '#include "a.cpp"', '#include "b.cpp"' })
+write(vim.fs.joinpath(unity, "main.cpp"), { "int main() { return 0; }" })
+write(
+  vim.fs.joinpath(unity, "unity.vcxproj"),
+  vcxproj({
+    guid = "{33333333-3333-4333-8333-333333333333}",
+    kind = "Application",
+    sources = { "c.cpp", "main.cpp" },
+    configuration = { "    <EnableUnitySupport>true</EnableUnitySupport>" },
+    items = {
+      '    <ClCompile Include="a.cpp"><CustomUnityFile>true</CustomUnityFile></ClCompile>',
+      '    <ClCompile Include="b.cpp"><CustomUnityFile>true</CustomUnityFile></ClCompile>',
+      '    <ClCompile Include="custom_unity.cpp"><CustomUnityFile>true</CustomUnityFile>'
+        .. "<IncludeInUnityFile>false</IncludeInUnityFile></ClCompile>",
+    },
+  })
+)
+
+local result, moved = generate_watching(unity, { dir = unity })
+
+check(result.level == INFO, "a unity build: " .. result.message)
+same(moved, {}, "a unity build: nothing written beside the project or into $(IntDir), no unity_*.cpp")
+same(
+  files_of(read_database(unity)),
+  { "a.cpp", "b.cpp", "c.cpp", "main.cpp" },
+  "a unity build: its entries are its sources, neither a generated unity file nor the custom one"
+)
+
+-- C++20 modules, scanned: outside design time, the scan makes $(IntDir) and its tlog directories and runs cl.
+local modules = vim.fs.joinpath(root, "modules")
+
+write(vim.fs.joinpath(modules, "hello.ixx"), { "export module hello;", "export int answer() { return 42; }" })
+write(vim.fs.joinpath(modules, "main.cpp"), { "import hello;", "int main() { return answer(); }" })
+write(
+  vim.fs.joinpath(modules, "modules.vcxproj"),
+  vcxproj({
+    guid = "{44444444-4444-4444-8444-444444444444}",
+    kind = "Application",
+    sources = { "hello.ixx", "main.cpp" },
+    compile = { "      <ScanSourceForModuleDependencies>true</ScanSourceForModuleDependencies>" },
+  })
+)
+
+result, moved = generate_watching(modules, { dir = modules })
+check(result.level == INFO, "C++20 modules: " .. result.message)
+same(moved, {}, "C++20 modules, scanned: nothing written, no $(IntDir), no tlog directory")
+same(
+  files_of(read_database(modules)),
+  { "hello.ixx", "main.cpp" },
+  "C++20 modules: its entries are its sources, not the standard library's module units"
+)
+
+-- C++/CLI: outside design time, a project builds the projects it references, and writes its AssemblyAttributes
+-- file and reference caches into $(IntDir); a COM reference's interop assembly goes beside it even at design time.
+local function installed(component)
+  local installer = vim.env["ProgramFiles(x86)"]
+  local where = installer and vim.fs.joinpath(installer, "Microsoft Visual Studio", "Installer", "vswhere.exe")
+
+  if not where or not uv.fs_stat(where) then
+    return false
+  end
+
+  local command = { where, "-latest", "-products", "*", "-requires", component, "-property", "installationPath" }
+
+  return vim.trim(vim.system(command, { text = true }):wait(10000).stdout or "") ~= ""
+end
+
+if not installed("Microsoft.VisualStudio.Component.VC.CLI.Support") then
+  print("SKIP C++/CLI at design time: Visual Studio's C++/CLI support is not installed")
+else
+  local cli = vim.fs.joinpath(root, "cli")
+  local CLI_LIB, CLI_APP = "{55555555-5555-4555-8555-555555555555}", "{66666666-6666-4666-8666-666666666666}"
+  local clr = { "    <CLRSupport>true</CLRSupport>" }
+  local framework = {
+    "    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>",
+    "    <Keyword>ManagedCProj</Keyword>",
+  }
+
+  write(vim.fs.joinpath(cli, "clilib", "lib.cpp"), {
+    "namespace CliLib",
+    "{",
+    "public ref class Thing",
+    "{",
+    "public:",
+    "    static int Answer() { return 42; }",
+    "};",
+    "}",
+  })
+
+  write(
+    vim.fs.joinpath(cli, "clilib", "clilib.vcxproj"),
+    vcxproj({
+      guid = CLI_LIB,
+      kind = "DynamicLibrary",
+      sources = { "lib.cpp" },
+      globals = framework,
+      configuration = clr,
+    })
+  )
+
+  write(vim.fs.joinpath(cli, "cliapp", "main.cpp"), { "int main() { return CliLib::Thing::Answer(); }" })
+  write(
+    vim.fs.joinpath(cli, "cliapp", "cliapp.vcxproj"),
+    vcxproj({
+      guid = CLI_APP,
+      kind = "Application",
+      sources = { "main.cpp" },
+      globals = framework,
+      configuration = clr,
+      items = {
+        ('    <ProjectReference Include="..\\clilib\\clilib.vcxproj"><Project>%s</Project></ProjectReference>'):format(
+          CLI_LIB
+        ),
+        -- The Microsoft Scripting Runtime, a type library every Windows registers.
+        '    <COMReference Include="Scripting"><Guid>{420B2830-E718-11CF-893D-00A0C9054228}</Guid>'
+          .. "<VersionMajor>1</VersionMajor><VersionMinor>0</VersionMinor><Lcid>0</Lcid>"
+          .. "<WrapperTool>tlbimp</WrapperTool><Isolated>False</Isolated></COMReference>",
+      },
+    })
+  )
+
+  write(vim.fs.joinpath(cli, "Cli.slnx"), {
+    "<Solution>",
+    "  <Configurations>",
+    '    <Platform Name="x64" />',
+    '    <Platform Name="x86" />',
+    "  </Configurations>",
+    ('  <Project Path="clilib/clilib.vcxproj" Id="%s" />'):format(CLI_LIB:sub(2, -2)),
+    ('  <Project Path="cliapp/cliapp.vcxproj" Id="%s" />'):format(CLI_APP:sub(2, -2)),
+    "</Solution>",
+  })
+
+  result, moved = generate_watching(cli, { dir = vim.fs.joinpath(cli, "cliapp") })
+  check(result.level == INFO, "C++/CLI: " .. result.message)
+  same(moved, {}, "C++/CLI: the referenced project is not built, and nothing is written beside either project")
+  same(files_of(read_database(cli)), { "lib.cpp", "main.cpp" }, "C++/CLI: its entries are both projects' sources")
+end
+
+-- 10. clangd reads a source of the first solution without an error.
 local clangd = os.getenv("MSVC_COMPILE_DATABASE_TEST_CLANGD") or ""
 
 if clangd == "" then
