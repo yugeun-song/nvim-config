@@ -56,9 +56,15 @@ local function line_of(tag, lines)
   end
 end
 
+-- A tags file can name anything: a device or a pipe would never end being read, so only a regular file is.
 local function file_lines(cache, path)
   if not cache[path] then
-    local ok, lines = pcall(vim.fn.readfile, path)
+    local stat = vim.uv.fs_stat(path)
+    local ok, lines = false, nil
+
+    if stat and stat.type == "file" then
+      ok, lines = pcall(vim.fn.readfile, path)
+    end
 
     cache[path] = ok and lines or {}
   end

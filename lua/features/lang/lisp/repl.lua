@@ -90,12 +90,13 @@ local profiles = {
       return { "irb", "--noautocomplete" }
     end,
     -- The workspace binding is the one irb evaluates in, so locals defined here stay visible. The buffer's path and
-    -- line make require_relative and backtraces point at the buffer.
+    -- line make require_relative and backtraces point at the buffer; a path with a control character in it is not
+    -- sent, as the terminal would read ^A or ^U in it as line editing.
     eval = function(path, label, file, line)
       return ("IRB.CurrentContext.workspace.binding.eval(File.read(%s).tap { File.delete(%s) }, %s, %d) # %s\n"):format(
         ruby_string(path),
         ruby_string(path),
-        ruby_string(file ~= "" and file or "(nvim)"),
+        ruby_string(file ~= "" and not file:find("%c") and file or "(nvim)"),
         line,
         label
       )

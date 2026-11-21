@@ -81,7 +81,7 @@ Windows only (`c/msvc_toolchain/`).
 
 ## Haskell
 
-[haskell-tools.nvim](https://github.com/mrcjkb/haskell-tools.nvim) (`^11`) runs haskell-language-server for Haskell and Cabal files (lspconfig's `hls` is off), with the `haskell` parser and `hlint` when it is on PATH. GHCup's `bin` (`haskell.lua`: `~/.ghcup/bin`, `C:\ghcup\bin`, or under `GHCUP_INSTALL_BASE_PREFIX`) is appended to PATH when Haskell is first needed, so an earlier program of the same name wins.
+[haskell-tools.nvim](https://github.com/mrcjkb/haskell-tools.nvim) (`^11`) runs haskell-language-server for Haskell and Cabal files (lspconfig's `hls` is off), with the `haskell` parser and `hlint` when it is on PATH. GHCup's `bin` (`haskell.lua`: under `GHCUP_INSTALL_BASE_PREFIX`, which GHCup's installer sets, else `~/.ghcup/bin` on Linux and macOS) is appended to PATH when Haskell is first needed, so an earlier program of the same name wins.
 
 ## Lean, Python, Elixir, Rust, TypeScript
 

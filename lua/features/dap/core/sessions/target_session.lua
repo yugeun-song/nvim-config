@@ -219,8 +219,8 @@ function M.step(kind)
   end
 end
 
--- nvim-dap has no VimLeavePre handler: an orphaned `gdb -i dap` keeps the debuggee
--- running and holds the gdbstub's single client slot.
+-- nvim-dap's ExitPre handler disconnects an attach and terminates a launch, with 0.1 s to answer; an orphaned
+-- `gdb -i dap` would keep the debuggee running and hold the gdbstub's single client slot.
 function M.shutdown()
   local ok, dap = pcall(require, "dap")
 
