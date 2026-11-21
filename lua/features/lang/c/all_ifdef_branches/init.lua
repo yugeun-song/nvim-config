@@ -252,7 +252,7 @@ local function drawn_by_variant(uri, line)
 
   local c = live(variants[variant_key(st, k)])
 
-  return c ~= nil and c.attached_buffers[st.buf] == true
+  return c ~= nil and c.attached_buffers[st.buf] ~= nil
 end
 
 -- One full refresh for a burst of variants coming up.
