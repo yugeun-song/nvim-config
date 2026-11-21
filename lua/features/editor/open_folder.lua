@@ -1,5 +1,10 @@
 local M = {}
 
+-- Folder names as they are: a $NAME in one is no variable.
+local function normalize(path)
+  return vim.fs.normalize(path, { expand_env = false })
+end
+
 local function session_exists()
   local ok, persistence = pcall(require, "persistence")
 
@@ -36,7 +41,7 @@ local function key(dir)
 end
 
 local function remember(dir)
-  local dirs = { vim.fs.normalize(dir) }
+  local dirs = { normalize(dir) }
 
   for _, old in ipairs(M.recent()) do
     if key(old) ~= key(dirs[1]) and #dirs < 50 then
@@ -123,7 +128,7 @@ function M.pick()
         dir = vim.fs.root(files[1], ".git") or vim.fs.dirname(files[1])
       end
 
-      if dir and (files[1] or vim.fs.normalize(dir) ~= vim.fs.normalize(vim.fn.getcwd())) then
+      if dir and (files[1] or normalize(dir) ~= normalize(vim.fn.getcwd())) then
         M.open(dir, files)
       end
     end)
@@ -145,7 +150,7 @@ function M.startup()
 
   vim.cmd("silent! %argdelete | silent keepalt 0file")
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-    if vim.fs.normalize(vim.api.nvim_buf_get_name(buf)) == vim.fs.normalize(dir) then
+    if normalize(vim.api.nvim_buf_get_name(buf)) == normalize(dir) then
       vim.api.nvim_buf_delete(buf, { force = true })
     end
   end

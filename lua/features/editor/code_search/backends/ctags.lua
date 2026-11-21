@@ -110,7 +110,7 @@ function M.search(_, pattern, ctx, done)
     local tag = tags[i]
     local path = vim.fn.isabsolutepath(tag.filename) == 1 and tag.filename or vim.fs.joinpath(cwd, tag.filename)
 
-    path = vim.fs.normalize(vim.fn.fnamemodify(path, ":p"))
+    path = vim.fs.normalize(vim.fn.fnamemodify(path, ":p"), { expand_env = false })
 
     local lines = file_lines(cache, path)
     local lnum = line_of(tag, lines)

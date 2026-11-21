@@ -3,6 +3,11 @@
 -- built-in gf.
 local M = {}
 
+-- File names as they are: a $NAME in one is no variable.
+local function normalize(path)
+  return vim.fs.normalize(path, { expand_env = false })
+end
+
 local function project_compile_db(file)
   for dir in vim.fs.parents(file) do
     for _, name in ipairs({ "compile_commands.json", "compile_flags.txt" }) do
@@ -73,7 +78,7 @@ local function indexed_includes(buf, spelled)
       path = base .. "/" .. path
     end
 
-    path = vim.fs.normalize(vim.fn.fnamemodify(path, ":p"))
+    path = normalize(vim.fn.fnamemodify(path, ":p"))
     if not seen[path] and vim.endswith(path, suffix) and vim.uv.fs_stat(path) then
       seen[path] = true
       found[#found + 1] = path
@@ -192,13 +197,13 @@ local function shared_dirs(a, b)
 end
 
 local function include_targets(buf, spelled, quoted, path, root)
-  local file = vim.fs.normalize(vim.api.nvim_buf_get_name(buf))
+  local file = normalize(vim.api.nvim_buf_get_name(buf))
 
   if path then
-    local real = vim.fs.normalize(vim.uv.fs_realpath(path) or path)
+    local real = normalize(vim.uv.fs_realpath(path) or path)
     local real_root = root and vim.uv.fs_realpath(root)
 
-    if (real_root and vim.fs.relpath(vim.fs.normalize(real_root), real)) or system_header(real) then
+    if (real_root and vim.fs.relpath(normalize(real_root), real)) or system_header(real) then
       return { path }
     end
   end

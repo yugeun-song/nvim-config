@@ -72,7 +72,7 @@ function M.search(_, pattern, ctx, done)
 
       if path then
         entries[#entries + 1] = {
-          filename = vim.fs.normalize(path),
+          filename = vim.fs.normalize(path, { expand_env = false }),
           lnum = tonumber(lnum),
           col = tonumber(col) - 1,
           text = vim.trim(text),

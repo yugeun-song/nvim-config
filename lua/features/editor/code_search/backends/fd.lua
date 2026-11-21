@@ -56,7 +56,8 @@ function M.search(_, pattern, ctx, done)
 
     for _, line in ipairs(lines) do
       if line ~= "" then
-        entries[#entries + 1] = { filename = vim.fs.normalize(line), lnum = 1, col = 0, text = "", file_only = true }
+        entries[#entries + 1] =
+          { filename = vim.fs.normalize(line, { expand_env = false }), lnum = 1, col = 0, text = "", file_only = true }
       end
     end
 
