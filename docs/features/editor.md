@@ -37,7 +37,7 @@ Every 2 s while Neovim has focus, and on `BufEnter` and `CursorHold`, buffers th
 
 `o` on the dashboard, or `<leader>fo`, opens [yazi](https://yazi-rs.github.io/) in a float at the working directory.
 
-- `q` makes the folder yazi is in the working directory: the folder being left gets its session saved (as persistence.nvim does on exit), its buffers close, and the new folder's session comes back, else the dashboard. A modified buffer stops the switch.
+- `q` makes the folder yazi is in the working directory: the folder being left gets its session saved (as persistence.nvim does on exit), its buffers close and its language servers end, and the new folder's session comes back, else the dashboard. A modified buffer stops the switch.
 - `Q` cancels; `<CR>` on a file opens it, with the working directory at its git root, else its folder.
 - `nvim DIR` and `neovide DIR` start the same way: in DIR, with its session or the dashboard, and no directory buffer or explorer (`:e DIR` later still opens the explorer).
 - A session is Vimscript that `:mksession` writes and `:source` runs, and `:mksession` writes a line break in a file name so that what follows runs as a command. No session is saved while a buffer's name holds a control character (possible on Linux and macOS), and none with a line that ends in a backslash is loaded (`session_guard.lua`).

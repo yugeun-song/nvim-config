@@ -80,6 +80,16 @@ function M.open(dir, files)
   for _, file in ipairs(files) do
     require("features.util.edit_file").edit(file)
   end
+
+  -- The language servers of the folder left, serving no buffer now, end: Neovim keeps a server until it quits, and
+  -- clangd went on indexing the old tree on every core.
+  vim.schedule(function()
+    for _, client in ipairs(vim.lsp.get_clients()) do
+      if next(client.attached_buffers) == nil and not client:is_stopped() then
+        client:stop()
+      end
+    end
+  end)
 end
 
 function M.pick()
