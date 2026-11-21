@@ -75,6 +75,7 @@ function M.open(title, items, tagname)
       finder = finders.new_table({ results = items, entry_maker = entry_maker }),
       previewer = config.values.grep_previewer(opts),
       sorter = config.values.generic_sorter(opts),
+      attach_mappings = require("features.util.telescope_exact").attach_mappings,
     })
     :find()
 end

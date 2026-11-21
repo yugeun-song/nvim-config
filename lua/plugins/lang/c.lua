@@ -117,6 +117,7 @@ local specs = {
     },
     config = function(_, opts)
       require("cscope_maps").setup(opts)
+      require("features.util.telescope_exact").guard_cscope()
 
       local cscope = require("cscope")
       local get_result = cscope.get_result

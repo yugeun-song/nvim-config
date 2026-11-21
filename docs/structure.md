@@ -75,7 +75,7 @@ A spec and its code share a path: `lua/plugins/<category>/<name>.lua` has its co
 | `plugins/dap/core.lua` | `features/dap/core/` (`init.lua`, `sessions/`, `panels/`) |
 | `plugins/util/managed_paths.lua` | `features/util/managed_paths.lua` |
 
-Code that no single spec owns sits in its category under its own name: `features/util/storage.lua` (the configuration's own files), `features/util/path_variable.lua`, `edit_file.lua` and `buffer_by_name.lua` (PATH, opening and finding files by their exact name), `features/util/windows/` (Windows only), `features/ui/terminal_background.lua` (started by `init.lua`).
+Code that no single spec owns sits in its category under its own name: `features/util/storage.lua` (the configuration's own files), `features/util/path_variable.lua`, `edit_file.lua`, `buffer_by_name.lua` and `telescope_exact.lua` (PATH, opening and finding files by their exact name, in pickers too), `features/util/windows/` (Windows only), `features/ui/terminal_background.lua` (started by `init.lua`).
 
 ## Why this layout
 
