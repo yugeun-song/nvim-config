@@ -1,15 +1,23 @@
 -- Language servers started from Mason's or PATH's program with fixed arguments, never a repository's. nvim-lspconfig
 -- starts jsonls, cssls, html, yamlls and oxlint from <root>/node_modules/.bin when a repository ships one, which runs
 -- that repository's program on opening a file. jdtls keeps a workspace per project named after the project's folder;
--- on Windows jdtls is a .cmd, and cmd.exe reads & or % in that name as commands, so the name here is the folder's
--- letters and digits with a hash of the whole root.
+-- on Windows jdtls is a .cmd, and cmd.exe reads & or % in that name as commands, so a folder name with anything but
+-- letters, digits, . _ and - becomes those with a hash of the whole root.
 local function jdtls_cmd(dispatchers, config)
   local name = "default"
 
   if config.root_dir then
-    local folder = vim.fs.basename(config.root_dir):gsub("[^%w._-]", "_")
+    local folder = vim.fs.basename(config.root_dir)
 
-    name = ("%s-%s"):format(folder, vim.fn.sha256(config.root_dir):sub(1, 12))
+    -- nvim-lspconfig's own name, the folder's, when it has nothing cmd.exe would read; else its letters and digits
+    -- and a hash of the root as the file system spells it, so one folder is one workspace however it was reached.
+    if folder:match("^[%w._-]+$") then
+      name = folder
+    else
+      local real = vim.uv.fs_realpath(config.root_dir) or config.root_dir
+
+      name = ("%s-%s"):format((folder:gsub("[^%w._-]", "_")), vim.fn.sha256(real):sub(1, 12))
+    end
   end
 
   local data = vim.fs.joinpath(vim.fn.stdpath("cache"), "jdtls", "workspace", name)
