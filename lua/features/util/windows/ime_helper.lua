@@ -496,6 +496,10 @@ function M.path(opts)
   local log = log_for(s)
 
   if uv.fs_stat(log) then
+    if vim.in_fast_event() then
+      return nil, "not looked for yet"
+    end
+
     local f = io.open(log, "rb")
     local first = f and f:read("*l") or ""
 
@@ -506,7 +510,7 @@ function M.path(opts)
     local key, when = first:match("^retry (%x+) (%d+)$")
 
     -- Something the build depends on changed, or a day passed: it is tried again below.
-    if not vim.in_fast_event() and (key ~= retry_key() or os.time() - (tonumber(when) or 0) > RETRY_AFTER_S) then
+    if key ~= retry_key() or os.time() - (tonumber(when) or 0) > RETRY_AFTER_S then
       os.remove(log)
     else
       local older = newest_build(exe)
