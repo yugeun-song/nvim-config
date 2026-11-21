@@ -182,7 +182,7 @@ end
 -- Statusline code: %{expr}, %-N{expr} and %{%expr%} run Vimscript (system() included), %!expr does at the start of an
 -- option, and %@Func@ calls Func on a click. The other items only format: an escaped % (%%), highlights (%#Group#,
 -- %*, %N*), alignment (%=, %<), item groups (%(, %)) and tab page labels (%T, %X).
-local FORMATS = "%%[-0-9.]*[%%#*=<()TX]"
+local FORMATS = { ["%"] = true, ["*"] = true, ["="] = true, ["<"] = true, T = true, X = true }
 local RUNS = { ["{"] = true, ["!"] = true, ["@"] = true, [""] = true }
 
 -- Components, plugin modules and functions already guarded here.
@@ -223,16 +223,51 @@ local function defuse(code)
   return table.concat(out)
 end
 
--- What a component shows, safe in 'statusline'. Text with no statusline code in it (a git tag, a folder name, a debug
--- configuration's name, a typed command) is escaped whole. Code a component builds on purpose (trouble's symbols,
--- LazyVim's path, lualine's escaped branch) keeps its highlights and alignment; only the items that run something
--- become text. Applying it twice changes nothing.
+-- Whether every % of text starts one of the items above, each %#Group# and %( closed: code a component builds. Text
+-- with any other % in it (a git tag v2%=%{%x%}, a folder 50%off) is no such code, and lualine fails on it (E539, E542).
+local function is_code(text)
+  local depth, i = 0, 1
+
+  while true do
+    local at = text:find("%", i, true)
+
+    if not at then
+      return depth == 0
+    end
+
+    local flags = text:match("^[-0-9.]*", at + 1)
+    local item = text:sub(at + 1 + #flags, at + 1 + #flags)
+
+    i = at + 2 + #flags
+    if item == "#" then
+      local close = text:find("#", i, true)
+
+      if not close then
+        return false
+      end
+
+      i = close + 1
+    elseif item == "(" or item == ")" then
+      depth = depth + (item == "(" and 1 or -1)
+      if depth < 0 then
+        return false
+      end
+    elseif not (FORMATS[item] or RUNS[item]) then
+      return false
+    end
+  end
+end
+
+-- What a component shows, safe in 'statusline'. Code a component builds on purpose (trouble's symbols, LazyVim's path,
+-- lualine's escaped branch) keeps its highlights and alignment, and only the items that run something become text.
+-- Anything else (a git tag, a folder name, a debug configuration's name, a typed command) is escaped whole. Applying
+-- it twice changes nothing.
 function M.sanitize(text)
   if type(text) ~= "string" or not text:find("%", 1, true) then
     return text
   end
 
-  return text:find(FORMATS) and defuse(text) or M.escape(text)
+  return is_code(text) and defuse(text) or M.escape(text)
 end
 
 local KINDS = { "sections", "inactive_sections", "winbar", "inactive_winbar", "tabline" }
@@ -292,8 +327,9 @@ function M.sanitize_components(opts)
 end
 
 -- lualine's branch reads a terminal's directory from its buffer name, term://<cwd>//<pid>:<cmd>, through expand(),
--- which on Linux and macOS runs a `command` in it through the shell, and a repository's folder name can hold one. The
--- directory is resolved here without expand() and handed over.
+-- which on Linux and macOS runs a `command` in it through the shell, and a repository's folder name can hold one.
+-- lualine's own lookup still runs, since only it keeps the branch shown in step with the buffer, but its expand()
+-- takes that directory as it is for the call.
 function M.guard_git_branch()
   local ok, git_branch = pcall(require, "lualine.components.branch.git_branch")
 
@@ -307,15 +343,31 @@ function M.guard_git_branch()
 
   ---@diagnostic disable-next-line: duplicate-set-field
   git_branch.find_git_dir = function(dir_path)
-    if dir_path == nil then
-      local cwd = vim.api.nvim_buf_get_name(0):match("^term://(.-)//")
-
-      if cwd then
-        dir_path = vim.fs.normalize(cwd, { expand_env = false })
-      end
+    if dir_path ~= nil or not vim.api.nvim_buf_get_name(0):find("^term://") then
+      return find_git_dir(dir_path)
     end
 
-    return find_git_dir(dir_path)
+    local expand = vim.fn.expand
+
+    -- The buffer's own directory (%:p:h) runs nothing; any other text is the directory from the name.
+    ---@diagnostic disable-next-line: duplicate-set-field
+    vim.fn.expand = function(text, ...)
+      if text == "%:p:h" then
+        return expand(text, ...)
+      end
+
+      return vim.fs.normalize(text, { expand_env = false })
+    end
+
+    local done, result = pcall(find_git_dir, nil)
+
+    vim.fn.expand = expand
+
+    if not done then
+      error(result, 0)
+    end
+
+    return result
   end
 end
 
