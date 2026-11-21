@@ -9,7 +9,12 @@ end
 
 local function mark_set()
   local id = get_char()
-  local state = id and MiniFiles.get_explorer_state()
+
+  if not id then
+    return
+  end
+
+  local state = MiniFiles.get_explorer_state()
   local path = state and state.branch[state.depth_focus]
 
   if path then
@@ -48,6 +53,7 @@ local function mark_goto()
   MiniFiles.set_bookmark("'", function()
     return here
   end, { desc = "Before latest jump" })
+
   MiniFiles.set_branch({ path })
 end
 
@@ -67,6 +73,7 @@ return {
         vim.keymap.set("n", "<CR>", function()
           require("mini.files").go_in({ close_on_file = true })
         end, { buffer = buf, desc = "Open entry (file/dir)" })
+
         vim.keymap.set("n", "m", mark_set, { buffer = buf, desc = "Set bookmark" })
         vim.keymap.set("n", "'", mark_goto, { buffer = buf, desc = "Go to bookmark" })
       end,

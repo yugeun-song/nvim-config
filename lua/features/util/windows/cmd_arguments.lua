@@ -102,11 +102,7 @@ function M.guard_formatters(formatters_by_ft, formatters)
 
     -- What runs: the command and the arguments before conform's own, node and the script first for an npm program.
     local function plan(self, ctx)
-      local cmd = command
-
-      if type(cmd) == "function" then
-        cmd = cmd(self, ctx)
-      end
+      local cmd = type(command) == "function" and command(self, ctx) or command
 
       local args = prepend
 
@@ -142,6 +138,9 @@ function M.guard_formatters(formatters_by_ft, formatters)
     formatters[name] = function(bufnr)
       if M.unsafe(vim.api.nvim_buf_get_name(bufnr)) then
         local config = builtin and require("conform.util").merge_formatter_configs(builtin, override) or override
+
+        -- A formatter with a command: guard() leaves the others alone.
+        ---@cast config conform.JobFormatterConfig
         local cmd = config.command
 
         if type(cmd) == "function" then
