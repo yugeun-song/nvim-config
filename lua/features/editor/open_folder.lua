@@ -125,22 +125,47 @@ function M.pick()
       border = "rounded",
       title = " Open Folder ",
       title_pos = "center",
-      keys = { q = "close" },
+      -- <Esc> is yazi's own key: twice in a row it would leave yazi for Normal mode, where its keys hit a terminal
+      -- buffer (E21) and q closes the float under it.
+      keys = { q = "close", term_normal = false },
     },
   })
 
   term:on("TermClose", function()
     local status = vim.v.event.status
+    -- The float closed first (q in Normal mode) and stopped yazi: a cancel. Otherwise the float closes after this
+    -- autocmd: deleting the buffer it runs for from inside it fails (E937).
+    local cancelled = not term:win_valid()
 
-    term:close()
     vim.schedule(function()
+      if term:win_valid() then
+        term:close()
+      end
+
+      local dir, chosen = take(cwd_file)[1], take(chooser_file)
+
+      if cancelled then
+        return
+      end
+
       if status ~= 0 then
         vim.notify("yazi exited with code " .. status, vim.log.levels.ERROR, { title = "Open Folder" })
       end
 
-      local dir, files = take(cwd_file)[1], take(chooser_file)
+      -- A folder selected (<Space>) and opened (<CR>) is the folder to open, not one inside its parent.
+      local folder, files = nil, {}
 
-      if files[1] then
+      for _, path in ipairs(chosen) do
+        if vim.fn.isdirectory(path) == 1 then
+          folder = folder or path
+        else
+          files[#files + 1] = path
+        end
+      end
+
+      if folder then
+        dir = folder
+      elseif files[1] then
         dir = vim.fs.root(files[1], ".git") or vim.fs.dirname(files[1])
       end
 
