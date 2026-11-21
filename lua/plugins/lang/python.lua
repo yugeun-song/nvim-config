@@ -42,10 +42,19 @@ return {
         },
         config = function()
           local venv = vim.fs.joinpath(require("features.lsp.mason").ROOT, "packages", "debugpy", "venv")
-          local python =
-            vim.fn.exepath(vim.fs.joinpath(venv, vim.fn.has("win32") == 1 and "Scripts" or "bin", "python"))
+          local bin = vim.fs.joinpath(venv, vim.fn.has("win32") == 1 and "Scripts" or "bin")
+          -- debugpy's own launcher rather than `python -m debugpy.adapter`, which puts the working directory first
+          -- on sys.path: a project's debugpy/ would run as the adapter. Named without .exe, as nvim-dap-python matches
+          -- the name; Windows finds the .exe.
+          local adapter = vim.fs.joinpath(bin, "debugpy-adapter")
 
-          require("dap-python").setup(python ~= "" and python or nil)
+          if vim.fn.executable(adapter) == 1 then
+            require("dap-python").setup(adapter)
+          else
+            local python = vim.fn.exepath(vim.fs.joinpath(bin, "python"))
+
+            require("dap-python").setup(python ~= "" and python or nil)
+          end
         end,
       },
     },

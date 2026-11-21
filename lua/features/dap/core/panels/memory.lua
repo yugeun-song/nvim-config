@@ -599,8 +599,10 @@ function M.show_expr(expr, kind)
   resolve(expr, read_at)
 end
 
+-- path is a file name as it is: expand() would run a `command` in it through the shell on Linux and macOS, and a
+-- buffer's name comes from a repository.
 function M.show_file(path, offset)
-  path = vim.fn.fnamemodify(vim.fn.expand(path), ":p")
+  path = vim.fn.fnamemodify(path, ":p")
   local stat = vim.uv.fs_stat(path)
 
   if not stat then
@@ -898,7 +900,7 @@ function M.pick_source()
         elseif choice.ask == "file" then
           vim.ui.input({ prompt = "File: ", completion = "file", default = vim.fn.getcwd() .. "/" }, function(f)
             if f and f ~= "" then
-              M.show_file(f, 0)
+              M.show_file(vim.fs.normalize(f, { expand_env = true }), 0)
             end
           end)
         elseif choice.ask == "buffile" then
@@ -1100,9 +1102,11 @@ function M.open(arg)
   if arg and arg ~= "" then
     -- A file needs a path form (./main, ~/x, %); a bare `main` is the symbol.
     local path_like = arg:find("[/\\]") or arg:match("^[%%#<~]")
+    -- What was typed, expanded as the command line does (%, #, ~); the result is not expanded again.
+    local path = path_like and vim.fn.expand(arg) or ""
 
-    if path_like and vim.uv.fs_stat(vim.fn.expand(arg)) then
-      M.show_file(arg, 0)
+    if path ~= "" and vim.uv.fs_stat(path) then
+      M.show_file(path, 0)
     else
       M.show_expr(arg, "target")
     end

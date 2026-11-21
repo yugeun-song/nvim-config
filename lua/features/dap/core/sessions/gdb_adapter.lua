@@ -85,7 +85,8 @@ function M.attach(session)
       50,
       50,
       vim.schedule_wrap(function()
-        if alive(st.pid) and vim.uv.now() < deadline then
+        -- Two ticks can be queued while the main loop is busy; the first closes the timer.
+        if timer:is_closing() or (alive(st.pid) and vim.uv.now() < deadline) then
           return
         end
 

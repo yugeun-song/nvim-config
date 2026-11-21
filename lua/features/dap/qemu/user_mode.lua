@@ -64,6 +64,9 @@ end
 
 local jobs = {}
 local serial = 0
+-- The sockets socket_path() made: the only paths spawn() listens on and spawn() and stop() remove. A configuration's
+-- qemu_socket (a launch.json's) names any file, which the session's end would have deleted.
+local owned = {}
 
 -- The gdbstub takes any client: its socket directory is 0700.
 function M.socket_path()
@@ -73,7 +76,11 @@ function M.socket_path()
   vim.uv.fs_chmod(dir, 448)
   serial = serial + 1
 
-  return vim.fs.joinpath(dir, ("%d-%d.sock"):format(vim.fn.getpid(), serial))
+  local sock = vim.fs.joinpath(dir, ("%d-%d.sock"):format(vim.fn.getpid(), serial))
+
+  owned[sock] = true
+
+  return sock
 end
 
 -- Runs `qemu-<arch> -g <socket> [-L <sysroot>] <program> [args...]`; exactly one of
@@ -101,6 +108,10 @@ function M.spawn(cfg, on_ready, on_fail)
   end
 
   local sock = cfg.qemu_socket
+
+  if not owned[sock] then
+    return settle(on_fail, "qemu_socket is made here, never taken from a configuration: set dbg_qemuser without target")
+  end
 
   vim.uv.fs_unlink(sock)
 
@@ -180,6 +191,10 @@ function M.spawn(cfg, on_ready, on_fail)
 end
 
 function M.stop(sock)
+  if not owned[sock] then
+    return
+  end
+
   local jid = jobs[sock]
 
   if jid then
@@ -188,15 +203,19 @@ function M.stop(sock)
   end
 
   vim.uv.fs_unlink(sock)
+  owned[sock] = nil
 end
 
 function M.stop_all()
-  for sock, jid in pairs(jobs) do
+  for _, jid in pairs(jobs) do
     pcall(vim.fn.jobstop, jid)
+  end
+
+  for sock in pairs(owned) do
     vim.uv.fs_unlink(sock)
   end
 
-  jobs = {}
+  jobs, owned = {}, {}
 end
 
 return M

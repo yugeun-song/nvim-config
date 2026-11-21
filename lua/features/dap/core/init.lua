@@ -663,6 +663,15 @@ function M.setup()
   dap.listeners.after.event_exited["dbg_qemuser"] = stop_qemuser
   dap.listeners.after.disconnect["dbg_qemuser"] = stop_qemuser
 
+  -- A launch or attach that fails closes the session with none of those events.
+  dap.listeners.before.initialize["dbg_qemuser"] = function(session)
+    if session.config and session.config.qemu_socket then
+      session.on_close["dbg_qemuser"] = function()
+        stop_qemuser(session)
+      end
+    end
+  end
+
   vim.fn.sign_define("DapBreakpoint", { text = "●", texthl = "DiagnosticError", numhl = "" })
   vim.fn.sign_define("DapBreakpointCondition", { text = "◆", texthl = "DiagnosticWarn", numhl = "" })
   vim.fn.sign_define("DapBreakpointRejected", { text = "○", texthl = "DiagnosticHint", numhl = "" })
