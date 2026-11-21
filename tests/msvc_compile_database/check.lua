@@ -957,15 +957,29 @@ uv.fs_utime(stamp, os.time() + 30, os.time() + 30)
 renewed = opened()
 check(renewed ~= nil and renewed.quiet, "touched, its text the same: still its own, rebuilt unasked, nothing said")
 
-edit_state(function(record)
-  record.written = nil
-end)
+-- A record from before fingerprints holds only the time its run ended, and that run left a database that said the
+-- same as it was, as the one above did: a file not changed since is its own, one changed later is not.
+local function without_fingerprint()
+  edit_state(function(record)
+    record.written = nil
+  end)
+end
 
+without_fingerprint()
 uv.fs_utime(stamp, os.time() + 40, os.time() + 40)
+renewed = opened()
+check(
+  renewed ~= nil and renewed.quiet,
+  "a record from before fingerprints, its file left as it was by that run: its own, rebuilt unasked, nothing said"
+)
+
+without_fingerprint()
+uv.fs_utime(sln_db, os.time() + 3600, os.time() + 3600)
+uv.fs_utime(stamp, os.time() + 50, os.time() + 50)
 ran, said_now = opened_and_told()
 check(
   not ran and said_now ~= nil and said_now.level == WARN and #read_database(sln) == 3,
-  "a record from before fingerprints: not known as its own, so left alone"
+  "a record from before fingerprints, its file changed after that run: not known as its own, so left alone"
 )
 
 said = generate({ dir = vim.fs.joinpath(sln, "app"), configuration = "Debug", platform = "x64" })
