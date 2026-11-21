@@ -401,6 +401,14 @@ function M.setup()
         end
       end
 
+      local foreign = require("features.dap.core.sessions.gdbstub_watchdog").foreign_listener(config.target)
+
+      if foreign then
+        notify.error(foreign)
+
+        return
+      end
+
       local args = { "-q", "-i", "dap", "-iex", "set pagination off" }
 
       -- Without the sysroot gdb resolves nothing past the main binary; QEMU

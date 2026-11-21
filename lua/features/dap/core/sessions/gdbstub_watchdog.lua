@@ -63,6 +63,48 @@ local function split_target(target)
   return (host == "" and "localhost" or host), tonumber(port)
 end
 
+local LOCAL_HOSTS = { localhost = true, ["127.0.0.1"] = true, ["::1"] = true }
+
+-- Linux: why gdb is not to attach to target, a localhost port that another user's process listens on (the guest's QEMU
+-- had not bound it, or had ended): gdb serves a remote stub's File-I/O requests, reading and writing this user's
+-- files. nil for this user's port, for anything but a local TCP target, and where procfs cannot tell.
+---@param opts? { paths?: string[], uid?: integer } for tests: other procfs files, another user
+function M.foreign_listener(target, opts)
+  opts = opts or {}
+
+  if not opts.paths and jit.os ~= "Linux" then
+    return nil
+  end
+
+  local host, port = split_target(target)
+
+  if not port or not LOCAL_HOSTS[host] then
+    return nil
+  end
+
+  local want, me = ("%04X"):format(port), opts.uid or vim.uv.getuid()
+
+  for _, path in ipairs(opts.paths or { "/proc/net/tcp", "/proc/net/tcp6" }) do
+    local fd = io.open(path, "r")
+
+    if fd then
+      for line in fd:lines() do
+        local local_addr, st, uid = line:match("^%s*%d+:%s+(%S+)%s+%S+%s+(%S%S)%s+%S+%s+%S+%s+%S+%s+(%d+)")
+
+        if local_addr and st == "0A" and local_addr:match(":(%x+)$") == want and tonumber(uid) ~= me then
+          fd:close()
+
+          return ("%s is served by another user's process (uid %s): gdb is not attached"):format(target, uid)
+        end
+      end
+
+      fd:close()
+    end
+  end
+
+  return nil
+end
+
 -- Procfs only, so it is safe while a session is attached.
 function M.port_is_listening(port)
   port = tonumber(port)
