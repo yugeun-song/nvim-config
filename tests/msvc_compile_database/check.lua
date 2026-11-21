@@ -458,6 +458,11 @@ check(
   "a record from before fingerprints, a minute off its file: not its own"
 )
 
+check(
+  database._is_ours(fingerprinted, { generated = made + 3600 }),
+  "a record from before fingerprints, made an hour after its file by a run that left the same text: its own"
+)
+
 check(not database._is_ours(fingerprinted, nil), "no record: not its own")
 
 local directory = vim.fs.joinpath(root, "fingerprint-directory", "compile_commands.json")

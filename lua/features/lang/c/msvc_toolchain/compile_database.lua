@@ -481,8 +481,8 @@ end
 M._still_ours = still_ours
 
 -- Whether db is the file a project's record says this wrote. A record from before fingerprints were kept has only
--- the time it was made, the second the file was written: a file whose time is within two seconds of it is taken for
--- that one, and gets a fingerprint when it is rebuilt.
+-- the time its run ended, which wrote the file then or left it as it was when it already said the same: a file not
+-- changed after that (within two seconds) is taken for that one, and gets a fingerprint when it is rebuilt.
 local function is_ours(db, record)
   if type(record) ~= "table" then
     return false
@@ -494,10 +494,7 @@ local function is_ours(db, record)
 
   local st = uv.fs_lstat(db)
 
-  return st ~= nil
-    and st.type == "file"
-    and type(record.generated) == "number"
-    and math.abs(st.mtime.sec - record.generated) <= 2
+  return st ~= nil and st.type == "file" and type(record.generated) == "number" and st.mtime.sec <= record.generated + 2
 end
 
 M._is_ours = is_ours
