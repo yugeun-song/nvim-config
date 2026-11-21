@@ -9,7 +9,8 @@ local function relative(base, path)
     return inside
   end
 
-  local from, to = vim.split(vim.fs.normalize(base), "/"), vim.split(vim.fs.normalize(path), "/")
+  local from = vim.split(vim.fs.normalize(base, { expand_env = false }), "/")
+  local to = vim.split(vim.fs.normalize(path, { expand_env = false }), "/")
   local i = 1
 
   while i <= #from and i <= #to and from[i] == to[i] do

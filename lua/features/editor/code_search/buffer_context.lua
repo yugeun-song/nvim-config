@@ -49,8 +49,12 @@ function M.of(buf)
   buf = buf and buf ~= 0 and buf or vim.api.nvim_get_current_buf()
 
   local name = vim.api.nvim_buf_get_name(buf)
-  local file = vim.bo[buf].buftype == "" and name ~= "" and vim.fs.normalize(vim.fn.fnamemodify(name, ":p")) or nil
-  local cwd = vim.fs.normalize(vim.fn.getcwd())
+  local file = vim.bo[buf].buftype == ""
+      and name ~= ""
+      and vim.fs.normalize(vim.fn.fnamemodify(name, ":p"), { expand_env = false })
+    or nil
+
+  local cwd = vim.fs.normalize(vim.fn.getcwd(), { expand_env = false })
   local extension = file and file:match("%.([^./]+)$")
 
   return {

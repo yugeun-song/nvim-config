@@ -8,7 +8,6 @@ local M = {}
 
 local uv = vim.uv
 local WIN = vim.fn.has("win32") == 1
-local SEP = WIN and ";" or ":"
 local STATE = require("features.util.storage").path("state", "registered_programs.json")
 local SHIMS = require("features.util.storage").path("data", "registered_program_shims")
 
@@ -26,7 +25,7 @@ M.KNOWN = {
 }
 
 local function key(path)
-  local p = vim.fs.normalize(path)
+  local p = vim.fs.normalize(path, { expand_env = false })
 
   return WIN and p:lower() or p
 end
@@ -76,15 +75,16 @@ end
 
 local function add_to_path()
   local path = vim.env.PATH or ""
+  local path_variable = require("features.util.path_variable")
   local want = key(SHIMS)
 
-  for dir in vim.gsplit(path, SEP, { plain = true }) do
-    if dir ~= "" and key(dir) == want then
+  for _, dir in ipairs(path_variable.directories(path)) do
+    if key(dir) == want then
       return
     end
   end
 
-  vim.env.PATH = require("features.util.path_variable").append(path, WIN and SHIMS:gsub("/", "\\") or SHIMS)
+  vim.env.PATH = path_variable.append(path, WIN and SHIMS:gsub("/", "\\") or SHIMS)
 end
 
 -- A registered name: also a file name in the shims directory, so nothing that leaves it (no separator, no "..").
@@ -240,7 +240,10 @@ end
 ---@return boolean? ok, string? err
 function M.register(name, target)
   name = WIN and name:gsub("%.[eE][xX][eE]$", "") or name
-  target = vim.fs.normalize(vim.fn.fnamemodify(vim.fn.expand(target), ":p"))
+  if type(target) == "string" and target ~= "" then
+    -- Expand a leading ~ without vim.fn.expand(), which runs `command` on Linux/macOS and expands $NAME.
+    target = vim.fs.normalize(vim.fs.abspath(vim.fs.normalize(target, { expand_env = false })), { expand_env = false })
+  end
 
   local ok, err = check(name, target)
 
@@ -399,10 +402,11 @@ local function describe(name, tools)
   if registered then
     local shadow = found ~= "" and not vim.startswith(key(found), key(SHIMS)) and found
 
-    return registered .. (shadow and ("  (PATH has " .. vim.fs.normalize(shadow) .. " first)") or "")
+    return registered
+      .. (shadow and ("  (PATH has " .. vim.fs.normalize(shadow, { expand_env = false }) .. " first)") or "")
   end
 
-  return found ~= "" and ("PATH: " .. vim.fs.normalize(found)) or "not found"
+  return found ~= "" and ("PATH: " .. vim.fs.normalize(found, { expand_env = false })) or "not found"
 end
 
 local function report(ok, err, done)

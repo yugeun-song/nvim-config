@@ -250,7 +250,7 @@ end
 local IS_WINDOWS = vim.fn.has("win32") == 1
 
 local function comparable(path)
-  path = vim.fs.normalize(vim.fn.fnamemodify(path, ":p"))
+  path = vim.fs.normalize(vim.fn.fnamemodify(path, ":p"), { expand_env = false })
 
   return IS_WINDOWS and path:lower() or path
 end
