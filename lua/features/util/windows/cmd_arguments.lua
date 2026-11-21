@@ -1,7 +1,8 @@
 -- Windows: a path cmd.exe would read as its own syntax. nvim-lint starts every linter as `cmd.exe /C <linter> ...
 -- <file>`, and a .cmd or .bat (npm's and Java's launchers) always runs through cmd.exe, which splits a command at & and
 -- expands %NAME% whatever quoting libuv gives the arguments (it escapes " as \", which cmd.exe does not know): a file
--- under C:\a&b\ would run b. Such a tool is not started for such a file; Neovim says why once per tool and file.
+-- under C:\a&b\ would run b. An npm formatter is started as node itself; any other such tool is not started for such
+-- a file, and Neovim says why once per tool and file.
 local M = {}
 
 -- What cmd.exe acts on: & and | split, % expands, ^ escapes, < > redirect, " toggles quoting.
@@ -70,38 +71,90 @@ function M.guard_lint()
   end
 end
 
--- conform's formatters: one that would start through cmd.exe gets the check before its own condition.
+-- conform's formatters. One whose .cmd only runs node with a script (npm's launcher, behind Mason's) starts node itself,
+-- with the script first, so no cmd.exe stands between Neovim and it. One that would still start through cmd.exe is not
+-- run for a file whose path cmd.exe would read: the buffer is handed back as it is, and so counts as formatted, or
+-- LazyVim would format it through a language server instead.
 function M.guard_formatters(formatters_by_ft, formatters)
+  local npm = require("features.util.windows.npm_launcher")
   local done = {}
 
   local function guard(name)
     local ok, builtin = pcall(require, "conform.formatters." .. name)
-    local override = formatters[name] or (ok and {} or nil)
 
-    -- A function override, or a name conform knows neither way, is left as it is.
-    if done[name] or type(override) ~= "table" then
+    builtin = ok and type(builtin) == "table" and builtin or nil
+
+    local override = formatters[name] or (builtin and {} or nil)
+
+    -- A function override, a Lua formatter, or a name conform knows neither way, is left as it is.
+    if done[name] or type(override) ~= "table" or override.format then
       return
     end
 
     done[name] = true
 
-    local condition = override.condition or (ok and type(builtin) == "table" and builtin.condition or nil)
+    local command = override.command or (builtin and builtin.command)
+    local prepend = override.prepend_args
 
-    override.condition = function(self, ctx)
-      local command = self.command
-
-      if type(command) == "function" then
-        command = command(self, ctx)
-      end
-
-      if M.unsafe(ctx.filename) and M.through_cmd(command) then
-        return M.refuse(name, ctx.filename)
-      end
-
-      return condition == nil or condition(self, ctx)
+    if command == nil then
+      return
     end
 
-    formatters[name] = override
+    -- What runs: the command and the arguments before conform's own, node and the script first for an npm program.
+    local function plan(self, ctx)
+      local cmd = command
+
+      if type(cmd) == "function" then
+        cmd = cmd(self, ctx)
+      end
+
+      local args = prepend
+
+      if type(args) == "function" then
+        args = args(self, ctx)
+      end
+
+      local node = type(cmd) == "string" and cmd ~= "" and type(args) ~= "string" and npm.resolve(vim.fn.exepath(cmd))
+
+      if node then
+        return node.node, vim.list_extend({ node.script }, args or {})
+      end
+
+      return cmd, args or {}
+    end
+
+    override.command = function(self, ctx)
+      return (plan(self, ctx))
+    end
+
+    override.prepend_args = function(self, ctx)
+      return select(2, plan(self, ctx))
+    end
+
+    local handed_back = {
+      inherit = false,
+      format = function(_, ctx, lines, callback)
+        M.refuse(name, ctx.filename)
+        callback(nil, lines)
+      end,
+    }
+
+    formatters[name] = function(bufnr)
+      if M.unsafe(vim.api.nvim_buf_get_name(bufnr)) then
+        local config = builtin and require("conform.util").merge_formatter_configs(builtin, override) or override
+        local cmd = config.command
+
+        if type(cmd) == "function" then
+          cmd = cmd(config, require("conform.runner").build_context(bufnr, config))
+        end
+
+        if M.through_cmd(cmd) then
+          return handed_back
+        end
+      end
+
+      return override
+    end
   end
 
   local function walk(list)
