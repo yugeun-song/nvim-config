@@ -10,6 +10,10 @@ No language server starts for a buffer without a file (`:enew`, then a filetype)
 
 jsonls, cssls, html, yamlls and oxlint start Mason's or PATH's program, and conform's oxfmt too: nvim-lspconfig and conform would start `<root>/node_modules/.bin/<program>` when a repository ships one, which runs that repository's program on opening or saving a file (`lsp/fixed_commands.lua`, `formatting.lua`). jdtls keeps a workspace per project named by the folder's letters and digits and a hash of the root, not the folder's own name, which reached `cmd.exe` through Mason's `.cmd` on Windows.
 
+## Nothing sent off the machine by default
+
+docker-language-server starts with its telemetry off and without Docker Scout's image lookups, which sent the client's name, crash traces and hashes of the edited files' git remote and paths to Docker and BugSnag, and every `FROM` image's name, a private registry's too, to Docker Scout (`lsp/no_telemetry.lua`).
+
 ## Attach rules
 
 Attach rules turn a language server off for generated or vendored subtrees.
