@@ -2,7 +2,9 @@
 -- a buffer's name as a backslash and a line break, and :source runs what follows as a command of its own: a file a
 -- repository names so (on Linux and macOS) put a command into the session once it was opened, which Open Folder, the
 -- dashboard and <leader>qs then ran. No session is written while a buffer's name holds a control character, and a
--- session with a line that ends in a backslash, which :mksession does not otherwise write, is not read.
+-- session with a line that ends in a backslash, which :mksession does not otherwise write, is not read. persistence
+-- names the session file after the working directory and runs ":mks! <file>" and ":source <file>" as one string, in
+-- which a line break of that name starts a command: no session is written or read under a name with one either.
 local M = {}
 
 local function named_badly()
@@ -54,10 +56,12 @@ function M.install()
   ---@diagnostic disable-next-line: duplicate-set-field
   persistence.save = function(...)
     local name = named_badly()
+    local file = persistence.current()
 
-    if name then
+    if name or file:find("%c") then
       vim.notify(
-        ("The session is not saved: a buffer's name holds a control character (%q)"):format(name),
+        name and ("The session is not saved: a buffer's name holds a control character (%q)"):format(name)
+          or ("The session is not saved: its file name holds a control character (%q)"):format(file),
         vim.log.levels.WARN
       )
 
@@ -79,6 +83,15 @@ function M.install()
       if vim.fn.filereadable(file) == 0 then
         file = persistence.current({ branch = false })
       end
+    end
+
+    if file and file:find("%c") then
+      vim.notify(
+        ("The session is not loaded: its file name holds a control character (%q)"):format(file),
+        vim.log.levels.ERROR
+      )
+
+      return
     end
 
     if file and M.broken(file) then
