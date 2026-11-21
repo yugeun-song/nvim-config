@@ -164,7 +164,8 @@ local function stamp()
   return value
 end
 
--- What could make a failed build pass now: the compilers there are, and the PATH, INCLUDE and LIB they read.
+-- What could make a failed build pass now: the compilers there are, and the headers and libraries they read. Not
+-- PATH: Mason puts its bin in front of it once it loads, so a failure recorded after that never matched the next start.
 local function retry_key()
   local parts = {}
 
@@ -172,7 +173,7 @@ local function retry_key()
     parts[#parts + 1] = c.locate() or ""
   end
 
-  for _, name in ipairs({ "PATH", "INCLUDE", "LIB" }) do
+  for _, name in ipairs({ "INCLUDE", "LIB", "VCToolsInstallDir" }) do
     parts[#parts + 1] = uv.os_getenv(name) or ""
   end
 
@@ -365,7 +366,14 @@ local function compile(s, is_second_try)
       -- The first line: what to compare with later, and when.
       pcall(vim.fn.writefile, vim.list_extend({ ("retry %s %d"):format(retry_key(), os.time()) }, transcript), log)
 
-      return finish(nil, "no compiler built it; " .. log .. " has their output")
+      local why = "no compiler built it; " .. log .. " has their output"
+      local older = newest_build(exe)
+
+      if older then
+        M.report("windows_ime_helper: " .. why .. "; the previous build runs meanwhile", vim.log.levels.ERROR)
+      end
+
+      return finish(older, why)
     end
 
     local cmd = c.args(tmp, found[i].program)
