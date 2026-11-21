@@ -123,6 +123,8 @@ foreach ($path in ($env:NVIM_ACL_PATHS -split "`n")) {
 
 local function changeable_folders()
   if not status.WINDOWS then
+    status.unsupported("Folders checked for other accounts' write access", "a Windows ACL check")
+
     return
   end
 
