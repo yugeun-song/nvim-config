@@ -4,7 +4,7 @@ Rules that keep a language server off where it should not run, the line diagnost
 
 ## Buffers without a file
 
-No language server starts for a buffer without a file (`:enew`, then a filetype): Neovim would send it the URI `file://`, which no server reads (clangd refuses every request, ruff panicked). One gate (`file_buffers.lua`) comes before every enabled server's `root_dir`, whether its spec, nvim-lspconfig or mason-lspconfig set it, and before the `root_markers` of those without one. The last `vim.lsp.config()` wins, so the gate is given to the specs' own before anything is enabled, to each enabled server by name once nvim-lspconfig has set them up, and after each Mason install; nothing is started, so nothing is sent. A server enabled while such a buffer was open leaves it at once. Not through `vim.lsp.config("*")`: rustaceanvim merges that into its rust-analyzer and calls `root_dir` the old way. Writing the buffer to a file and opening it again (`:e`) attaches the servers.
+No language server starts for a buffer without a file (`:enew`, then a filetype): Neovim would send it the URI `file://`, which no server reads (clangd refuses every request, ruff panicked). `vim.lsp.start()`, which every server goes through (those `vim.lsp.enable()` starts, rustaceanvim's, haskell-tools'), starts and attaches nothing to such a buffer (`file_buffers.lua`), so nothing is sent; no server's configuration is rewritten, and Neovim keeps the ones it resolved. A server attached to one by other means leaves it at once. Once the buffer gets a name (`:w name`, `:file`, `:saveas`), the servers of its filetype start.
 
 ## Programs a repository cannot replace
 

@@ -83,7 +83,7 @@ Code that no single spec owns sits in its category under its own name: `features
 - **Specs and code apart, under the same names.** lazy.nvim's `import` takes every file of a directory as a spec (and not its subdirectories): a helper module in `lua/plugins/<category>/` would be read as a spec. LazyVim itself keeps its specs in `lazyvim/plugins` and its code in `lazyvim/util`.
 - **A namespace of its own.** Every module of the configuration is `features.<category>.<name>`, so none can shadow a plugin's module on the runtimepath: cscope_maps.nvim ships a top-level `cscope`, nvim-dap `dap`, nvim-lint `lint`.
 - **Files named by what they do.** A file says what it does (`open_in_running_instance.lua`, `executable_lookup_cache.lua`), so the tree reads as a feature list ([naming rules](development.md#naming-and-style)).
-- **Import order.** `lua/config/lazy.lua` imports `lua/plugins/*.lua`, then `ui`, `editor`, `lang`, `dap`, `util`, and `lsp` last: `lsp/file_buffers.lua` gates every server the others added, and on Windows Mason's install gate in `lsp/mason.lua` filters the list every other spec has added to.
+- **Import order.** `lua/config/lazy.lua` imports `lua/plugins/*.lua`, then `ui`, `editor`, `lang`, `dap`, `util`, and `lsp` last: `lsp/file_buffers.lua` is in place before any server starts, and on Windows Mason's install gate in `lsp/mason.lua` filters the list every other spec has added to.
 
 ## The configuration's own files
 

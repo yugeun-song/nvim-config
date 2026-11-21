@@ -1,124 +1,106 @@
 -- Language servers serve buffers with a file only. Neovim starts a server for any buffer of its filetype, and one
--- without a name (:enew, then a filetype) reaches it as the URI "file://", which no server can read: clangd answers
--- every request with "unresolvable URI", ruff panicked. A gate comes before every server's root_dir, so nothing is
--- started and nothing is sent.
---
--- The last vim.lsp.config() of a server wins, and its root_dir comes from its spec, nvim-lspconfig's lsp/<name>.lua or
--- mason-lspconfig, which sets its own just before enabling a server it installed. So the gate is given to the specs'
--- root_dir before anything is enabled, to every enabled server by name once nvim-lspconfig has set them up, and again
--- after each Mason install; a server that still reaches such a buffer (enabled while one was open) leaves it at once.
--- Never through "*": rustaceanvim merges it into its own rust-analyzer config and calls root_dir(file_name, default).
+-- without a name (:enew, then a filetype) reaches it as the URI "file://", which no server can read: clangd answered
+-- every request with "unresolvable URI", ruff panicked. vim.lsp.start(), which every server goes through (those
+-- vim.lsp.enable() starts, rustaceanvim's, haskell-tools'), starts and attaches nothing to such a buffer, and a server
+-- attached to one by other means leaves it at once. Once the buffer has a name (:w name, :file, :saveas), the servers
+-- enabled for its filetype start, as they would have at FileType. No server's config is rewritten, so Neovim keeps the
+-- ones it resolved.
 local M = {}
 
----@alias features.lsp.RootDir string|fun(bufnr: integer, on_dir: fun(root_dir?: string))
-
--- The gates made here: a root_dir already gated is not wrapped again.
-local gates = setmetatable({}, { __mode = "k" })
-
-local function has_file(bufnr)
-  return vim.api.nvim_buf_get_name(bufnr) ~= ""
+local function nameless(bufnr)
+  return vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_buf_get_name(bufnr) == "" and vim.bo[bufnr].buftype == ""
 end
 
--- The root_dir of a server with none of its own: its root_markers decide, as Neovim does without a root_dir.
-function M.root_dir(bufnr, on_dir)
-  if has_file(bufnr) then
-    on_dir(nil)
-  end
-end
+-- Buffers that got a filetype while they had no name: their servers start once they have one.
+local waiting = {}
 
-gates[M.root_dir] = true
+local installed = false
 
--- A server's own root_dir, a function or a fixed directory, behind the gate.
----@param root_dir features.lsp.RootDir
-function M.guard(root_dir)
-  if gates[root_dir] then
-    return root_dir
-  end
-
-  local gate = function(bufnr, on_dir)
-    if not has_file(bufnr) then
-      return
-    end
-
-    if type(root_dir) == "function" then
-      return root_dir(bufnr, on_dir)
-    end
-
-    on_dir(root_dir)
-  end
-
-  gates[gate] = true
-
-  return gate
-end
-
--- The root_dir a server ends up with, or nil; never raises for a broken config (vim.lsp.enable reports those).
----@return features.lsp.RootDir?
-local function resolved_root_dir(name)
-  local ok, config = pcall(function()
-    return vim.lsp.config[name]
-  end)
-
-  return ok and config and config.root_dir or nil
-end
-
--- Gives the gate to one server through vim.lsp.config, unless it is gated already: its own root_dir behind it, else
--- M.root_dir, which leaves the root to its root_markers.
-local function gate_config(name)
-  local own = resolved_root_dir(name)
-
-  if not gates[own] then
-    vim.lsp.config(name, { root_dir = own ~= nil and M.guard(own) or M.root_dir })
-  end
-end
-
--- Every enabled server, after nvim-lspconfig and mason-lspconfig have set them up.
-function M.gate_enabled()
-  for _, config in ipairs(vim.lsp.get_configs({ enabled = true })) do
-    gate_config(config.name)
-  end
-end
-
-local watching = false
-
--- Watches for the servers enabled after this: nvim-lspconfig's setup, and Mason installs later in the session.
-local function watch()
-  if watching then
+-- Installed once, before any server starts (lua/plugins/lsp/file_buffers.lua).
+function M.install()
+  if installed then
     return
   end
 
-  watching = true
+  installed = true
+
+  local start = vim.lsp.start
+
+  ---@diagnostic disable-next-line: duplicate-set-field
+  vim.lsp.start = function(config, opts)
+    local bufnr = opts and opts.bufnr or 0
+
+    bufnr = bufnr == 0 and vim.api.nvim_get_current_buf() or bufnr
+
+    if not (opts and opts.attach == false) and nameless(bufnr) then
+      -- Also when the servers were enabled after its FileType (nvim-lspconfig loads at the first file event).
+      waiting[bufnr] = true
+
+      return nil
+    end
+
+    return start(config, opts)
+  end
 
   local group = vim.api.nvim_create_augroup("lsp_file_buffers", { clear = true })
 
-  vim.api.nvim_create_autocmd("User", {
+  vim.api.nvim_create_autocmd("FileType", {
     group = group,
-    pattern = "LazyLoad",
     callback = function(ev)
-      if ev.data ~= "nvim-lspconfig" then
+      waiting[ev.buf] = nameless(ev.buf) or nil
+    end,
+  })
+
+  -- vim.lsp.enable() starts servers from a FileType autocmd matched by filetype: run in the buffer, for its filetype,
+  -- after the write has finished.
+  vim.api.nvim_create_autocmd({ "BufFilePost", "BufWritePost" }, {
+    group = group,
+    callback = function(ev)
+      if not waiting[ev.buf] or nameless(ev.buf) then
         return
       end
 
-      M.gate_enabled()
+      waiting[ev.buf] = nil
 
-      local ok, registry = pcall(require, "mason-registry")
+      local buf = ev.buf
 
-      if ok then
-        -- Mason calls its handlers in no set order, so mason-lspconfig may enable the new server before or after
-        -- this; the LspAttach check below covers a buffer it reaches first.
-        registry:on("package:install:success", vim.schedule_wrap(M.gate_enabled))
-      end
+      vim.schedule(function()
+        local filetype = vim.api.nvim_buf_is_valid(buf) and vim.bo[buf].filetype or ""
 
-      return true
+        if filetype ~= "" then
+          vim.api.nvim_buf_call(buf, function()
+            pcall(vim.api.nvim_exec_autocmds, "FileType", {
+              group = "nvim.lsp.enable",
+              pattern = filetype,
+              modeline = false,
+            })
+          end)
+        end
+      end)
     end,
-    desc = "No language server for a buffer without a file: gate the servers nvim-lspconfig enabled",
+    desc = "Start the language servers of a buffer that got a name",
   })
 
-  -- Last resort, for a server enabled before its gate (a Mason install mid-session): it leaves such a buffer at once.
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    group = group,
+    -- :w name gives a buffer without a name that name, and Neovim sends a BufWipeout for it on the way: only a buffer
+    -- that is really gone is forgotten.
+    callback = function(ev)
+      local buf = ev.buf
+
+      vim.schedule(function()
+        if not vim.api.nvim_buf_is_valid(buf) then
+          waiting[buf] = nil
+        end
+      end)
+    end,
+  })
+
+  -- A server attached by other means than vim.lsp.start() (vim.lsp.buf_attach_client()) leaves such a buffer.
   vim.api.nvim_create_autocmd("LspAttach", {
     group = group,
     callback = function(ev)
-      if has_file(ev.buf) or vim.bo[ev.buf].buftype ~= "" then
+      if not nameless(ev.buf) then
         return
       end
 
@@ -127,7 +109,7 @@ local function watch()
       vim.schedule(function()
         local client = vim.lsp.get_client_by_id(id)
 
-        if client and vim.api.nvim_buf_is_valid(ev.buf) and not has_file(ev.buf) then
+        if client and nameless(ev.buf) then
           pcall(vim.lsp.buf_detach_client, ev.buf, id)
 
           if next(client.attached_buffers) == nil then
@@ -138,19 +120,6 @@ local function watch()
     end,
     desc = "No language server for a buffer without a file: detach one that reached it",
   })
-end
-
--- LazyVim's opts.servers, before anything is enabled: a root_dir a spec sets. Resolving the others here would read
--- every server's lsp/<name>.lua ahead of Neovim (about 35 ms at the first file); gate_enabled() resolves only the
--- enabled ones, which Neovim then keeps.
-function M.apply(servers)
-  for name, server in pairs(servers) do
-    if name ~= "*" and type(server) == "table" and server.enabled ~= false and server.root_dir ~= nil then
-      server.root_dir = M.guard(server.root_dir)
-    end
-  end
-
-  watch()
 end
 
 return M
