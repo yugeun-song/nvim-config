@@ -68,7 +68,7 @@ Some packages need a runtime on PATH to run (`lua/features/lsp/mason/runtime_req
 | `julia` | `julia-lsp` |
 | `node` | `js-debug-adapter` and every npm package |
 
-Windows (`lua/features/lsp/mason/windows_install_gate.lua`): Mason skips a package whose runtime is missing, and for 7 days one whose install failed (`stdpath("state")/nvim-config/mason_install_failures.json`), so a hopeless build does not rerun every session. `:MasonInstall NAME` retries at once; installed packages stay. Servers pass the same gate: a held-back one gets `mason = false` and starts only from PATH. An unreadable failure record holds nothing back and is never overwritten; `:checkhealth features.lsp` names it.
+Windows (`lua/features/lsp/mason/windows_install_gate.lua`): Mason skips a package whose runtime is missing (its own, or its kind's: Ruby for a gem, Node for an npm package, .NET for NuGet, PHP for Composer), and for 7 days one whose install failed (`stdpath("state")/nvim-config/mason_install_failures.json`), so a hopeless build does not rerun every session. `:MasonInstall NAME` retries at once; installed packages stay. Servers pass the same gate: a held-back one gets `mason = false` and starts only from PATH. An unreadable failure record holds nothing back and is never overwritten; `:checkhealth features.lsp` names it.
 
 ### What it needs
 

@@ -35,9 +35,21 @@ local function save(failures)
   end
 end
 
--- The runtimes name needs, when none of them is on PATH.
+-- The runtimes name needs, its own or its kind's (a gem needs Ruby to install and run), when none of them is on PATH.
 function M.missing_runtime(name)
-  local need = require("features.lsp.mason.runtime_requirements").package[name]
+  local requirements = require("features.lsp.mason.runtime_requirements")
+  local need = requirements.package[name]
+
+  if not need then
+    -- Without the registry downloaded the kind is unknown, and only the package's own list counts.
+    local ok, kind = pcall(function()
+      return require("mason-registry").get_package(name).spec.source.id:match("^pkg:(%w+)/")
+    end)
+
+    if ok and kind then
+      need = requirements.source[kind]
+    end
+  end
 
   for _, runtime in ipairs(need or {}) do
     if vim.fn.executable(runtime) == 1 then
