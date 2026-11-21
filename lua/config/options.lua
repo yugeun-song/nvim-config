@@ -7,46 +7,61 @@ opt.whichwrap:append("h,l,<,>,[,]")
 opt.tags = "./tags;"
 opt.swapfile = false
 opt.spelllang = { "en", "cjk" }
--- UTF-8 and LF for a new file on every system (Windows' default is CRLF); a file read keeps the line ends it has, and
--- a project .editorconfig wins. A new file that only Windows programs read gets CRLF: cmd.exe misreads labels and GOTO
--- in an LF batch file, and PowerShell's editors, regedit and Visual Studio write CRLF.
+-- UTF-8 and LF for a new file on every system (Windows' default is CRLF); a file read keeps its encoding and line
+-- ends, and a project .editorconfig wins. Only a new file that Windows programs alone read gets CRLF: cmd.exe misreads
+-- labels and GOTO in an LF batch file, and Windows' own tools (regedit, PowerShell's editors, Visual Studio) write CRLF.
 opt.fileformats = { "unix", "dos" }
 
+-- Formats that only Windows programs read, on every system.
 local crlf_files = {
-  -- cmd.exe, PowerShell
+  -- cmd.exe
   "*.bat",
-  "*.ps1",
-  "*.psm1",
-  "*.psd1",
   -- regedit, Setup, Windows Script Host
   "*.reg",
   "*.inf",
   "*.vbs",
   "*.wsf",
-  -- Visual Studio: solutions, C++ projects and their property sheets, debugger views
-  "*.sln",
-  "*.slnx",
+  -- Visual C++ projects
   "*.vcxproj",
   "*.vcxproj.filters",
   "*.vcxitems",
-  "*.props",
-  "*.targets",
-  "*.natvis",
 }
 
--- cmd.exe's .cmd and Visual Studio's resources only on Windows: elsewhere a .cmd is also U-Boot's boot script and an
--- .rc Android's init file, both read as LF.
+-- On Windows also these, which other systems read with programs of their own, as LF: a .cmd is U-Boot's boot script
+-- there, an .rc Android's init file, PowerShell 7 runs .ps1 scripts, the .NET SDK builds solutions, .props and
+-- .targets, and cpptools reads .natvis views.
 if vim.fn.has("win32") == 1 then
-  vim.list_extend(crlf_files, { "*.cmd", "*.rc" })
+  vim.list_extend(crlf_files, {
+    "*.cmd",
+    "*.rc",
+    "*.ps1",
+    "*.psm1",
+    "*.psd1",
+    "*.sln",
+    "*.slnx",
+    "*.props",
+    "*.targets",
+    "*.natvis",
+  })
 end
+
+-- On Windows a new PowerShell file is UTF-8 with a byte order mark: Windows PowerShell 5.1 reads a script without one
+-- in the system's ANSI code page (Windows-1252 or CP949, by the language for non-Unicode programs), which garbles
+-- UTF-8's non-ASCII text. A batch file gets none, since cmd.exe would take it for part of the first command.
+local POWERSHELL = { ps1 = true, psm1 = true, psd1 = true }
 
 vim.api.nvim_create_autocmd("BufNewFile", {
   group = vim.api.nvim_create_augroup("crlf_windows_files", { clear = true }),
   pattern = crlf_files,
   callback = function(args)
     vim.bo[args.buf].fileformat = "dos"
+
+    if POWERSHELL[vim.fn.fnamemodify(args.file, ":e"):lower()] then
+      vim.bo[args.buf].fileencoding = "utf-8"
+      vim.bo[args.buf].bomb = true
+    end
   end,
-  desc = "A new file that only Windows programs read is written with CRLF",
+  desc = "A new file that only Windows programs read is written with CRLF, a PowerShell one in UTF-8 with a BOM",
 })
 
 vim.o.guicursor = "n-v-c:block,i-ci-ve:ver25,r-cr:hor20,o:hor50,a:blinkwait700-blinkoff400-blinkon250-Cursor/lCursor"
