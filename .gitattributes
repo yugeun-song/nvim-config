@@ -1,2 +1,6 @@
-# LF everywhere, as .editorconfig and stylua expect, also in a Windows checkout with core.autocrlf.
+# LF everywhere, as .editorconfig and stylua expect, whatever core.autocrlf and core.eol say; the scripts only Windows
+# runs are checked out in CRLF, which cmd.exe needs for a batch file.
 * text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf

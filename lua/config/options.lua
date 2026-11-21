@@ -8,15 +8,38 @@ opt.tags = "./tags;"
 opt.swapfile = false
 opt.spelllang = { "en", "cjk" }
 -- UTF-8 and LF for a new file on every system (Windows' default is CRLF); a file read keeps the line ends it has, and
--- a project .editorconfig wins. A new .bat or .cmd gets CRLF: cmd.exe misreads labels and GOTO in an LF one.
+-- a project .editorconfig wins. A new file that only Windows programs read gets CRLF: cmd.exe misreads labels and GOTO
+-- in an LF batch file, and PowerShell's editors, regedit and Visual Studio write CRLF.
 opt.fileformats = { "unix", "dos" }
 vim.api.nvim_create_autocmd("BufNewFile", {
-  group = vim.api.nvim_create_augroup("crlf_batch_files", { clear = true }),
-  pattern = { "*.bat", "*.cmd" },
+  group = vim.api.nvim_create_augroup("crlf_windows_files", { clear = true }),
+  pattern = {
+    -- cmd.exe, PowerShell
+    "*.bat",
+    "*.cmd",
+    "*.ps1",
+    "*.psm1",
+    "*.psd1",
+    -- regedit, Setup, Windows Script Host
+    "*.reg",
+    "*.inf",
+    "*.vbs",
+    "*.wsf",
+    -- Visual Studio: solutions, C++ projects and their property sheets, resources, debugger views
+    "*.sln",
+    "*.slnx",
+    "*.vcxproj",
+    "*.vcxproj.filters",
+    "*.vcxitems",
+    "*.props",
+    "*.targets",
+    "*.rc",
+    "*.natvis",
+  },
   callback = function(args)
     vim.bo[args.buf].fileformat = "dos"
   end,
-  desc = "A new Windows batch file is written with CRLF",
+  desc = "A new file that only Windows programs read is written with CRLF",
 })
 
 vim.o.guicursor = "n-v-c:block,i-ci-ve:ver25,r-cr:hor20,o:hor50,a:blinkwait700-blinkoff400-blinkon250-Cursor/lCursor"

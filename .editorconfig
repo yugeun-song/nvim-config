@@ -21,3 +21,7 @@ tab_width = 4
 
 [{Makefile,*.mk,*.go}]
 indent_style = tab
+
+# Scripts only Windows runs: CRLF, as .gitattributes checks them out.
+[*.{bat,cmd,ps1}]
+end_of_line = crlf
