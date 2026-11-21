@@ -49,8 +49,8 @@ function M.query_driver()
   -- which a repository could put there.
   local on_path = {}
 
-  for entry in (vim.env.PATH or ""):gmatch("[^;]+") do
-    local dir = vim.fs.normalize(entry):gsub("/+$", "")
+  for _, entry in ipairs(require("features.util.path_variable").directories(vim.env.PATH)) do
+    local dir = vim.fs.normalize(entry, { expand_env = false }):gsub("/+$", "")
 
     if vim.fn.isabsolutepath(dir) == 1 then
       on_path[dir:lower()] = true

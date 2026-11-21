@@ -17,6 +17,7 @@
 local M = {}
 
 local uv = vim.uv
+local path_variable = require("features.util.path_variable")
 local FILE = require("features.util.storage").path("cache", "executable_lookup_cache.json")
 -- PATH variants: Mason's bin before or after it loads, times the environments Neovim starts from (a terminal,
 -- Neovide from the Start menu, an editor launched by another program).
@@ -179,7 +180,7 @@ local function entry_for(path)
 
   local dirs, index = {}, {}
 
-  for dir in vim.gsplit(path, ";", { plain = true, trimempty = true }) do
+  for _, dir in ipairs(path_variable.directories(path)) do
     dirs[#dirs + 1] = dir
     index[key(dir)] = index[key(dir)] or #dirs
   end
@@ -244,7 +245,7 @@ end
 local function search_path(name)
   local exts = is_runnable(name) and { "" } or pathext
 
-  for dir in vim.gsplit(uv.os_getenv("PATH") or "", ";", { plain = true, trimempty = true }) do
+  for _, dir in ipairs(path_variable.directories(uv.os_getenv("PATH"))) do
     local base = dir:gsub("[/\\]+$", "") .. "\\" .. name
 
     for _, ext in ipairs(exts) do

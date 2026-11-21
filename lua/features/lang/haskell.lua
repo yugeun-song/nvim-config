@@ -30,18 +30,18 @@ function M.add_to_path()
     return
   end
 
-  local sep = WIN and ";" or ":"
-  local wanted = vim.fs.normalize(bin)
+  local path_variable = require("features.util.path_variable")
+  local wanted = vim.fs.normalize(bin, { expand_env = false })
 
-  for dir in vim.gsplit(vim.env.PATH or "", sep, { plain = true, trimempty = true }) do
-    local have = vim.fs.normalize(dir)
+  for _, dir in ipairs(path_variable.directories(vim.env.PATH)) do
+    local have = vim.fs.normalize(dir, { expand_env = false })
 
     if (WIN and have:lower() == wanted:lower()) or have == wanted then
       return
     end
   end
 
-  vim.env.PATH = require("features.util.path_variable").append(vim.env.PATH or "", bin)
+  vim.env.PATH = path_variable.append(vim.env.PATH or "", bin)
 end
 
 local debugger_guarded = false

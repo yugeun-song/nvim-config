@@ -77,6 +77,24 @@ function M.clean(path)
   return table.concat(kept, M.SEP)
 end
 
+-- Non-empty directories of path as file-system paths: on Windows ; splits only outside quotes and quotes are stripped,
+-- as cmd.exe and CreateProcess read PATH.
+function M.directories(path)
+  local dirs = {}
+
+  for _, dir in ipairs(entries(path or "")) do
+    if WIN then
+      dir = vim.trim(dir):gsub('"', "")
+    end
+
+    if dir ~= "" then
+      dirs[#dirs + 1] = dir
+    end
+  end
+
+  return dirs
+end
+
 -- path with dir after it, never leaving an empty entry; a dir that is not absolute, or holds the separator (which would
 -- split it into entries, relative ones among them), is left out.
 function M.append(path, dir)

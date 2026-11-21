@@ -139,7 +139,7 @@ local function changeable_folders()
     end
   end
 
-  for dir in vim.gsplit(vim.env.PATH or "", ";", { plain = true, trimempty = true }) do
+  for _, dir in ipairs(require("features.util.path_variable").directories(vim.env.PATH)) do
     add(dir)
   end
 
