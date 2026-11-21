@@ -462,4 +462,66 @@ function M.section(pane)
   return { text = shown.text, align = "center", padding = 2 }
 end
 
+-- The last characters of s that fit in cols display columns.
+local function tail(s, cols)
+  local chars, kept, used = vim.fn.split(s, [[\zs]]), {}, 0
+
+  for i = #chars, 1, -1 do
+    used = used + vim.api.nvim_strwidth(chars[i])
+
+    if used > cols then
+      break
+    end
+
+    table.insert(kept, 1, chars[i])
+  end
+
+  return table.concat(kept)
+end
+
+local follows_cwd = false
+
+-- The working directory under the header: Open Folder and Projects switch folders behind the same dashboard, and a
+-- folder without a session shows nothing else of it. The home is ~, and a path wider than the pane loses its left end.
+function M.folder(pane)
+  if not follows_cwd then
+    follows_cwd = true
+    vim.api.nvim_create_autocmd("DirChanged", {
+      callback = function()
+        Snacks.dashboard.update()
+      end,
+      desc = "Show the new working directory on the dashboard",
+    })
+  end
+
+  local path = vim.fn.fnamemodify(vim.fn.getcwd(), ":~")
+
+  -- A backslash is only a separator on Windows; elsewhere it can be part of a name.
+  if vim.fn.has("win32") == 1 then
+    path = path:gsub("\\", "/")
+  end
+
+  local parent, name = path:match("^(.*/)([^/]+)$")
+
+  if not parent then
+    parent, name = "", path
+  end
+
+  local icon = "\u{f07c} "
+  local room = (pane or 60) - vim.api.nvim_strwidth(icon)
+
+  if vim.api.nvim_strwidth(parent .. name) > room then
+    local kept = room - vim.api.nvim_strwidth(name) - 1
+
+    parent = kept > 0 and "…" .. tail(parent, kept) or ""
+    name = vim.api.nvim_strwidth(name) > room and "…" .. tail(name, room - 1) or name
+  end
+
+  return {
+    text = { { icon, hl = "icon" }, { parent, hl = "dir" }, { name, hl = "file" } },
+    align = "center",
+    padding = 1,
+  }
+end
+
 return M
