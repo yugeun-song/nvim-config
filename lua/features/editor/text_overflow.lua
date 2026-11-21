@@ -35,7 +35,8 @@ local function sync(win)
   end
 
   if width > 0 then
-    local id = vim.fn.matchadd(GROUP, ("\\%%>%dv.\\+"):format(width), PRIORITY, -1, { window = win })
+    -- From the first character that ends past the edge: a wide one across it too, which starts within it.
+    local id = vim.fn.matchadd(GROUP, (".\\%%>%dv.*"):format(width + 1), PRIORITY, -1, { window = win })
 
     vim.w[win].text_overflow = { id = id, width = width }
   end
