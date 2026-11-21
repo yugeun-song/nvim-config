@@ -21,7 +21,7 @@ local function projects()
     confirm = function(picker, item)
       picker:close()
       if item then
-        require("features.editor.open_folder").open(item.file)
+        require("features.editor.open_folder").open(item.file, nil, { pick_files = true })
       end
     end,
   })

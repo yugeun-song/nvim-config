@@ -68,7 +68,18 @@ local function remember(dir)
   pcall(vim.fn.writefile, dirs, history)
 end
 
-function M.open(dir, files)
+-- Over the dashboard, a folder without a session gets what LazyVim gives it: the file picker for a project picked
+-- (Projects), else the explorer at the folder, as for nvim DIR.
+local function show_new_folder(pick_files)
+  if pick_files then
+    Snacks.picker.files()
+  else
+    Snacks.explorer.open({ cwd = vim.fn.getcwd() })
+  end
+end
+
+-- opts.pick_files: picked in Projects, so a folder without a session shows the file picker, not the explorer.
+function M.open(dir, files, opts)
   files = files or {}
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
     if vim.bo[buf].buflisted and vim.bo[buf].modified then
@@ -92,11 +103,12 @@ function M.open(dir, files)
   vim.fn.chdir(dir)
   remember(dir)
 
-  -- A folder without a session opens as LazyVim opens a directory (nvim DIR): the explorer beside the empty buffer.
   if session_exists() then
     require("persistence").load()
   elseif #files == 0 then
-    Snacks.explorer.open({ cwd = vim.fn.getcwd() })
+    ---@diagnostic disable-next-line: missing-fields
+    Snacks.dashboard({ buf = current, win = vim.api.nvim_get_current_win() })
+    show_new_folder(opts and opts.pick_files)
   end
 
   for _, file in ipairs(files) do
@@ -205,7 +217,21 @@ function M.startup()
     callback = function()
       if session_exists() then
         require("persistence").load()
+
+        return
       end
+
+      -- Snacks opens the dashboard on UIEnter (none headless); the explorer comes after it. Snacks' own handling of a
+      -- directory argument is not left to do this: under Neovide the argument became a second buffer that no window
+      -- showed, and no explorer opened.
+      vim.api.nvim_create_autocmd("UIEnter", {
+        once = true,
+        callback = function()
+          vim.schedule(function()
+            show_new_folder(false)
+          end)
+        end,
+      })
     end,
   })
 end
