@@ -78,8 +78,9 @@ return {
           callback({
             type = "pipe",
             pipe = socket,
-            -- Not detached, as nvim-dap would start it: it ends with Neovim then, and its program with it.
-            executable = { command = rdbg, args = args, cwd = config.cwd, detached = false },
+            -- Detached, nvim-dap's default: rdbg runs the program in its own process, which would otherwise share
+            -- Neovim's process group and could signal it (kill 0). nvim-dap ends it with the session and at exit.
+            executable = { command = rdbg, args = args, cwd = config.cwd },
           })
         end
 

@@ -4,21 +4,33 @@
 -- credentials asked, after its session and after Neovim. Here a server listens on 127.0.0.1, ends with the session
 -- that started it, with a session that never connected, and with Neovim, also when Neovim is killed (Windows: libuv's
 -- job; Linux and macOS: a shell that watches Neovim's process). The port is chosen as nvim-dap's ${port} is: free when
--- asked for.
+-- asked for. On Linux the session is given it once this user's server listens there: a listener of another user, bound
+-- between that choice and the server's own bind, would be sent the session, and nvim-dap runs the commands an adapter
+-- asks for (runInTerminal). A server that ends before a session connects says so, with its last error output.
 local M = {}
 
 local uv = vim.uv
 local WIN = vim.fn.has("win32") == 1
+local LINUX = uv.os_uname().sysname == "Linux"
 
 -- nvim-dap tries to connect every 250 ms.
 local RETRY_MS = 250
+-- Linux: how often the socket table is read while a server starts.
+local LISTEN_POLL_MS = 50
+-- The end of a server's error output kept for the message when it fails.
+local ERROR_TAIL = 2000
 
 local servers = {} -- [port] = vim.SystemObj
 local claimed = {} -- [port] = true once a session has connected
 
--- Linux and macOS: the program ends when the watching shell does (stop()) and when Neovim's process is gone.
-local WATCH = [[pid=$1; shift; "$@" & child=$!; trap 'kill $child 2>/dev/null' EXIT HUP INT TERM;]]
-  .. [[ while kill -0 "$pid" 2>/dev/null && kill -0 "$child" 2>/dev/null; do sleep 2; done]]
+-- Linux and macOS: the program ends when the watching shell does (stop()) and when Neovim's process is gone. The shell
+-- sleeps in the background so that a signal ends it at once, and it exits with the program's status.
+local WATCH = table.concat({
+  'pid=$1; shift; "$@" & child=$!; nap=',
+  "trap 'kill $child $nap 2>/dev/null; exit 143' HUP INT TERM",
+  'while kill -0 "$pid" 2>/dev/null && kill -0 "$child" 2>/dev/null; do sleep 2 & nap=$!; wait $nap; done',
+  "kill $child 2>/dev/null; wait $child",
+}, "; ")
 
 local function free_port()
   local tcp = assert(uv.new_tcp())
@@ -81,6 +93,72 @@ local function watch()
   })
 end
 
+-- Linux: on_ready once this user's server listens on port. Another user's listener there, or none in time, ends the
+-- server instead. Where the socket table cannot be read, on_ready at once.
+local function when_listening(spec, port, server, timeout_ms, on_ready)
+  local listeners = require("features.dap.core.sessions.gdbstub_watchdog").loopback_listeners
+  local me, deadline = uv.getuid(), uv.now() + timeout_ms
+  local timer = assert(uv.new_timer())
+
+  local function done()
+    if not timer:is_closing() then
+      timer:close()
+    end
+  end
+
+  timer:start(
+    0,
+    LISTEN_POLL_MS,
+    vim.schedule_wrap(function()
+      if timer:is_closing() then
+        return
+      end
+
+      -- Ended: its exit said why.
+      if servers[port] ~= server then
+        return done()
+      end
+
+      local uids = listeners(port)
+
+      if not uids then
+        done()
+
+        return on_ready()
+      end
+
+      local mine, other = false, nil
+
+      for _, uid in ipairs(uids) do
+        if uid == me then
+          mine = true
+        else
+          other = other or uid
+        end
+      end
+
+      if other then
+        done()
+        stop(port)
+        vim.notify(
+          ("%s is not used: another user's process (uid %d) listens on its port %d"):format(spec.name, other, port),
+          vim.log.levels.ERROR
+        )
+      elseif mine then
+        done()
+        on_ready()
+      elseif uv.now() > deadline then
+        done()
+        stop(port)
+        vim.notify(
+          ("%s did not listen on 127.0.0.1:%d within %d s"):format(spec.name, port, timeout_ms / 1000),
+          vim.log.levels.ERROR
+        )
+      end
+    end)
+  )
+end
+
 ---@class ManagedDebugServer
 ---@field name string what it is called in a message
 ---@field cmd fun(port: integer): string[]?, string? the program and its arguments for port; nil and why when absent
@@ -110,16 +188,51 @@ function M.adapter(spec)
       cmd = vim.list_extend({ "sh", "-c", WATCH, "sh", tostring(uv.os_getpid()) }, cmd)
     end
 
-    local ok, server = pcall(vim.system, cmd, { stdout = false, stderr = false, env = spec.env }, function()
+    local server
+    local errors = ""
+
+    local ok, started = pcall(vim.system, cmd, {
+      stdout = false,
+      stderr = function(_, data)
+        if data then
+          errors = (errors .. data):sub(-ERROR_TAIL)
+        end
+      end,
+      env = spec.env,
+      -- Linux and macOS: a session of its own, or a debugged program that signals its process group (kill 0) would
+      -- end Neovim too. Windows keeps it in libuv's job, which ends it with Neovim.
+      detach = not WIN,
+    }, function(result)
+      if servers[port] ~= server then
+        return
+      end
+
+      local connected = claimed[port]
+
       servers[port], claimed[port] = nil, nil
+      if not connected then
+        vim.schedule(function()
+          local tail = vim.trim(errors)
+
+          vim.notify(
+            ("%s ended (exit %d) before a session connected%s"):format(
+              spec.name,
+              result.code,
+              tail ~= "" and (":\n" .. tail) or ""
+            ),
+            vim.log.levels.ERROR
+          )
+        end)
+      end
     end)
 
     if not ok then
-      vim.notify(("%s did not start: %s"):format(spec.name, tostring(server)), vim.log.levels.ERROR)
+      vim.notify(("%s did not start: %s"):format(spec.name, tostring(started)), vim.log.levels.ERROR)
 
       return
     end
 
+    server = started
     servers[port] = server
 
     local retries = spec.retries or 40
@@ -131,7 +244,15 @@ function M.adapter(spec)
       end
     end, retries * RETRY_MS + 5000)
 
-    callback({ type = "server", host = "127.0.0.1", port = port, options = { max_retries = retries } })
+    local adapter = { type = "server", host = "127.0.0.1", port = port, options = { max_retries = retries } }
+
+    if not LINUX then
+      return callback(adapter)
+    end
+
+    when_listening(spec, port, server, retries * RETRY_MS, function()
+      callback(adapter)
+    end)
   end
 end
 
