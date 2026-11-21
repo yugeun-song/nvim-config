@@ -37,7 +37,9 @@ local specs = {
           "--header-insertion=never",
           -- What clangd formats and writes (code actions, fixes) where no .clang-format is found. It takes only a
           -- predefined style, not the C coding style itself (lua/features/lang/c/coding_style.lua), which clang-format
-          -- applies; WebKit is the nearest: 4 spaces, function braces alone, no column limit ({ 1 } spaced).
+          -- applies; WebKit is the nearest: 4 spaces, function braces alone, no column limit ({ 1 } spaced). One
+          -- clangd serves Objective-C too, whose edits it writes in WebKit as well, while clang-format formats it
+          -- LLVM: a second clangd for it would index a mixed project twice.
           "--fallback-style=WebKit",
           -- Preambles on disk: a kernel preamble is 10-15 MB per open file, and seven
           -- trees open at once filled a 16 GB machine.
