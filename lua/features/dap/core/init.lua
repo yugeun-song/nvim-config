@@ -17,8 +17,9 @@ local function input_path(prompt, default)
         return require("dap").ABORT
       end
 
-      -- ~ and $VAR, not expand()'s `command` or wildcards: the default offered may come from the project.
-      answer = vim.fs.normalize(answer, { expand_env = true })
+      -- ~ and $VAR, not expand()'s `command` or wildcards: the default offered may come from the project. Then the
+      -- full path: normalize() turns ./a.out into a.out, which executable() looks for on PATH only.
+      answer = vim.fn.fnamemodify(vim.fs.normalize(answer, { expand_env = true }), ":p")
       if vim.fn.filereadable(answer) == 1 and vim.fn.executable(answer) == 1 then
         last_answer[prompt] = answer
 
@@ -362,7 +363,9 @@ function M.setup()
     -- sysroot and QEMU. Host-arch configs set neither.
     if config.program and (config.dbg_qemuser or config.target) then
       config.arch = config.arch or discover.elf_arch(config.program)
-      if config.dbg_qemuser and not config.target then
+      -- A new socket for each run: a replayed configuration (<leader>dc, restart) carries the last run's, which ended
+      -- with that run.
+      if config.dbg_qemuser and (not config.target or config.target == config.qemu_socket) then
         config.qemu_socket = require("features.dap.qemu.user_mode").socket_path()
         config.target = config.qemu_socket
       end
