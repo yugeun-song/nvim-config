@@ -1,5 +1,6 @@
 -- The C coding style where a project sets none, in C, C++ and CUDA buffers: clang-format's style without a
--- .clang-format, clangd's warnings for a file without a compile command, and a 100-column limit.
+-- .clang-format, clangd's warnings for a file without a compile command, and a 100-column limit with the text past it
+-- tinted (lua/features/editor/text_overflow.lua).
 local M = {}
 
 M.TEXT_WIDTH = 100
@@ -71,8 +72,8 @@ function M.apply(buf)
   local name = vim.api.nvim_buf_get_name(buf)
 
   if not M.clang_format_file(name == "" and vim.fn.getcwd() or vim.fs.dirname(name)) then
-    vim.opt_local.textwidth = M.TEXT_WIDTH
-    vim.opt_local.colorcolumn = "+1"
+    vim.bo[buf].textwidth = M.TEXT_WIDTH
+    require("features.editor.text_overflow").enable(buf)
   end
 end
 
