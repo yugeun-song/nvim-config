@@ -56,13 +56,16 @@ local function line_of(tag, lines)
   end
 end
 
--- A tags file can name anything: a device or a pipe would never end being read, so only a regular file is.
+-- A tags file can name anything: a device or a pipe would never end being read, so only a regular file is, and not
+-- one of procfs' (size 0; /proc/self/pagemap reads on until memory runs out) or larger than any source.
+local MAX_BYTES = 16 * 1024 * 1024
+
 local function file_lines(cache, path)
   if not cache[path] then
     local stat = vim.uv.fs_stat(path)
     local ok, lines = false, nil
 
-    if stat and stat.type == "file" then
+    if stat and stat.type == "file" and stat.size > 0 and stat.size <= MAX_BYTES then
       ok, lines = pcall(vim.fn.readfile, path)
     end
 
