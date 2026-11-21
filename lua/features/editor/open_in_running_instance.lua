@@ -25,15 +25,10 @@ local function record()
   end
 end
 
--- Whether the Neovim of a record answers at addr: a record outlives a Neovim that was killed (no VimLeavePre), and
--- Windows reuses its process id for any other program. On Windows the pipe's server must be that process, of this
--- user, before anything is sent: another account can create a gone Neovim's pipe name. A TCP address is not taken:
--- nothing tells who listens there, and files are opened over a pipe.
+-- Whether the Neovim of a record answers at its pipe addr: a record outlives a Neovim that was killed (no VimLeavePre),
+-- and Windows reuses its process id for any other program. On Windows the pipe's server must be that process, of this
+-- user, before anything is sent: another account can create a gone Neovim's pipe name.
 local function answers(addr, pid)
-  if addr:find("^[%w%.%-]+:%d+$") then
-    return false
-  end
-
   if vim.fn.has("win32") == 1 then
     return require("features.util.windows.pipe_peer").served_by_me(addr, pid)
   end
@@ -49,7 +44,9 @@ local function answers(addr, pid)
   return true
 end
 
--- The running Neovims of this configuration with a UI, the last focused first. Stale records are removed.
+-- The running Neovims of this configuration with a UI, the last focused first. Stale records are removed. A TCP address
+-- (nvim --listen host:port) is never sent a file, since nothing tells who listens there: its record stays while its
+-- process lives, sendable false, so that the reset still counts that Neovim as running.
 function M.targets()
   local dir, found = M.focus_dir(), {}
   local own = vim.uv.os_getpid()
@@ -63,8 +60,15 @@ function M.targets()
       local ok, lines = pcall(vim.fn.readfile, path)
 
       if stat and ok and lines[1] and lines[1] ~= "" then
-        if pid == own or answers(lines[1], pid) then
-          found[#found + 1] = { addr = lines[1], pid = pid, mtime = stat.mtime.sec * 1e9 + stat.mtime.nsec }
+        local tcp = lines[1]:find("^[%w%.%-]+:%d+$") ~= nil
+
+        if pid == own or tcp or answers(lines[1], pid) then
+          found[#found + 1] = {
+            addr = lines[1],
+            pid = pid,
+            mtime = stat.mtime.sec * 1e9 + stat.mtime.nsec,
+            sendable = not tcp,
+          }
         else
           vim.uv.fs_unlink(path)
         end

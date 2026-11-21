@@ -3,6 +3,12 @@ local script_dir = vim.fs.dirname(vim.fs.normalize(vim.fn.fnamemodify(arg[0], ":
 package.path = vim.fs.joinpath(script_dir, "..", "lua", "?.lua") .. ";" .. package.path
 local remote_open = require("features.editor.open_in_running_instance")
 
+-- What init.lua does, which nvim -l skips: neovide (and on Windows powershell) is never run from the current directory.
+require("features.util.path_variable").clean_environment()
+if vim.fn.has("win32") == 1 and not vim.uv.os_getenv("NoDefaultCurrentDirectoryInExePath") then
+  vim.uv.os_setenv("NoDefaultCurrentDirectoryInExePath", "1")
+end
+
 local file = arg[1]
 local line = math.max(math.floor(tonumber(arg[2] or "") or 1), 1)
 local col = math.max(math.floor(tonumber(arg[3] or "") or 1), 1)
@@ -63,7 +69,7 @@ local function open_in(addr)
 end
 
 for _, target in ipairs(remote_open.targets()) do
-  if open_in(target.addr) then
+  if target.sendable and open_in(target.addr) then
     remote_open.raise(target.pid)
 
     return
