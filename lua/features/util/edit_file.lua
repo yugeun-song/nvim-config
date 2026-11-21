@@ -4,6 +4,11 @@
 local M = {}
 
 local function run(cmd, path, mods)
+  -- A leading + would still be read as +command or ++opt.
+  if path:sub(1, 1) == "+" then
+    path = "./" .. path
+  end
+
   vim.api.nvim_cmd({ cmd = cmd, args = { path }, magic = { file = false, bar = false }, mods = mods }, {})
 end
 
@@ -15,16 +20,28 @@ function M.vsplit(path, mods)
   run("vsplit", path, mods)
 end
 
--- :drop: the window of this tab page that shows the file, else :edit in the current one.
+-- :drop: a window that shows the file, this tab page's first, then another tab page's; else :edit in the current one.
 function M.drop(path)
   local buf = require("features.util.buffer_by_name").find(vim.fn.fnamemodify(path, ":p"))
+  local current = vim.api.nvim_get_current_tabpage()
 
   if buf then
-    for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-      if vim.api.nvim_win_get_buf(win) == buf then
-        vim.api.nvim_set_current_win(win)
+    local tabs = { current }
 
-        return
+    for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+      if tab ~= current then
+        tabs[#tabs + 1] = tab
+      end
+    end
+
+    for _, tab in ipairs(tabs) do
+      for _, win in ipairs(vim.api.nvim_tabpage_list_wins(tab)) do
+        if vim.api.nvim_win_get_buf(win) == buf then
+          vim.api.nvim_set_current_tabpage(tab)
+          vim.api.nvim_set_current_win(win)
+
+          return
+        end
       end
     end
   end

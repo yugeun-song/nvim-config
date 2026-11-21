@@ -28,6 +28,25 @@ function M.find(path)
     end
   end
 
+  -- The same file by another spelling: a junction or symlink on the way, or Windows' 8.3 short name (%TEMP% is one
+  -- here). Each loaded buffer's file is resolved only then.
+  local real = vim.uv.fs_realpath(path)
+
+  if not real then
+    return nil
+  end
+
+  want = key(real)
+
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    local name = vim.api.nvim_buf_get_name(buf)
+    local resolved = name ~= "" and vim.api.nvim_buf_is_loaded(buf) and vim.uv.fs_realpath(name)
+
+    if resolved and key(resolved) == want then
+      return buf
+    end
+  end
+
   return nil
 end
 

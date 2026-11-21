@@ -12,7 +12,8 @@ if not file or file == "" then
   os.exit(2)
 end
 
-file = vim.fs.normalize(vim.fn.fnamemodify(file, ":p"))
+-- The name as it is: normalize() would expand a $NAME in it.
+file = vim.fs.normalize(vim.fn.fnamemodify(file, ":p"), { expand_env = false })
 
 local deadline = assert(vim.uv.new_timer())
 

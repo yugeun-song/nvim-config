@@ -33,6 +33,13 @@ local function key(path)
   return vim.fs.normalize(path):lower()
 end
 
+-- Whether a found file is the one name looks for: that name, or it with an extension (rg finds rg.exe).
+local function names(hit, name)
+  local file, wanted = vim.fs.basename(hit):lower(), tostring(name):lower()
+
+  return file == wanted or file:match("^(.*)%.[^.]+$") == wanted
+end
+
 local function mtime_of(dir)
   local st = uv.fs_stat(dir)
 
@@ -191,10 +198,11 @@ local function entry_for(path)
     checked = uv.now(),
   }
 
-  -- Only a lookup in one of this PATH's directories writes a hit; one naming anything else (the file edited by hand
-  -- or by another program) is dropped and looked up again.
+  -- Only a lookup in one of this PATH's directories writes a hit, and only of a file by the name looked up (with an
+  -- extension); one naming anything else (the file edited by hand or by another program) is dropped and looked up
+  -- again.
   for name, hit in pairs(entry.names) do
-    if hit ~= false and not (type(hit) == "string" and index[key(vim.fs.dirname(hit))]) then
+    if hit ~= false and not (type(hit) == "string" and index[key(vim.fs.dirname(hit))] and names(hit, name)) then
       entry.names[name] = nil
     end
   end

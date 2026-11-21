@@ -63,7 +63,13 @@ local function make_directories(dir)
     return
   end
 
-  make_directories(vim.fs.dirname(dir))
+  -- A root's parent is itself (Q:/ on a drive that is not there): nothing above it to make.
+  local parent = vim.fs.dirname(dir)
+
+  if parent ~= dir then
+    make_directories(parent)
+  end
+
   uv.fs_mkdir(dir, 448)
 end
 
