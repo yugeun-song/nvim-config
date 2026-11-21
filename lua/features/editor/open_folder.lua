@@ -91,11 +91,12 @@ function M.open(dir, files)
 
   vim.fn.chdir(dir)
   remember(dir)
+
+  -- A folder without a session opens as LazyVim opens a directory (nvim DIR): the explorer beside the empty buffer.
   if session_exists() then
     require("persistence").load()
   elseif #files == 0 then
-    ---@diagnostic disable-next-line: missing-fields
-    Snacks.dashboard({ buf = current, win = vim.api.nvim_get_current_win() })
+    Snacks.explorer.open({ cwd = vim.fn.getcwd() })
   end
 
   for _, file in ipairs(files) do

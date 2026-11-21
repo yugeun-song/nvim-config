@@ -481,8 +481,8 @@ end
 
 local follows_cwd = false
 
--- The working directory under the header: Open Folder and Projects switch folders behind the same dashboard, and a
--- folder without a session shows nothing else of it. The home is ~, and a path wider than the pane loses its left end.
+-- The working directory under the header, following every change of folder. The home is ~, and a path wider than the
+-- pane loses its left end.
 function M.folder(pane)
   if not follows_cwd then
     follows_cwd = true
