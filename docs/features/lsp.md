@@ -4,11 +4,11 @@ Rules that keep a language server off where it should not run, the line diagnost
 
 ## Buffers without a file
 
-No language server starts for a buffer without a file (`:enew`, then a filetype): Neovim would send it the URI `file://`, which no server reads (clangd refuses every request, ruff panicked). `vim.lsp.start()`, which every server goes through (those `vim.lsp.enable()` starts, rustaceanvim's, haskell-tools'), starts and attaches nothing to such a buffer (`file_buffers.lua`), so nothing is sent; no server's configuration is rewritten, and Neovim keeps the ones it resolved. A server attached to one by other means leaves it at once. Once the buffer gets a name (`:w name`, `:file`, `:saveas`), the servers of its filetype start.
+No language server starts for a buffer without a file (`:enew`, then a filetype): Neovim would send it the URI `file://`, which no server reads (clangd refuses every request, ruff panicked). `vim.lsp.start()`, which every server goes through (those `vim.lsp.enable()` starts, rustaceanvim's, haskell-tools'), starts and attaches nothing to such a buffer (`file_buffers.lua`), so nothing is sent; no server's configuration is rewritten, and Neovim keeps the ones it resolved. A server attached to one by other means leaves it at once. Once the buffer gets a name (`:w name`, `:file`, `:saveas`), the servers enabled for its filetype start. rustaceanvim and haskell-tools start theirs only for a buffer with a file, so they start when the file is opened again (`:e`).
 
 ## Programs a repository cannot replace
 
-jsonls, cssls, html, yamlls and oxlint start Mason's or PATH's program, and conform's oxfmt too: nvim-lspconfig and conform would start `<root>/node_modules/.bin/<program>` when a repository ships one, which runs that repository's program on opening or saving a file (`lsp/fixed_commands.lua`, `formatting.lua`). jdtls keeps a workspace per project named by the folder's letters and digits and a hash of the root, not the folder's own name, which reached `cmd.exe` through Mason's `.cmd` on Windows.
+jsonls, cssls, html, yamlls and oxlint start Mason's or PATH's program, and conform's oxfmt too: nvim-lspconfig and conform would start `<root>/node_modules/.bin/<program>` when a repository ships one, which runs that repository's program on opening or saving a file (`lsp/fixed_commands.lua`, `formatting.lua`). jdtls keeps a workspace per project named after its folder, as nvim-lspconfig names it. A folder name with anything but letters, digits, `.`, `_` and `-` reached `cmd.exe` through Mason's `.cmd` on Windows, so such a name has those characters replaced and a hash of the root added.
 
 ## Nothing sent off the machine by default
 
