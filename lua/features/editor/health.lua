@@ -101,16 +101,61 @@ local function linters()
   end
 end
 
+local function open_folder()
+  local file_managers = require("features.editor.file_managers")
+  local list = file_managers.list()
+  local chosen, others, unusable = nil, {}, {}
+
+  for _, adapter in ipairs(list) do
+    local ok, why = file_managers.probe(adapter)
+
+    if ok then
+      if not chosen then
+        chosen = adapter
+      else
+        others[#others + 1] = adapter.executable
+      end
+    elseif why and why ~= "not on PATH" then
+      unusable[#unusable + 1] = ("%s (%s)"):format(adapter.executable, why)
+    end
+  end
+
+  if chosen then
+    status.available(
+      "Open Folder",
+      chosen.executable
+        .. (#others > 0 and (" (also installed, ranked lower: " .. table.concat(others, ", ") .. ")") or "")
+    )
+
+    for _, detail in ipairs(unusable) do
+      vim.health.warn("Open Folder skipped " .. detail)
+    end
+  else
+    local names = vim.tbl_map(function(adapter)
+      return adapter.executable
+    end, list)
+
+    local reason = #unusable > 0
+        and ("disabled; installed file managers could not run: " .. table.concat(unusable, "; "))
+      or ("disabled; none of " .. table.concat(names, ", ") .. " is on PATH")
+
+    status.blocked(
+      "Open Folder",
+      reason .. " (<leader>fp, recent projects, still works)",
+      vim.tbl_map(function(adapter)
+        return adapter.url
+      end, list)
+    )
+  end
+
+  for _, line in ipairs(file_managers.reports()) do
+    vim.health.info("Open Folder reported " .. line)
+  end
+end
+
 local function editing()
   status.available("File explorer (mini.files), reload on external change, diagnostics on hold, indent stops")
-
-  if status.find("yazi") then
-    status.available("Open Folder", "yazi")
-  else
-    status.blocked("Open Folder", "yazi is not on PATH (<leader>fp, recent projects, still works)", {
-      "https://yazi-rs.github.io/",
-    })
-  end
+  open_folder()
 
   local backend, why = require("features.editor.open_in_running_instance").raise_backend()
 

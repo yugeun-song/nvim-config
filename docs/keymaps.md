@@ -7,7 +7,7 @@ The keys this configuration adds to LazyVim's. `<leader>` is Space and `<localle
 | Key | Action | Feature |
 |---|---|---|
 | `<leader>sK` | Every key, mapped and built-in | [help](features/editor.md#key-cheat-sheet) |
-| `<leader>fo` | Open Folder in yazi (only with `yazi` installed) | [editing](features/editor.md#open-folder) |
+| `<leader>fo` | Open Folder in a CLI file manager (`spf`, else `yazi`; only when installed) | [editing](features/editor.md#open-folder) |
 | `<leader>fp` | Projects: opened folders and git roots of recent files | [editing](features/editor.md#open-folder) |
 | `<leader>ba` | All buffers in a picker | [appearance](features/ui.md) |
 | `<leader>uR` | Reload changed files, refresh the explorers | [editing](features/editor.md#changes-on-disk) |

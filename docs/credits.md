@@ -134,6 +134,7 @@ Programs it runs:
 | [Lean 4](https://lean-lang.org) | Apache-2.0 | Lean, through elan |
 | [ruff](https://github.com/astral-sh/ruff) | MIT | Python lint and format |
 | [fcitx5](https://github.com/fcitx/fcitx5) | LGPL-2.1 | the IME switch and state |
+| [superfile](https://github.com/yorukot/superfile) | MIT | Open Folder |
 | [yazi](https://github.com/sxyazi/yazi) | MIT | Open Folder |
 | [Neovide](https://neovide.dev) | MIT | the GUI |
 | [kitty](https://sw.kovidgoyal.net/kitty) | GPL-3.0 | the terminal the profile is tuned for |

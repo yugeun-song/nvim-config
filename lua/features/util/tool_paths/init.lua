@@ -17,6 +17,7 @@ M.KNOWN = {
   { "ctags", "the tags file behind <C-]>" },
   { "gdb", "C, C++ and assembly debugger" },
   { "lldb-dap", "LLDB debug adapter" },
+  { "spf", "Open Folder (superfile, before yazi)" },
   { "yazi", "Open Folder" },
   { "rg", "grep in the picker" },
   { "fd", "files in the picker" },

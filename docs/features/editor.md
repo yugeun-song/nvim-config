@@ -35,16 +35,16 @@ Every 2 s while Neovim has focus, and on `BufEnter` and `CursorHold`, buffers th
 
 ### Open Folder
 
-`o` on the dashboard, or `<leader>fo`, opens [yazi](https://yazi-rs.github.io/) in a float at the working directory.
+`o` on the dashboard, or `<leader>fo`, opens the highest-ranked installed CLI file manager in a float at the working directory: [superfile](https://superfile.dev/) (`spf`), else [yazi](https://yazi-rs.github.io/) (`yazi`). The priority order and adapter interface live in `lua/features/editor/file_managers.lua`, so other file managers (`nnn`, `lf`, `ranger`, ...) can be added or reordered there.
 
-- `q` makes the folder yazi is in the working directory: the folder being left gets its session saved (as persistence.nvim does on exit), its buffers close and its language servers end, and the new folder's session comes back, else the dashboard beside the explorer, as LazyVim opens a directory. A modified buffer stops the switch.
-- `Q` cancels; `<CR>` on a file opens it, with the working directory at its git root, else its folder. A folder selected with `<Space>` and opened with `<CR>` becomes the working directory itself.
-- `<Esc>` always reaches yazi; the float never drops to Normal mode on its own. Closing it from Normal mode (`<C-\><C-n>`, then `q`) cancels like `Q`.
+- Quitting after moving to another folder (`q`, `<Esc>` or `Q` in superfile; `q` in yazi) makes that folder the working directory: the folder being left gets its session saved (as persistence.nvim does on exit), its buffers close and its language servers end, and the new folder's session comes back, else the dashboard beside the explorer, as LazyVim opens a directory. A modified buffer stops the switch.
+- `<CR>` on a file opens it, with the working directory at its git root, else its folder. In yazi, `Q` cancels, and a folder selected with `<Space>` and opened with `<CR>` becomes the working directory itself.
+- `<Esc>` always reaches the file manager; the float never drops to Normal mode on its own. Closing the float from Normal mode (`<C-\><C-n>`, then `q`) cancels without switching.
 - `nvim DIR` and `neovide DIR` start in DIR, with its session, else the dashboard beside the explorer as LazyVim shows a directory; no directory buffer is left (`:e DIR` later still opens the explorer).
 - A session is Vimscript that `:mksession` writes and `:source` runs, and `:mksession` writes a line break in a file name so that what follows runs as a command. No session is saved while a buffer's name holds a control character (possible on Linux and macOS), none is saved or loaded under a file name with one (persistence names it after the working directory), and none with a line that ends in a backslash is loaded (`session_guard.lua`).
 - Folders opened either way are remembered (the newest 100) and listed by Projects (`p` on the dashboard, `<leader>fp`), the last one opened on top, above the git roots of recent files; picking one switches the same way, except that a folder without a session gets the file picker over the dashboard, as LazyVim's Projects does.
 
-Without `yazi` on PATH, neither the dashboard entry nor `<leader>fo` exists; Projects still works.
+Without a working configured file manager (`spf` or `yazi`) on PATH, Open Folder is disabled (neither the dashboard entry nor `<leader>fo` exists); an installed one that cannot run or lacks the flags Open Folder needs is skipped for the next one. Projects still works.
 
 ### Opening from other programs
 
@@ -77,7 +77,7 @@ Keys: [keymaps](../keymaps.md#general).
 
 ### What it needs
 
-`yazi` for Open Folder; the window tool of the desktop for the raise; `oxfmt`, `taplo` and the linters from Mason ([Mason packages](lsp.md#mason-packages)), `clang-format` from Mason or the system. A linter whose program is missing is skipped without a message; `:checkhealth` names what is missing.
+`spf` (superfile) or `yazi` for Open Folder; the window tool of the desktop for the raise; `oxfmt`, `taplo` and the linters from Mason ([Mason packages](lsp.md#mason-packages)), `clang-format` from Mason or the system. A linter whose program is missing is skipped without a message; `:checkhealth` names what is missing.
 
 ### Systems
 

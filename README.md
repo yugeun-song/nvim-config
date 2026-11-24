@@ -9,7 +9,7 @@ A [LazyVim](https://www.lazyvim.org/)-based Neovim configuration for Linux kerne
 - **Code search** by a typed pattern: `<leader>i/` picks clangd, cscope, ctags, gtags or ripgrep, whichever the buffer supports. [Code search](docs/features/editor.md#code-search)
 - **Attach rules** turn a language server off per file or directory. [Language servers](docs/features/lsp.md#attach-rules)
 - **Korean input**: English on leaving Insert mode, `한`/`EN` and Caps Lock in the statusline, a Dubeolsik `langmap`. [Korean input](docs/features/editor.md#korean-input)
-- **Open Folder** in yazi with sessions, and files sent into the running Neovim from other programs. [Editor](docs/features/editor.md#editing)
+- **Open Folder** in superfile or yazi with sessions, and files sent into the running Neovim from other programs. [Editor](docs/features/editor.md#editing)
 - **`spaceduck-remix`**, a dashboard with the system's logo, the ChKeys keystroke display, a Neovide profile. [UI](docs/features/ui.md)
 - **Self-describing**: `<leader>sK` lists every key; `:FeatureStatus` shows every feature as available, not supported here, or blocked and why; `:ManagedPaths` shows where everything is kept. [Key cheat sheet](docs/features/editor.md#key-cheat-sheet), [utilities](docs/features/util.md)
 

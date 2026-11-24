@@ -64,7 +64,7 @@ Everything this configuration uses: how much it needs each one, and who installs
 | Window raise for `scripts/open-at.lua` | `hyprctl`, `swaymsg`, `niri`, `kdotool` or `xdotool` | Linux desktops |
 | | `osascript` | macOS |
 | | the IME helper, else PowerShell | Windows |
-| Open Folder | `yazi` | all |
+| Open Folder | `spf` (superfile) or `yazi` | all |
 | Picker history and frecency in SQLite (else a plain file) | the SQLite library; on Windows Snacks downloads `sqlite3.dll` | all |
 | GUI | Neovide | all |
 | Discord Rich Presence | the Discord app | all |

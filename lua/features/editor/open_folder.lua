@@ -126,28 +126,91 @@ function M.open(dir, files, opts)
   end)
 end
 
+-- The terminal output kept for a file manager that prints its result: far more than what follows its alternate screen.
+local STDOUT_TAIL = 65536
+
+-- What the file manager left, as the folder to open and the files to edit; reports what it cannot use.
+local function choice(file_managers, name, dir, chosen)
+  if dir ~= nil and (type(dir) ~= "string" or vim.fn.isabsolutepath(dir) == 0 or vim.fn.isdirectory(dir) == 0) then
+    file_managers.report(("%s reported %q, which is not a folder"):format(name, tostring(dir)))
+    dir = nil
+  end
+
+  -- A folder selected (<Space> in yazi) and opened (<CR>) is the folder to open, not one inside its parent.
+  local folder, files = nil, {}
+
+  for _, path in ipairs(chosen) do
+    if type(path) ~= "string" or vim.fn.isabsolutepath(path) == 0 then
+      file_managers.report(
+        ("%s chose %q, which is not an absolute path; it is not opened"):format(name, tostring(path))
+      )
+    elseif vim.fn.isdirectory(path) == 1 then
+      folder = folder or path
+    else
+      files[#files + 1] = path
+    end
+  end
+
+  if folder then
+    dir = folder
+  elseif files[1] then
+    dir = vim.fs.root(files[1], ".git") or vim.fs.dirname(files[1])
+  end
+
+  return dir, files
+end
+
+-- Runs the first installed file manager of lua/features/editor/file_managers.lua in a float at the working directory.
 function M.pick()
-  local cwd_file, chooser_file = vim.fn.tempname(), vim.fn.tempname()
-  local cmd = { "yazi", "--cwd-file", cwd_file, "--chooser-file", chooser_file, vim.fn.getcwd() }
-  local term = Snacks.terminal.open(cmd, {
-    auto_close = false,
-    win = {
-      position = "float",
-      width = 0.9,
-      height = 0.9,
-      border = "rounded",
-      title = " Open Folder ",
-      title_pos = "center",
-      -- <Esc> is yazi's own key: twice in a row it would leave yazi for Normal mode, where its keys hit a terminal
-      -- buffer (E21) and q closes the float under it.
-      keys = { q = "close", term_normal = false },
-    },
+  local file_managers = require("features.editor.file_managers")
+  local fm = file_managers.find()
+
+  if not fm then
+    pcall(vim.keymap.del, "n", "<leader>fo")
+    file_managers.report("Open Folder disabled: no working file manager is available", vim.log.levels.WARN)
+
+    return
+  end
+
+  local out = { cwd_file = vim.fn.tempname(), chooser_file = vim.fn.tempname() }
+  local made, argv, env = pcall(fm.command, vim.fn.getcwd(), out)
+
+  if not made or type(argv) ~= "table" or type(argv[1]) ~= "string" or (env ~= nil and type(env) ~= "table") then
+    file_managers.report(("%s: command() gave no command (%s)"):format(fm.name, made and vim.inspect(argv) or argv))
+
+    return
+  end
+
+  local captured = ""
+  local term = Snacks.win({
+    style = "terminal",
+    bo = { filetype = "snacks_terminal" },
+    position = "float",
+    width = 0.9,
+    height = 0.9,
+    border = "rounded",
+    title = " Open Folder ",
+    title_pos = "center",
+    -- <Esc> is the file manager's own key: twice in a row it would leave it for Normal mode, where its keys hit a
+    -- terminal buffer (E21) and q closes the float under it.
+    keys = { q = "close", term_normal = false },
+    on_win = function(self)
+      if vim.api.nvim_get_current_buf() == self.buf then
+        vim.cmd.startinsert()
+      end
+    end,
   })
 
-  term:on("TermClose", function()
-    local status = vim.v.event.status
-    -- The float closed first (q in Normal mode) and stopped yazi: a cancel. Otherwise the float closes after this
-    -- autocmd: deleting the buffer it runs for from inside it fails (E937).
+  term:on("BufEnter", function()
+    vim.cmd.startinsert()
+  end, { buf = true })
+
+  term:on("ExitPre", function()
+    term:close()
+  end)
+
+  local function finish(status)
+    -- The float closed first (q in Normal mode) and stopped the file manager: a cancel.
     local cancelled = not term:win_valid()
 
     vim.schedule(function()
@@ -155,38 +218,65 @@ function M.pick()
         term:close()
       end
 
-      local dir, chosen = take(cwd_file)[1], take(chooser_file)
+      local got = {
+        cwd_file = take(out.cwd_file),
+        chooser_file = take(out.chooser_file),
+        stdout = fm.capture_stdout and file_managers.after_alternate_screen(captured) or nil,
+      }
 
       if cancelled then
         return
       end
 
       if status ~= 0 then
-        vim.notify("yazi exited with code " .. status, vim.log.levels.ERROR, { title = "Open Folder" })
+        file_managers.report(("%s exited with code %d"):format(fm.name, status))
       end
 
-      -- A folder selected (<Space>) and opened (<CR>) is the folder to open, not one inside its parent.
-      local folder, files = nil, {}
+      local read, dir, chosen, err = pcall(fm.read, got)
 
-      for _, path in ipairs(chosen) do
-        if vim.fn.isdirectory(path) == 1 then
-          folder = folder or path
-        else
-          files[#files + 1] = path
+      if not read then
+        file_managers.report(("%s: reading what it left failed: %s"):format(fm.name, dir))
+
+        return
+      end
+
+      if err then
+        if status == 0 then
+          file_managers.report(("%s %s; the folder is not opened"):format(fm.name, err))
         end
+
+        dir = nil
       end
 
-      if folder then
-        dir = folder
-      elseif files[1] then
-        dir = vim.fs.root(files[1], ".git") or vim.fs.dirname(files[1])
-      end
+      local files
+
+      dir, files = choice(file_managers, fm.name, dir, type(chosen) == "table" and chosen or {})
 
       if dir and (files[1] or normalize(dir) ~= normalize(vim.fn.getcwd())) then
         M.open(dir, files)
       end
     end)
-  end, { buf = true })
+  end
+
+  local started, job = pcall(vim.api.nvim_buf_call, term.buf, function()
+    return vim.fn.jobstart(argv, {
+      term = true,
+      env = env,
+      on_stdout = fm.capture_stdout and function(_, data)
+        captured = (captured .. table.concat(data, "\n")):sub(-STDOUT_TAIL)
+      end or nil,
+      on_exit = function(_, status)
+        finish(status)
+      end,
+    })
+  end)
+
+  if not started or job <= 0 then
+    term:close()
+    take(out.cwd_file)
+    take(out.chooser_file)
+    file_managers.report(("could not start %s: %s"):format(argv[1], started and ("jobstart() gave " .. job) or job))
+  end
 end
 
 -- `nvim DIR` / `neovide DIR`: start in DIR as Open Folder would, not on a directory buffer.

@@ -80,7 +80,7 @@ Linux, macOS and Windows; Flatpak, Snap and AppImage layouts are recognised.
 
 Programs off PATH, registered by path (`lua/plugins/util/tool_paths.lua`, `lua/features/util/tool_paths/`).
 
-`<leader>uX` (or `:ToolPath`) lists the programs this configuration runs by name (`cscope`, `ctags`, `gdb`, `lldb-dap`, `yazi`, `rg`, `fd`, `tree-sitter`, `ruff`) with the one each resolves to, and registers one by path:
+`<leader>uX` (or `:ToolPath`) lists the programs this configuration runs by name (`cscope`, `ctags`, `gdb`, `lldb-dap`, `spf`, `yazi`, `rg`, `fd`, `tree-sitter`, `ruff`) with the one each resolves to, and registers one by path:
 
 - `stdpath("state")/nvim-config/registered_programs.json` keeps the choice;
 - `stdpath("data")/nvim-config/registered_program_shims` holds one shim per program and is the only directory added to PATH, at its end, so nothing beside the program comes into reach and a program already on PATH still wins;

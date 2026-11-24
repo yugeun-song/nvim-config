@@ -1,4 +1,5 @@
-local yazi = vim.fn.executable("yazi") == 1
+-- Any file manager of lua/features/editor/file_managers.lua installed; Open Folder runs the first one in its order.
+local file_manager = require("features.editor.file_managers").find() ~= nil
 
 local function pick()
   require("features.editor.open_folder").pick()
@@ -29,7 +30,7 @@ end
 
 local keys = { { "<leader>fp", projects, desc = "Projects" } }
 
-if yazi then
+if file_manager then
   table.insert(keys, { "<leader>fo", pick, desc = "Open Folder" })
 end
 
@@ -44,7 +45,7 @@ return {
       end
     end
 
-    if yazi then
+    if file_manager then
       table.insert(items, 1, { icon = "\u{f07c} ", key = "o", desc = "Open Folder", action = pick })
     end
   end,
