@@ -13,6 +13,8 @@ nvim-config/
 ├── LICENSE, LICENSES/           0BSD, and the Apache-2.0 text for files taken from LazyVim (THIRD-PARTY-NOTICES)
 ├── .editorconfig, .gitattributes, .luarc.json, .rumdl.toml, stylua.toml
 │                                indentation and line ends, lua_ls, Markdown lint, StyLua
+├── AGENTS.md, CLAUDE.md, GEMINI.md
+│                                one fixed text for every AI agent; it imports docs/agent-rules.md and docs/agent-guide.md
 ├── lua/
 │   ├── config/                  autocmds, keymaps, options, lazy (the bootstrap), health (:checkhealth config)
 │   ├── plugins/                 lazy.nvim specs only, in LazyVim's categories
@@ -43,7 +45,8 @@ nvim-config/
 │                                alive_lsp_over_stdio.lisp
 ├── tests/                       containers/ (by hand, Linux host), managed_paths/, msvc_compile_database/,
 │                                windows_ime_helper/, focus_events/
-└── docs/                        this documentation; docs/features/ has one page per category
+└── docs/                        this documentation; docs/features/ has one page per category, agent-guide.md the
+                                 agents' guide to this repository, agent-rules.md the rules that the author's repositories share
 ```
 
 `lua/config/` holds what LazyVim loads by name (`options.lua`, `keymaps.lua`, `autocmds.lua`), the bootstrap that `init.lua` requires (`lazy.lua`), and `health.lua` (`:checkhealth config`: Neovim, plugins, `git`, `rg`, `fd`).
