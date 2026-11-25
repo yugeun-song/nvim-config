@@ -8,7 +8,7 @@
   "cscope_maps.nvim": { "branch": "main", "commit": "bf0b380015e5bf5db4ad7184b9862cda36c6c674" },
   "flash.nvim": { "branch": "main", "commit": "5f0f270fdc7c5b0c21d903ee85b9cb06f2ac636a" },
   "friendly-snippets": { "branch": "main", "commit": "7a1c9f7897a4eb078b157a04c7af81e5869215b1" },
-  "gitsigns.nvim": { "branch": "main", "commit": "b15de90f4b71ff684372a7e16cfd00bc2d917a94" },
+  "gitsigns.nvim": { "branch": "main", "commit": "ea38d317af34f8ffcfbaf0f0dcc1471736661a4c" },
   "grug-far.nvim": { "branch": "main", "commit": "91b7e58b6ffc6ddad5acb7a7c1df21257724449e" },
   "gruvbox-material": { "branch": "master", "commit": "11d779b26a9ab2b3db8c22c6ac9fb6e8ed4fea79" },
   "haskell-tools.nvim": { "branch": "main", "commit": "851c4fbe24213615e29fed441208b9c96ec0ff1a" },
