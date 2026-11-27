@@ -90,7 +90,7 @@ Everything this configuration uses: how much it needs each one, and who installs
 | `podman` (rootless) | `tests/containers/run.sh` |
 | `script` (util-linux) | `tests/managed_paths/run.sh` |
 | PowerShell and Visual Studio | `tests/windows_ime_helper/run.ps1` |
-| Visual Studio 2026; `clangd` for its last step | the MSBuild steps of `tests/msvc_compile_database/check.lua` (SKIP without) |
+| Visual Studio 2026; `clangd` | the MSBuild steps and the clangd steps of `tests/msvc_compile_database/check.lua` (SKIP without) |
 
 ## Plugins
 

@@ -14,7 +14,7 @@ The rules every change follows, and how to check and test one.
 - Comments are compact and appear only where the code alone is unclear or a judgment was made; they say why.
 - One comment syntax per file; in C that is `//`.
 - Lua: StyLua (`stylua.toml`: 2 spaces, 120 columns). A blank line follows a statement that spans several lines and a run of `local` declarations, and precedes `return`.
-- C (`native/windows_ime_helper.c`, `native/windows_wsl_bridge.c` and their tests) is built by Visual Studio's `cl` (MSVC) with the command in `lua/features/util/windows/native_build.lua`; clang targeting MSVC only checks it in the tests. It follows Microsoft's Windows layout (`native/.clang-format`, clang-format 21 or later):
+- C (`native/windows_ime_helper.c`, `native/windows_wsl_bridge.c` and their tests) is built by Visual Studio's `cl` (MSVC) with the command in `lua/features/util/windows/native_build.lua`, which clangd reads too ([languages](features/lang.md#msvc-toolchain)); clang targeting MSVC only checks it in the tests. It follows Microsoft's Windows layout (`native/.clang-format`, clang-format 21 or later):
   - braces on their own line, and on every body;
   - globals `g_`, file-static globals `gs_`;
   - booleans named with a be-verb (`isCrashed`);
@@ -69,7 +69,8 @@ Only this command starts it. When it ends or is interrupted it removes everythin
 
 `nvim -l tests/msvc_compile_database/check.lua` runs on any system, in a throwaway root:
 
-- everywhere: how a cl command line is split and becomes a clangd entry, how a solution configuration's projects are read, how a configuration is chosen, which `.sln`, `.slnx` or `.vcxproj` a file's database comes from (no further up than a repository's root; outside one, a solution further up only when it lists the project), and how a database it wrote is known again by its fingerprint;
+- everywhere: how a cl command line is split and becomes a clangd entry, how a solution configuration's projects are read, how a configuration is chosen, which `.sln`, `.slnx` or `.vcxproj` a file's database comes from (no further up than a repository's root; outside one, a solution further up only when it lists the project), and how a database it wrote is known again by its fingerprint; which `cl` command each native source and test gets ([languages](features/lang.md#msvc-toolchain)) and which clangd gets them;
+- on Windows with clangd: that clangd reads `native/*.c` without a diagnostic, and its background index reaches every test of them, none open (clangd keeps this index in its own cache directory);
 - on Windows with Visual Studio, through MSBuild for real: solutions the test writes itself (`.sln` and `.slnx`, under a directory named with a space, Korean and `&`) must resolve `$(SolutionDir)`, read the solution's `x86` as the projects' `Win32`, refuse a configuration the solution has not, name a toolset or Windows SDK version that is not installed, keep the other projects' entries when one cannot be loaded, be rebuilt on opening a file only when behind, leave a database that would say the same untouched, rebuild unasked only the database it wrote, and name one it replaces by hand. A unity build, C++20 modules and C++/CLI with a project and a COM reference (where Visual Studio's C++/CLI support is installed) must leave nothing beside a project or in its `$(IntDir)` and `$(OutDir)`, and list their own sources. clangd, when there is one, must read a source of them without a diagnostic. Elsewhere these steps print SKIP.
 
 ### Focus events

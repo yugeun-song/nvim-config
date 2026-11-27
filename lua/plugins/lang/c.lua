@@ -68,6 +68,8 @@ local specs = {
         if flag then
           table.insert(opts.servers.clangd.cmd, flag)
         end
+
+        opts.servers.clangd.before_init = clangd.with_native_build_commands(opts.servers.clangd.before_init)
       end
     end,
   },

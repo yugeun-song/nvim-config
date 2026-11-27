@@ -1,11 +1,15 @@
--- lua/features/lang/c/msvc_toolchain/: compile_commands.json for Visual Studio projects.
+-- lua/features/lang/c/msvc_toolchain/: compile_commands.json for Visual Studio projects; and the cl commands of
+-- this repository's native programs (lua/features/util/windows/native_build.lua), which clangd gets as well.
 --   nvim -l tests/msvc_compile_database/check.lua
 -- Everywhere: how a cl command line becomes a clangd entry, how a configuration is chosen, which solution or
--- project a file's database is made from, and how a database it wrote is known again, with nothing run.
+-- project a file's database is made from, and how a database it wrote is known again, with nothing run; which
+-- command each native source and test gets, and which clangd gets them.
+-- On Windows with clangd: that clangd reads the native sources without a diagnostic and indexes their tests.
 -- On Windows with Visual Studio: solutions it writes itself (.sln and .slnx, under a directory named with a
 -- space, Korean and "&") go through MSBuild for real, a unity build, C++20 modules and C++/CLI must leave nothing
 -- behind, and clangd, when there is one, must read a source of them without an error. Elsewhere those steps print
--- SKIP. Everything it writes is in a throwaway root.
+-- SKIP. Everything it writes is in a throwaway root, but for clangd's index of the native programs, which clangd
+-- keeps in its own cache directory.
 local script = vim.fs.normalize(vim.fn.fnamemodify(arg[0], ":p"))
 local repo = vim.fs.dirname(vim.fs.dirname(vim.fs.dirname(script)))
 
@@ -469,6 +473,203 @@ local directory = vim.fs.joinpath(root, "fingerprint-directory", "compile_comman
 
 vim.fn.mkdir(directory, "p")
 check(not database._still_ours(directory, print_of_one), "a directory of that name: not its own")
+
+-- This repository's native programs: cl alone builds them, and clangd gets the same commands, their tests' too.
+local native_build = require("features.util.windows.native_build")
+local clangd_setup = require("features.lang.c.clangd")
+local native_commands = native_build.clangd_commands()
+local native_compilers = native_build.compilers("SRC.c")
+
+same(
+  vim.tbl_map(function(c)
+    return c.name .. " " .. c.version
+  end, native_compilers),
+  { "cl msvc" },
+  "native programs: Visual Studio's cl (MSVC) is the only compiler"
+)
+
+local native_files = {}
+local native_programs = {}
+
+for name in vim.fs.dir(vim.fs.joinpath(repo, "native")) do
+  local program = name:match("^(.+)%.c$")
+
+  if program then
+    local src = vim.fs.joinpath(repo, "native", name)
+    local tests = {}
+
+    native_files[#native_files + 1] = src
+    native_programs[#native_programs + 1] = { source = src, tests = tests }
+    same(
+      native_commands[src] and native_commands[src].compilationCommand,
+      { "cl.exe", "/nologo", "/O2", "/MT", "/W4", "/WX", "/sdl", "/guard:cf", src },
+      "native/" .. name .. ": clangd gets the build's cl switches, without its outputs and the linker's"
+    )
+
+    for test in vim.fs.dir(vim.fs.joinpath(repo, "tests", program)) do
+      local path = vim.fs.joinpath(repo, "tests", program, test)
+      local switches = ({
+        ["unit.c"] = { "/nologo", "/W4", "/fsanitize=address", "/Zi", "/Od" },
+        ["fuzz.c"] = { "/nologo", "/W3", "/fsanitize=fuzzer", "/fsanitize=address", "/Zi", "/Od" },
+      })[test]
+
+      if switches then
+        native_files[#native_files + 1] = path
+        tests[#tests + 1] = path
+        same(
+          native_commands[path] and native_commands[path].compilationCommand,
+          vim.list_extend(vim.list_extend({ "cl.exe" }, switches), { path }),
+          ("tests/%s/%s: clangd gets the switches run.ps1 compiles it with"):format(program, test)
+        )
+      end
+    end
+  end
+end
+
+check(#native_files >= 4, ("native programs: %d sources and tests found"):format(#native_files))
+same(vim.tbl_count(native_commands), #native_files, "native programs: no other file gets a command")
+check(native_build.serves(repo), "native programs: a clangd rooted at the repository serves them")
+check(native_build.serves(vim.fs.joinpath(repo, "native")), "native programs: so does one rooted at native/")
+check(not native_build.serves(vim.fs.dirname(repo)), "native programs: one rooted above the repository does not")
+check(not native_build.serves(root), "native programs: nor one rooted elsewhere")
+check(not native_build.serves(nil), "native programs: nor one without a root")
+
+local before_init_ran = false
+local hook = clangd_setup.with_native_build_commands(function()
+  before_init_ran = true
+end)
+
+local shared_options = { fallbackFlags = { "-Wall" } }
+local params = { initializationOptions = shared_options }
+local client_config = { root_dir = vim.fs.joinpath(repo, "native"), init_options = shared_options }
+
+hook(params, client_config)
+check(before_init_ran, "clangd before_init: the one configured before runs too")
+same(
+  params.initializationOptions,
+  { fallbackFlags = { "-Wall" }, compilationDatabaseChanges = native_commands },
+  "clangd before_init: a clangd serving the repository starts with the commands"
+)
+
+check(client_config.init_options == params.initializationOptions, "clangd before_init: the client keeps them too")
+same(shared_options, { fallbackFlags = { "-Wall" } }, "clangd before_init: the shared options are not changed")
+
+local other_config = { root_dir = root, init_options = shared_options }
+
+params = { initializationOptions = shared_options }
+hook(params, other_config)
+check(params.initializationOptions == shared_options, "clangd before_init: another project's clangd gets nothing")
+
+-- With clangd, for real: the commands go in before the first parse, and the background index takes in the tests,
+-- none of them open: references to a function of each program's source reach each of its tests that calls it.
+-- clangd keeps that index in its own cache directory, as editing these files does.
+local native_clangd = os.getenv("MSVC_COMPILE_DATABASE_TEST_CLANGD") or ""
+
+if vim.fn.has("win32") ~= 1 or native_clangd == "" then
+  print("SKIP clangd on the native programs: " .. (vim.fn.has("win32") == 1 and "no clangd found" or "Windows only"))
+else
+  local published, indexed = {}, false
+  local buffers = {}
+
+  for _, program in ipairs(native_programs) do
+    local buf = vim.fn.bufadd(program.source)
+
+    vim.fn.bufload(buf)
+    vim.bo[buf].filetype = "c"
+    buffers[#buffers + 1] = buf
+  end
+
+  local client_id = assert(vim.lsp.start({
+    name = "clangd_native_programs",
+    cmd = { native_clangd, "--background-index", "--log=error" },
+    root_dir = vim.fs.joinpath(repo, "native"),
+    before_init = clangd_setup.with_native_build_commands(nil),
+    handlers = {
+      ["textDocument/publishDiagnostics"] = function(_, result)
+        published[vim.fs.normalize(vim.uri_to_fname(result.uri)):lower()] = result.diagnostics
+      end,
+      ["$/progress"] = function(_, result)
+        indexed = indexed or (result.token == "backgroundIndexProgress" and result.value.kind == "end")
+      end,
+    },
+  }, { bufnr = buffers[1] }))
+
+  local native_client = assert(vim.lsp.get_client_by_id(client_id))
+
+  for i = 2, #buffers do
+    vim.lsp.buf_attach_client(buffers[i], client_id)
+  end
+
+  vim.wait(180000, function()
+    for _, program in ipairs(native_programs) do
+      if not published[program.source:lower()] then
+        return false
+      end
+    end
+
+    return indexed
+  end, 100)
+
+  check(indexed, "clangd: the background index finished")
+
+  for i, program in ipairs(native_programs) do
+    local shown = vim.fs.relpath(repo, program.source)
+    local diagnostics = published[program.source:lower()]
+
+    check(
+      diagnostics ~= nil and #diagnostics == 0,
+      ("clangd: no diagnostic in %s with its build's command: %s"):format(shown, vim.inspect(diagnostics))
+    )
+
+    local symbols = native_client:request_sync("textDocument/documentSymbol", {
+      textDocument = { uri = vim.uri_from_fname(program.source) },
+    }, 20000, buffers[i])
+
+    for _, test in ipairs(program.tests) do
+      local text = table.concat(vim.fn.readfile(test), "\n")
+      local called
+
+      for _, symbol in ipairs(symbols and symbols.result or {}) do
+        if symbol.kind == vim.lsp.protocol.SymbolKind.Function and text:find("%f[%w_]" .. symbol.name .. "%(") then
+          called = symbol
+
+          break
+        end
+      end
+
+      local reached = false
+      local answer = called
+        and native_client:request_sync("textDocument/references", {
+          textDocument = { uri = vim.uri_from_fname(program.source) },
+          position = called.selectionRange.start,
+          context = { includeDeclaration = false },
+        }, 20000, buffers[i])
+
+      for _, location in ipairs(answer and answer.result or {}) do
+        reached = reached or vim.fs.normalize(vim.uri_to_fname(location.uri)):lower() == test:lower()
+      end
+
+      check(
+        reached,
+        ("clangd: references to %s in %s reach %s, not open"):format(
+          called and called.name or "(no function of it called)",
+          shown,
+          vim.fs.relpath(repo, test)
+        )
+      )
+    end
+  end
+
+  -- A graceful stop: a killed server is reported, and the steps below catch what is reported.
+  native_client:stop()
+  vim.wait(10000, function()
+    return native_client:is_stopped()
+  end, 50)
+
+  for _, buf in ipairs(buffers) do
+    vim.api.nvim_buf_delete(buf, { force = true })
+  end
+end
 
 -- From here on MSBuild runs for real.
 local msbuild = vim.fn.has("win32") == 1 and queries.find_now() or nil

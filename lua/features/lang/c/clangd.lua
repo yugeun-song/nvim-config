@@ -1,5 +1,6 @@
 -- What clangd needs from this configuration beyond its flags: a private temporary directory per Neovim, and on
--- Windows the compilers it may ask for their target and system includes.
+-- Windows the compilers it may ask for their target and system includes, and the build commands of this
+-- repository's own native programs.
 local M = {}
 
 -- clangd's preambles and other temporary files, in a 0700 directory of this Neovim that goes when it exits; the
@@ -74,6 +75,37 @@ function M.query_driver()
   end
 
   return #drivers > 0 and ("--query-driver=" .. table.concat(drivers, ",")) or nil
+end
+
+-- Windows: a clangd that serves this repository gets the cl commands that build native/*.c and their tests
+-- (lua/features/util/windows/native_build.lua) before its first parse. A compile_commands.json would need this
+-- machine's absolute paths in the repository; given at start, the commands also let the background index cover
+-- every one of those files, so references and symbols reach the tests that are not open. clangd keeps that index
+-- in its own cache directory, as for any file without a database. BEFORE_INIT is the one already configured.
+---@param before_init? fun(params: lsp.InitializeParams, config: vim.lsp.ClientConfig)
+---@return fun(params: lsp.InitializeParams, config: vim.lsp.ClientConfig)
+function M.with_native_build_commands(before_init)
+  return function(params, config)
+    if before_init then
+      before_init(params, config)
+    end
+
+    local native_build = require("features.util.windows.native_build")
+
+    if not native_build.serves(config.root_dir) then
+      return
+    end
+
+    -- A new table: the one given may be shared with the configuration other clients start from. The client's own
+    -- init_options holds it too, since the all-#if-branches clangd instances copy theirs from it.
+    local given = params.initializationOptions
+    local options = vim.tbl_extend("force", type(given) == "table" and given or {}, {
+      compilationDatabaseChanges = native_build.clangd_commands(),
+    })
+
+    params.initializationOptions = options
+    config.init_options = options
+  end
 end
 
 return M
