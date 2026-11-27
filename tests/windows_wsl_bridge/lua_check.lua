@@ -226,5 +226,16 @@ if not WIN then
   )
 end
 
+-- 6. Direct connection defaults (no history table, host UI matching).
+check(wsl.recent == nil, "wsl.recent history API is removed")
+local prev_neovide = vim.g.neovide
+
+vim.g.neovide = nil
+check(wsl.default_mode(true) == "tui", "default_mode uses tui in terminal host even when neovide exists")
+vim.g.neovide = true
+check(wsl.default_mode(true) == "gui", "default_mode uses gui in Neovide host when neovide exists")
+check(wsl.default_mode(false) == "tui", "default_mode falls back to tui without neovide executable")
+vim.g.neovide = prev_neovide
+
 print(("== %d failed"):format(failures))
 vim.cmd.cquit(failures == 0 and 0 or 1)

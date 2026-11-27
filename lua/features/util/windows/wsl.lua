@@ -7,17 +7,12 @@ local uv = vim.uv
 local WIN = vim.fn.has("win32") == 1
 local MAX_DISTRO_BYTES = 128
 local MAX_LINUX_PATH_BYTES = 4096
-local HISTORY_LIMIT = 50
 
 local SCRIPT = vim.fs.joinpath(
   vim.fs.normalize(debug.getinfo(1, "S").source:sub(2)):match("^(.*)/lua/") or vim.fn.stdpath("config"),
   "scripts",
   "wsl.lua"
 )
-
-local function history_path()
-  return require("features.util.storage").path("state", "wsl_history.json")
-end
 
 local function has_control(text)
   return text:find("[%z\1-\31\127]") ~= nil
@@ -462,64 +457,6 @@ function M.list_distros_sync()
   return M.parse_distro_list(res.stdout or ""), nil
 end
 
-local function valid_history_item(item)
-  return type(item) == "table"
-    and M.validate_distro(item.distro)
-    and M.validate_linux_dir(item.dir)
-    and (item.mode == "gui" or item.mode == "tui")
-    and M.validate_linux_nvim(item.nvim or "nvim")
-end
-
-function M.recent()
-  local f = io.open(history_path(), "rb")
-
-  if not f then
-    return {}
-  end
-
-  local text = f:read("*a")
-
-  f:close()
-
-  local ok, decoded = pcall(vim.json.decode, text)
-
-  if not ok or type(decoded) ~= "table" then
-    return {}
-  end
-
-  return vim.tbl_filter(valid_history_item, decoded)
-end
-
-local function remember(entry)
-  if not WIN or not valid_history_item(entry) then
-    return
-  end
-
-  local items = {
-    {
-      distro = entry.distro,
-      dir = entry.dir,
-      mode = entry.mode,
-      nvim = entry.nvim or "nvim",
-      last_used = os.time(),
-    },
-  }
-
-  for _, old in ipairs(M.recent()) do
-    if
-      not (old.distro == entry.distro and old.dir == entry.dir and old.mode == entry.mode)
-      and #items < HISTORY_LIMIT
-    then
-      items[#items + 1] = old
-    end
-  end
-
-  local path = history_path()
-
-  vim.fn.mkdir(vim.fs.dirname(path), "p")
-  pcall(vim.fn.writefile, { vim.json.encode(items) }, path)
-end
-
 function M.helper_env()
   if not WIN then
     return {}
@@ -743,8 +680,6 @@ local function launch_with_bridge(bridge_exe, clean, cb)
       return cb(false, "could not start neovide: " .. tostring(proc))
     end
 
-    remember(clean)
-
     return cb(true)
   end
 
@@ -760,8 +695,6 @@ local function launch_with_bridge(bridge_exe, clean, cb)
     local ok, proc = pcall(vim.system, wt_argv, { detach = true })
 
     if ok and proc then
-      remember(clean)
-
       return cb(true)
     end
   end
@@ -777,7 +710,6 @@ local function launch_with_bridge(bridge_exe, clean, cb)
       if res.code ~= 0 then
         cb(false, vim.trim(res.stderr or "") ~= "" and vim.trim(res.stderr) or ("spawn-console exit " .. res.code))
       else
-        remember(clean)
         cb(true)
       end
     end)
@@ -786,6 +718,14 @@ local function launch_with_bridge(bridge_exe, clean, cb)
   if not ok then
     cb(false, tostring(started))
   end
+end
+
+function M.default_mode(has_neovide)
+  if has_neovide == nil then
+    has_neovide = M.find_neovide() ~= nil
+  end
+
+  return (vim.g.neovide and has_neovide) and "gui" or "tui"
 end
 
 function M.connect(opts, cb)
@@ -827,7 +767,7 @@ function M.connect(opts, cb)
     end
   end
 
-  clean.mode = clean.mode or ((vim.g.neovide or M.find_neovide()) and "gui" or "tui")
+  clean.mode = clean.mode or M.default_mode()
   if clean.mode ~= "gui" and clean.mode ~= "tui" then
     return cb(false, "WSL mode must be gui or tui")
   end
@@ -875,22 +815,7 @@ function M.pick()
       return
     end
 
-    local installed = {}
-
-    for _, d in ipairs(distros) do
-      installed[d.name] = d
-    end
-
     local items = {}
-
-    for _, r in ipairs(M.recent()) do
-      if installed[r.distro] then
-        items[#items + 1] = {
-          label = ("[recent] %-14s %s  (%s)"):format(r.distro, r.dir, r.mode == "gui" and "Neovide" or "TUI"),
-          recent = r,
-        }
-      end
-    end
 
     for _, d in ipairs(distros) do
       items[#items + 1] = {
@@ -909,44 +834,7 @@ function M.pick()
         return
       end
 
-      if picked.recent then
-        return M.connect(picked.recent)
-      end
-
-      vim.ui.input({ prompt = "Linux directory in " .. picked.distro .. ": ", default = "~" }, function(dir)
-        if dir == nil then
-          return
-        end
-
-        dir = vim.trim(dir)
-        if dir == "" then
-          dir = "~"
-        end
-
-        if not M.validate_linux_dir(dir) then
-          vim.notify("WSL directory must be ~ or start with /", vim.log.levels.ERROR, { title = "WSL" })
-
-          return
-        end
-
-        local modes = M.find_neovide() and { "Neovide (GUI)", "Neovim (TUI)" } or { "Neovim (TUI)" }
-
-        if #modes == 1 then
-          return M.connect({ distro = picked.distro, dir = dir, mode = "tui" })
-        end
-
-        vim.ui.select(modes, { prompt = "Open WSL in" }, function(choice)
-          if not choice then
-            return
-          end
-
-          M.connect({
-            distro = picked.distro,
-            dir = dir,
-            mode = choice:find("GUI") and "gui" or "tui",
-          })
-        end)
-      end)
+      M.connect({ distro = picked.distro, dir = "~" })
     end)
   end)
 end
@@ -998,9 +886,9 @@ function M.complete(_, line)
   if index == 2 then
     local out = { "gui", "tui" }
 
-    for _, r in ipairs(M.recent()) do
-      if not vim.list_contains(out, r.distro) then
-        out[#out + 1] = r.distro
+    for _, d in ipairs(M.registry_distros()) do
+      if not vim.list_contains(out, d.name) then
+        out[#out + 1] = d.name
       end
     end
 
@@ -1008,9 +896,9 @@ function M.complete(_, line)
   elseif index == 3 and (parts[2] == "gui" or parts[2] == "tui") then
     local out = {}
 
-    for _, r in ipairs(M.recent()) do
-      if not vim.list_contains(out, r.distro) then
-        out[#out + 1] = r.distro
+    for _, d in ipairs(M.registry_distros()) do
+      if not vim.list_contains(out, d.name) then
+        out[#out + 1] = d.name
       end
     end
 

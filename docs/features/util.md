@@ -24,7 +24,6 @@ The configuration writes for itself only into `nvim-config` inside `stdpath(kind
 | state | `reset_report.txt` | what the last reset removed |
 | state | `reset_report_unread` | the last reset's report, until a start has shown it |
 | state | `reset_confirmation` | the confirmation a typed `reset` leaves for the reset |
-| state | `wsl_history.json` | recent WSL connections (`<leader>fw`, `:Wsl`) (Windows) |
 | run, else state | `running_instances` | running Neovims with a UI, for `scripts/open-at.lua` (run: in a directory per `NVIM_APPNAME`) |
 | data | `windows_ime_helper` | the Windows IME helper's builds |
 | data | `windows_wsl_bridge` | the Windows WSL bridge's builds |
@@ -221,7 +220,7 @@ Connects host Windows Neovim or Neovide to Neovim inside WSL without a Linux GUI
 
 | Command | Does |
 |---|---|
-| `:Wsl` | Pick a WSL distribution, Linux directory and GUI/TUI mode (`<leader>fw`, dashboard `w`) |
+| `:Wsl` | Pick a WSL distribution and connect directly in the current UI mode (`<leader>fw`, dashboard `w`) |
 | `:Wsl [gui\|tui] [DISTRO [DIR [FILES...]]]` | Connect directly |
 | `nvim -l scripts/wsl.lua [--gui\|--tui] [-d DISTRO] [--dir DIR] [-- FILE...]` | Connect from a Windows terminal |
 

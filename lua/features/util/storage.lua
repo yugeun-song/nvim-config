@@ -31,7 +31,6 @@ M.ENTRIES = {
   { "data", "registered_program_shims", "shims", "one shim per registered program; last on PATH in Neovim" },
   { "data", "language_server_attach_rules.json", "lsp_filter/rules.json", "language server attach rules (<leader>cL)" },
   { "data", "alive_lsp", "alive-lsp", "the Common Lisp language server and its libraries" },
-  { "state", "wsl_history.json", false, "recent WSL connections (<leader>fw, :Wsl) (Windows)" },
   { "cache", "executable_lookup_cache.json", "which.json", "executable() and exepath() answers per PATH (Windows)" },
   { "cache", "clangd_temporary_files", "clangd-tmp", "clangd's temporary files, one directory per Neovim" },
 }
