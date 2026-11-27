@@ -17,11 +17,17 @@ function M.setup()
   vim.opt.langmap =
     "ㅁa,ㅠb,ㅊc,ㅇd,ㄷe,ㄹf,ㅎg,ㅗh,ㅑi,ㅓj,ㅏk,ㅣl,ㅡm,ㅜn,ㅐo,ㅔp,ㅂq,ㄱr,ㄴs,ㅅt,ㅕu,ㅍv,ㅈw,ㅌx,ㅛy,ㅋz,ㅃQ,ㅉW,ㄸE,ㄲR,ㅆT,ㅒO,ㅖP"
 
-  -- Windows: through the running indicator watcher's stdin when there is one, starting no process; a failure of the
-  -- command is reported in Neovim (lua/features/util/windows/ime_helper.lua). Elsewhere the command runs
-  -- as it always did.
+  -- Windows and WSL host-bridge sessions: through the running indicator watcher's stdin when there is one, starting no
+  -- process. Elsewhere the command runs as it always did.
+  local backends = require("features.editor.korean_input.backends")
   local win = vim.fn.has("win32") == 1
+  local wsl_bridge = vim.fn.has("wsl") == 1 and require("features.editor.korean_input.wsl_bridge") or nil
+  local has_wsl_bridge = wsl_bridge ~= nil and not backends.remote() and wsl_bridge.resolve() ~= nil
   local send = win and require("features.util.windows.ime_helper").send or nil
+
+  if not send and has_wsl_bridge and wsl_bridge then
+    send = wsl_bridge.send
+  end
 
   local function reset_on(cmds)
     local indicator = require("features.editor.korean_input.indicator")
@@ -84,15 +90,16 @@ function M.setup()
           return
         end
 
-        switch(chosen, #cmds)
+        if #cmds > 0 then
+          switch(chosen, #cmds)
+        end
       end,
     })
   end
 
-  local backends = require("features.editor.korean_input.backends")
   local cmds = backends.english_commands()
 
-  if #cmds > 0 then
+  if #cmds > 0 or has_wsl_bridge then
     reset_on(cmds)
   elseif win and not backends.remote() then
     -- The first start builds windows_ime_helper in the background; the switch begins once it lands.

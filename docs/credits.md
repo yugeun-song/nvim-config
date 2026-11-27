@@ -138,9 +138,10 @@ Programs it runs:
 | [yazi](https://github.com/sxyazi/yazi) | MIT | Open Folder |
 | [Neovide](https://neovide.dev) | MIT | the GUI |
 | [kitty](https://sw.kovidgoyal.net/kitty) | GPL-3.0 | the terminal the profile is tuned for |
-| [Visual Studio, Build Tools (MSVC, MSBuild, vswhere)](https://visualstudio.microsoft.com) | Microsoft Software License Terms (proprietary) | the MSVC environment, compile databases, building native/windows_ime_helper.c (Windows) |
+| [Visual Studio, Build Tools (MSVC, MSBuild, vswhere)](https://visualstudio.microsoft.com) | Microsoft Software License Terms (proprietary) | the MSVC environment, compile databases, building native/windows_ime_helper.c and native/windows_wsl_bridge.c (Windows) |
 | [NVIDIA CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA CUDA Toolkit EULA (proprietary) | its headers and nvcc's flags, read by clangd for CUDA files |
 | [Windows PowerShell](https://learn.microsoft.com/powershell) | part of Windows (proprietary) | program discovery and a window-raise fallback (Windows) |
+| [Windows Subsystem for Linux (wsl.exe)](https://learn.microsoft.com/windows/wsl) | part of Windows (proprietary) | connecting host Windows Neovim and Neovide to WSL (Windows) |
 | [Discord](https://discord.com) | Discord Terms of Service (proprietary) | Rich Presence, optional |
 
 This repository holds none of these plugins', packages' or programs' code: lazy.nvim, Mason and the system

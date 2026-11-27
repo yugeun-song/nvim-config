@@ -40,7 +40,7 @@ local PROGRAMS = {
     "Visual Studio, Build Tools (MSVC, MSBuild, vswhere)",
     "https://visualstudio.microsoft.com",
     "Microsoft Software License Terms (proprietary)",
-    "the MSVC environment, compile databases, building native/windows_ime_helper.c (Windows)",
+    "the MSVC environment, compile databases, building native/windows_ime_helper.c and native/windows_wsl_bridge.c (Windows)",
   },
   {
     "NVIDIA CUDA Toolkit",
@@ -53,6 +53,12 @@ local PROGRAMS = {
     "https://learn.microsoft.com/powershell",
     "part of Windows (proprietary)",
     "program discovery and a window-raise fallback (Windows)",
+  },
+  {
+    "Windows Subsystem for Linux (wsl.exe)",
+    "https://learn.microsoft.com/windows/wsl",
+    "part of Windows (proprietary)",
+    "connecting host Windows Neovim and Neovide to WSL (Windows)",
   },
   { "Discord", "https://discord.com", "Discord Terms of Service (proprietary)", "Rich Presence, optional" },
 }

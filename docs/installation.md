@@ -78,5 +78,6 @@ A Mason package with no build for the machine is reported as not supported; the 
 
 ## WSL and SSH
 
-- WSL works as Linux, with the IME switch through `im-select.exe`.
+- From host Windows, `<leader>fw` (`:Wsl` or `nvim -l scripts/wsl.lua`) opens Neovim inside WSL through host Neovide or `nvim --remote-ui` without needing GUI packages inside WSL ([WSL connection](features/util.md#wsl-connection)).
+- WSL works as Linux; when connected from host Windows, the IME switch and indicators bridge back to the bound host window via `windows_ime_helper` (falling back to `im-select.exe` otherwise).
 - Over SSH, the terminal background follow reaches the local terminal; the IME switch and marks are off, and the window raise acts on the remote host.

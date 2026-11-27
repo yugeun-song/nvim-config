@@ -194,6 +194,33 @@ local function korean_input()
     return
   end
 
+  if vim.fn.has("wsl") == 1 then
+    local wsl_bridge = require("features.editor.korean_input.wsl_bridge")
+    local cfg, why = wsl_bridge.resolve()
+
+    if cfg then
+      status.available("English on leaving Insert", ("%s wsl-watch-input-state %s"):format(cfg.exe, cfg.ui_pid))
+      status.available(
+        "IME and Caps Lock in the statusline",
+        ("%s wsl-watch-input-state %s"):format(cfg.exe, cfg.ui_pid)
+      )
+
+      if wsl_bridge.watch_failure() then
+        status.blocked("IME and Caps Lock in the statusline", "the watcher stopped: " .. wsl_bridge.watch_failure())
+      end
+
+      for _, line in ipairs(wsl_bridge.reports()) do
+        vim.health.info("windows_ime_helper reported " .. line)
+      end
+
+      neovide_preedit()
+
+      return
+    elseif vim.uv.os_getenv("NVIM_WSL_UI_PID") then
+      status.blocked("WSL host IME bridge", why or "invalid host IME bridge environment")
+    end
+  end
+
   -- The first tool whose input method answers, as the switch picks it.
   local working, silent = nil, {}
 

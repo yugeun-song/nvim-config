@@ -5,6 +5,7 @@
 //   windows_ime_helper input-state                <caps><ime> once, 1 = on / native script
 //   windows_ime_helper watch-input-state PID [MS] <caps><ime> on each change until PID exits;
 //                                                 stdin e, p, r = ime-english, pause, resume
+//   windows_ime_helper wsl-watch-input-state PID [MS]  same from WSL, bound to a same-user UI window
 //   windows_ime_helper raise-window PID           raise the window of the Neovim PID: its terminal's, or that of its
 //                                                 nearest ancestor that has one
 //   windows_ime_helper version                    compiler and architecture; the build runs it to prove every
@@ -55,11 +56,13 @@
 #endif
 
 #define WIN32_LEAN_AND_MEAN
+#define _WIN32_WINNT 0x0A00
 #include <windows.h>
 
 #include <fcntl.h>
 #include <imm.h>
 #include <io.h>
+#include <shlobj.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -71,8 +74,12 @@
 #include <strsafe.h>
 
 #ifdef _MSC_VER
+#pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "imm32.lib")
+#pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "user32.lib")
+#pragma comment(lib, "uuid.lib")
 #endif
 
 // Older MinGW-w64 headers lack it.
@@ -117,13 +124,13 @@
 #define SHIM_LOG_NAME L"windows_ime_helper_shims.log"
 #define SHIM_LOG_MAX_BYTES (64 * 1024)
 
-typedef struct _PROCESS_LINK
+typedef struct PROCESS_LINK_RECORD
 {
     DWORD processId;
     DWORD parentProcessId;
 } PROCESS_LINK;
 
-typedef struct _WINDOW_QUERY
+typedef struct WINDOW_QUERY_RECORD
 {
     const DWORD *lineage;
     int length;
@@ -131,16 +138,16 @@ typedef struct _WINDOW_QUERY
     HWND found;
 } WINDOW_QUERY;
 
-typedef enum _PATH_KIND
+typedef enum PATH_KIND_VALUE
 {
-    PATH_ABSOLUTE,
+    PATH_ABSOLUTE = 0,
     PATH_RELATIVE,
     PATH_REFUSED
 } PATH_KIND;
 
-typedef enum _SHIM_RESULT
+typedef enum SHIM_RESULT_VALUE
 {
-    SHIM_OK,
+    SHIM_OK = 0,
     SHIM_NOT_A_SHIM,
     SHIM_NO_SELF,
     SHIM_CANNOT_OPEN,
@@ -353,6 +360,7 @@ static void StopCommandReader(_In_opt_ HANDLE reader)
     if (reader != NULL)
     {
         CloseHandle(reader);
+        reader = NULL;
     }
 
     if (hasEnded && gs_commandEvent != NULL)
@@ -362,156 +370,441 @@ static void StopCommandReader(_In_opt_ HANDLE reader)
     }
 }
 
-static int WatchIndicatorState(_In_ DWORD ownerPid, _In_ DWORD intervalMs)
+_Success_(return != FALSE) static BOOL
+    ReadTokenUser(_In_ HANDLE process, _Outptr_result_maybenull_ PTOKEN_USER *userOut, _Out_ DWORD *sizeOut)
 {
-    HANDLE owner = NULL;
-    HANDLE reader = NULL;
-    HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
-    HANDLE waits[2] = { NULL, NULL };
-    DWORD waitCount = 1;
-    DWORD waitResult = WAIT_FAILED;
-    LONG mode = MODE_NONE;
-    int state = 0;
-    int lastState = -1;
-    int result = EXIT_DONE;
-    BOOL isPaused = FALSE;
+    HANDLE token = NULL;
+    DWORD needed = 0;
+    PTOKEN_USER user = NULL;
+    BOOL ok = FALSE;
 
-    if (ownerPid == 0 || intervalMs < MIN_INTERVAL_MS || intervalMs > MAX_INTERVAL_MS)
-    {
-        return EXIT_USAGE;
-    }
-
-    owner = OpenProcess(SYNCHRONIZE, FALSE, ownerPid);
-    if (owner == NULL)
-    {
-        fwprintf(stderr, L"watch-input-state: process %lu not found (error %lu)\n", ownerPid, GetLastError());
-        return EXIT_FAILED;
-    }
-
-    // Waiting on the owner is the poll's sleep and its exit test in one; the handle also pins the process, so a
-    // reused pid cannot stand in for it.
-    waits[0] = owner;
-
-    // Only a pipe: reading a console stdin would take the user's keystrokes. A pipe means the caller sends
-    // commands, so a watcher that cannot receive them fails instead of silently ignoring them.
-    if (input != NULL && input != INVALID_HANDLE_VALUE && GetFileType(input) == FILE_TYPE_PIPE)
-    {
-        gs_commandEvent = CreateEventW(NULL, FALSE, FALSE, NULL);
-        if (gs_commandEvent != NULL)
-        {
-            reader = CreateThread(NULL, 0, ReadCommandsThread, NULL, 0, NULL);
-        }
-
-        if (reader == NULL)
-        {
-            fwprintf(stderr, L"watch-input-state: cannot read commands (error %lu)\n", GetLastError());
-            result = EXIT_FAILED;
-            goto Cleanup;
-        }
-
-        waits[waitCount] = gs_commandEvent;
-        ++waitCount;
-    }
-
-    while (1)
-    {
-        if (!isPaused)
-        {
-            state = QueryIndicatorState();
-            if (state != lastState)
-            {
-                lastState = state;
-                if (PrintIndicatorState(state) != 0)
-                {
-                    break;
-                }
-            }
-        }
-
-        waitResult = WaitForMultipleObjects(waitCount, waits, FALSE, isPaused ? PAUSED_WAKE_MS : intervalMs);
-        if (waitResult == WAIT_OBJECT_0)
-        {
-            break;
-        }
-
-        if (waitResult == WAIT_FAILED)
-        {
-            fwprintf(stderr, L"watch-input-state: cannot wait for Neovim (error %lu)\n", GetLastError());
-            result = EXIT_FAILED;
-            break;
-        }
-
-        // Commands are taken at every wake, not only when signalled: a lost SetEvent then delays them instead
-        // of losing them.
-        mode = InterlockedExchange(&gs_requestedMode, MODE_NONE);
-        if (gs_isProtocolViolated)
-        {
-            fwprintf(stderr, L"watch-input-state: unknown command on stdin\n");
-            result = EXIT_PROTOCOL;
-            break;
-        }
-
-        // Said, and the watcher goes on: Neovim shows the line while it runs.
-        if (InterlockedExchange(&gs_isEnglishWanted, 0) && SetImeEnglish() != EXIT_DONE)
-        {
-            fwprintf(stderr, L"watch-input-state: the foreground window's IME did not take the mode in %d ms\n",
-                     IME_TIMEOUT_MS);
-        }
-
-        if (mode == MODE_PAUSE)
-        {
-            isPaused = TRUE;
-        }
-        else if (mode == MODE_RESUME)
-        {
-            isPaused = FALSE;
-            lastState = -1;
-        }
-
-        if (gs_isInputClosed)
-        {
-            break;
-        }
-    }
-
-Cleanup:
-    StopCommandReader(reader);
-    CloseHandle(owner);
-    SecureZeroMemory(&state, sizeof(state));
-    SecureZeroMemory(&lastState, sizeof(lastState));
-    SecureZeroMemory(&mode, sizeof(mode));
-    return result;
-}
-
-// One pass over the top-level windows serves the whole lineage, keeping the window of the nearest ancestor.
-static BOOL CALLBACK MatchLineageWindow(_In_ HWND window, _In_ LPARAM parameter)
-{
-    WINDOW_QUERY *query = (WINDOW_QUERY *)parameter;
-    DWORD processId = 0;
-
-    if (query == NULL || query->lineage == NULL || query->length <= 0 || query->length > MAX_LINEAGE)
+    *userOut = NULL;
+    *sizeOut = 0;
+    if (!OpenProcessToken(process, TOKEN_QUERY, &token))
     {
         return FALSE;
     }
 
-    if (window == NULL || !IsWindowVisible(window) || GetWindow(window, GW_OWNER) != NULL ||
-        GetWindowThreadProcessId(window, &processId) == 0 || processId == 0)
+    GetTokenInformation(token, TokenUser, NULL, 0, &needed);
+    if (needed == 0)
     {
-        return TRUE;
+        goto Cleanup;
     }
 
-    for (int i = 0; i < query->nearest && i < query->length; ++i)
+    user = calloc(1, needed);
+    if (user == NULL || !GetTokenInformation(token, TokenUser, user, needed, &needed) || user->User.Sid == NULL ||
+        !IsValidSid(user->User.Sid))
     {
-        if (query->lineage[i] == processId)
+        goto Cleanup;
+    }
+
+    *userOut = user;
+    *sizeOut = needed;
+    user = NULL;
+    ok = TRUE;
+
+Cleanup:
+    if (user != NULL)
+    {
+        SecureZeroMemory(user, needed);
+        free(user);
+        user = NULL;
+    }
+
+    CloseHandle(token);
+    token = NULL;
+    return ok;
+}
+
+_Success_(return != FALSE) static BOOL
+    ReadTokenIntegrityAndAppContainer(_In_ HANDLE process, _Out_ DWORD *integrityRid, _Out_ BOOL *isAppContainer)
+{
+    HANDLE token = NULL;
+    DWORD appContainer = 0;
+    DWORD needed = 0;
+    PTOKEN_MANDATORY_LABEL label = NULL;
+    PUCHAR countPtr = NULL;
+    PDWORD ridPtr = NULL;
+    BOOL ok = FALSE;
+
+    *integrityRid = 0;
+    *isAppContainer = TRUE;
+    if (!OpenProcessToken(process, TOKEN_QUERY, &token))
+    {
+        return FALSE;
+    }
+
+    if (!GetTokenInformation(token, TokenIsAppContainer, &appContainer, sizeof(appContainer), &needed))
+    {
+        goto Cleanup;
+    }
+
+    GetTokenInformation(token, TokenIntegrityLevel, NULL, 0, &needed);
+    if (needed == 0)
+    {
+        goto Cleanup;
+    }
+
+    label = calloc(1, needed);
+    if (label == NULL || !GetTokenInformation(token, TokenIntegrityLevel, label, needed, &needed) ||
+        label->Label.Sid == NULL || !IsValidSid(label->Label.Sid))
+    {
+        goto Cleanup;
+    }
+
+    countPtr = GetSidSubAuthorityCount(label->Label.Sid);
+    if (countPtr == NULL || *countPtr == 0)
+    {
+        goto Cleanup;
+    }
+
+    ridPtr = GetSidSubAuthority(label->Label.Sid, (DWORD)(*countPtr - 1));
+    if (ridPtr == NULL)
+    {
+        goto Cleanup;
+    }
+
+    *integrityRid = *ridPtr;
+    *isAppContainer = appContainer != 0;
+    ok = TRUE;
+
+Cleanup:
+    if (label != NULL)
+    {
+        SecureZeroMemory(label, needed);
+        free(label);
+        label = NULL;
+    }
+
+    CloseHandle(token);
+    token = NULL;
+    return ok;
+}
+
+_Success_(return != FALSE) static BOOL
+    ReadTokenAppContainerSid(_In_ HANDLE process, _Outptr_result_maybenull_ PTOKEN_APPCONTAINER_INFORMATION *infoOut,
+                             _Out_ DWORD *sizeOut)
+{
+    HANDLE token = NULL;
+    DWORD needed = 0;
+    PTOKEN_APPCONTAINER_INFORMATION info = NULL;
+    BOOL ok = FALSE;
+
+    *infoOut = NULL;
+    *sizeOut = 0;
+    if (!OpenProcessToken(process, TOKEN_QUERY, &token))
+    {
+        return FALSE;
+    }
+
+    GetTokenInformation(token, TokenAppContainerSid, NULL, 0, &needed);
+    if (needed == 0)
+    {
+        goto Cleanup;
+    }
+
+    info = calloc(1, needed);
+    if (info == NULL || !GetTokenInformation(token, TokenAppContainerSid, info, needed, &needed) ||
+        info->TokenAppContainer == NULL || !IsValidSid(info->TokenAppContainer))
+    {
+        goto Cleanup;
+    }
+
+    *infoOut = info;
+    *sizeOut = needed;
+    info = NULL;
+    ok = TRUE;
+
+Cleanup:
+    if (info != NULL)
+    {
+        SecureZeroMemory(info, needed);
+        free(info);
+        info = NULL;
+    }
+
+    CloseHandle(token);
+    token = NULL;
+    return ok;
+}
+
+static BOOL IsSameUserAndIntegrityProcess(_In_ HANDLE process)
+{
+    PTOKEN_USER selfUser = NULL;
+    PTOKEN_USER otherUser = NULL;
+    PTOKEN_APPCONTAINER_INFORMATION selfApp = NULL;
+    PTOKEN_APPCONTAINER_INFORMATION otherApp = NULL;
+    DWORD selfSize = 0;
+    DWORD otherSize = 0;
+    DWORD selfAppSize = 0;
+    DWORD otherAppSize = 0;
+    DWORD selfRid = 0;
+    DWORD otherRid = 0;
+    BOOL selfAppContainer = TRUE;
+    BOOL otherAppContainer = TRUE;
+    BOOL same = FALSE;
+
+    if (process == NULL)
+    {
+        return FALSE;
+    }
+
+    if (ReadTokenUser(GetCurrentProcess(), &selfUser, &selfSize) && selfUser != NULL &&
+        ReadTokenUser(process, &otherUser, &otherSize) && otherUser != NULL &&
+        ReadTokenIntegrityAndAppContainer(GetCurrentProcess(), &selfRid, &selfAppContainer) &&
+        ReadTokenIntegrityAndAppContainer(process, &otherRid, &otherAppContainer) &&
+        selfAppContainer == otherAppContainer && selfRid == otherRid &&
+        EqualSid(selfUser->User.Sid, otherUser->User.Sid))
+    {
+        if (!selfAppContainer)
         {
-            query->nearest = i;
-            query->found = window;
-            break;
+            same = TRUE;
+        }
+        else if (ReadTokenAppContainerSid(GetCurrentProcess(), &selfApp, &selfAppSize) && selfApp != NULL &&
+                 ReadTokenAppContainerSid(process, &otherApp, &otherAppSize) && otherApp != NULL)
+        {
+            same = EqualSid(selfApp->TokenAppContainer, otherApp->TokenAppContainer);
         }
     }
 
-    // The process itself has a window: no ancestor can be nearer.
-    return query->nearest != 0;
+    if (otherApp != NULL)
+    {
+        SecureZeroMemory(otherApp, otherAppSize);
+        free(otherApp);
+        otherApp = NULL;
+    }
+
+    if (selfApp != NULL)
+    {
+        SecureZeroMemory(selfApp, selfAppSize);
+        free(selfApp);
+        selfApp = NULL;
+    }
+
+    if (otherUser != NULL)
+    {
+        SecureZeroMemory(otherUser, otherSize);
+        free(otherUser);
+        otherUser = NULL;
+    }
+
+    if (selfUser != NULL)
+    {
+        SecureZeroMemory(selfUser, selfSize);
+        free(selfUser);
+        selfUser = NULL;
+    }
+
+    return same;
+}
+
+// Only a drive path (C:\...) or a plain relative one. Drive-relative (C:tool.exe) and rooted (\tool.exe) paths change
+// meaning with the current drive and directory; device paths (\\.\, \\?\) never name a program here; shares
+// (\\server\...) would fetch it from the network, handing the user's credentials to whoever answers.
+static PATH_KIND ClassifyPath(_In_opt_z_ const wchar_t *path)
+{
+    BOOL isLetter = FALSE;
+
+    if (path == NULL || path[0] == L'\0')
+    {
+        return PATH_REFUSED;
+    }
+
+    isLetter = (path[0] >= L'A' && path[0] <= L'Z') || (path[0] >= L'a' && path[0] <= L'z');
+    if (isLetter && path[1] == L':')
+    {
+        return (path[2] == L'\\' || path[2] == L'/') ? PATH_ABSOLUTE : PATH_REFUSED;
+    }
+
+    return (path[0] == L'\\' || path[0] == L'/') ? PATH_REFUSED : PATH_RELATIVE;
+}
+
+static BOOL EndsWithInsensitive(_In_z_ const wchar_t *text, _In_z_ const wchar_t *suffix)
+{
+    size_t textLen = wcslen(text);
+    size_t suffixLen = wcslen(suffix);
+
+    if (textLen < suffixLen)
+    {
+        return FALSE;
+    }
+
+    return CompareStringOrdinal(text + textLen - suffixLen, -1, suffix, -1, TRUE) == CSTR_EQUAL;
+}
+
+_Success_(return != FALSE) static BOOL
+    ReadKnownFolderPath(_In_ REFKNOWNFOLDERID folderId, _Out_writes_z_(capacity) wchar_t *out, _In_ DWORD capacity)
+{
+    PWSTR path = NULL;
+    HRESULT hr = E_FAIL;
+    BOOL ok = FALSE;
+
+    if (out == NULL || capacity == 0)
+    {
+        return FALSE;
+    }
+
+    out[0] = L'\0';
+    hr = SHGetKnownFolderPath(folderId, KF_FLAG_DONT_VERIFY | KF_FLAG_NO_ALIAS, NULL, &path);
+    if (SUCCEEDED(hr) && path != NULL && path[0] != L'\0' && SUCCEEDED(StringCchCopyW(out, capacity, path)))
+    {
+        ok = TRUE;
+    }
+
+    if (path != NULL)
+    {
+        CoTaskMemFree(path);
+        path = NULL;
+    }
+
+    if (!ok)
+    {
+        SecureZeroMemory(out, capacity * sizeof(*out));
+    }
+
+    return ok;
+}
+
+static BOOL IsLocalDrivePath(_In_opt_z_ const wchar_t *path)
+{
+    wchar_t root[4] = { 0 };
+    UINT driveType = DRIVE_UNKNOWN;
+
+    if (path == NULL || ClassifyPath(path) != PATH_ABSOLUTE)
+    {
+        return FALSE;
+    }
+
+    root[0] = path[0];
+    root[1] = L':';
+    root[2] = L'\\';
+    driveType = GetDriveTypeW(root);
+    return driveType == DRIVE_FIXED || driveType == DRIVE_REMOVABLE || driveType == DRIVE_RAMDISK;
+}
+
+_Success_(return != FALSE) static BOOL
+    NormalizeDrivePath(_In_opt_z_ const wchar_t *path, _Out_writes_z_(capacity) wchar_t *out, _In_ DWORD capacity)
+{
+    size_t outLen = 0;
+
+    if (out == NULL || capacity == 0)
+    {
+        return FALSE;
+    }
+
+    out[0] = L'\0';
+    if (path == NULL || ClassifyPath(path) != PATH_ABSOLUTE || wcschr(path + 2, L':') != NULL)
+    {
+        return FALSE;
+    }
+
+    for (size_t i = 0; path[i] != L'\0'; ++i)
+    {
+        wchar_t ch = path[i];
+
+        if (ch < 0x20 || ch == 0x7F)
+        {
+            SecureZeroMemory(out, capacity * sizeof(*out));
+            return FALSE;
+        }
+
+        if (ch == L'/')
+        {
+            ch = L'\\';
+        }
+
+        if (ch == L'\\' && outLen > 0 && out[outLen - 1] == L'\\')
+        {
+            continue;
+        }
+
+        if (outLen + 1 >= capacity)
+        {
+            SecureZeroMemory(out, capacity * sizeof(*out));
+            return FALSE;
+        }
+
+        out[outLen] = ch;
+        ++outLen;
+    }
+
+    out[outLen] = L'\0';
+    while (outLen > 3 && out[outLen - 1] == L'\\')
+    {
+        out[outLen - 1] = L'\0';
+        --outLen;
+    }
+
+    if (outLen < 3 || wcsstr(out, L"\\..\\") != NULL || (outLen >= 3 && wcscmp(out + outLen - 3, L"\\..") == 0) ||
+        wcsstr(out, L"\\.\\") != NULL || (outLen >= 2 && wcscmp(out + outLen - 2, L"\\.") == 0))
+    {
+        SecureZeroMemory(out, capacity * sizeof(*out));
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+static BOOL MatchesExpectedPath(_In_z_ const wchar_t *actual, _In_opt_z_ const wchar_t *directory,
+                                _In_opt_z_ const wchar_t *subDirectory, _In_z_ const wchar_t *fileName)
+{
+    wchar_t expected[SHIM_PATH_MAX_CHARS] = { 0 };
+    HRESULT hr = S_OK;
+    BOOL matched = FALSE;
+
+    if (directory == NULL || directory[0] == L'\0')
+    {
+        return FALSE;
+    }
+
+    if (subDirectory != NULL)
+    {
+        hr = StringCchPrintfW(expected, ARRAYSIZE(expected), L"%ls\\%ls\\%ls", directory, subDirectory, fileName);
+    }
+    else
+    {
+        hr = StringCchPrintfW(expected, ARRAYSIZE(expected), L"%ls\\%ls", directory, fileName);
+    }
+
+    if (SUCCEEDED(hr))
+    {
+        matched = CompareStringOrdinal(actual, -1, expected, -1, TRUE) == CSTR_EQUAL;
+    }
+
+    SecureZeroMemory(expected, sizeof(expected));
+    return matched;
+}
+
+static BOOL IsWslHostPathUnder(_In_opt_z_ const wchar_t *imagePath, _In_opt_z_ const wchar_t *systemDirectory,
+                               _In_opt_z_ const wchar_t *programFilesDirectory)
+{
+    if (imagePath == NULL || imagePath[0] == L'\0')
+    {
+        return FALSE;
+    }
+
+    return MatchesExpectedPath(imagePath, systemDirectory, NULL, L"wsl.exe") ||
+           MatchesExpectedPath(imagePath, systemDirectory, NULL, L"wslhost.exe") ||
+           MatchesExpectedPath(imagePath, programFilesDirectory, L"WSL", L"wsl.exe") ||
+           MatchesExpectedPath(imagePath, programFilesDirectory, L"WSL", L"wslhost.exe");
+}
+
+static BOOL IsWslHostPath(_In_opt_z_ const wchar_t *imagePath)
+{
+    wchar_t systemDirectory[MAX_PATH] = { 0 };
+    wchar_t programFilesDirectory[SHIM_PATH_MAX_CHARS] = { 0 };
+    UINT sysLen = GetSystemDirectoryW(systemDirectory, ARRAYSIZE(systemDirectory));
+    BOOL hasProgramFiles =
+        ReadKnownFolderPath(&FOLDERID_ProgramFiles, programFilesDirectory, ARRAYSIZE(programFilesDirectory));
+    BOOL matched = FALSE;
+
+    matched =
+        IsWslHostPathUnder(imagePath, (sysLen > 0 && sysLen < ARRAYSIZE(systemDirectory)) ? systemDirectory : NULL,
+                           (hasProgramFiles) ? programFilesDirectory : NULL);
+
+    SecureZeroMemory(systemDirectory, sizeof(systemDirectory));
+    SecureZeroMemory(programFilesDirectory, sizeof(programFilesDirectory));
+    return matched;
 }
 
 static ULONGLONG GetProcessStartTime(_In_ DWORD processId)
@@ -540,6 +833,7 @@ static ULONGLONG GetProcessStartTime(_In_ DWORD processId)
     }
 
     CloseHandle(process);
+    process = NULL;
     return startTime;
 }
 
@@ -577,8 +871,8 @@ _Success_(return >= 0) static int GetProcessLineage(_In_ DWORD processId,
     {
         if (linkCount == linkCapacity)
         {
-            size_t grown = linkCapacity ? linkCapacity * 2 : 512;
-            PROCESS_LINK *next = grown <= SIZE_MAX / sizeof(*links) ? realloc(links, grown * sizeof(*links)) : NULL;
+            size_t grown = (linkCapacity != 0) ? (linkCapacity * 2) : 512;
+            PROCESS_LINK *next = (grown <= SIZE_MAX / sizeof(*links)) ? realloc(links, grown * sizeof(*links)) : NULL;
 
             if (next == NULL)
             {
@@ -639,10 +933,12 @@ Cleanup:
     {
         SecureZeroMemory(links, linkCapacity * sizeof(*links));
         free(links);
+        links = NULL;
     }
 
     SecureZeroMemory(&entry, sizeof(entry));
     CloseHandle(snapshot);
+    snapshot = INVALID_HANDLE_VALUE;
     return length;
 }
 
@@ -673,7 +969,526 @@ static HWND FindConsoleWindow(_In_ DWORD processId)
         }
     }
 
-    return window != NULL && IsWindowVisible(window) ? window : NULL;
+    return (window != NULL && IsWindowVisible(window)) ? window : NULL;
+}
+
+// Only WSL interop itself (direct parent must be System32/Program Files WSL host of this user).
+static DWORD FindWslInteropCaller(void)
+{
+    DWORD lineage[2] = { 0 };
+    HANDLE parent = NULL;
+    wchar_t image[SHIM_PATH_MAX_CHARS] = { 0 };
+    DWORD length = ARRAYSIZE(image);
+    ULONGLONG selfStart = 0;
+    ULONGLONG parentStart = 0;
+    DWORD caller = 0;
+
+    if (GetProcessLineage(GetCurrentProcessId(), lineage, 2) < 2 || lineage[1] == 0)
+    {
+        goto Cleanup;
+    }
+
+    selfStart = GetProcessStartTime(GetCurrentProcessId());
+    parentStart = GetProcessStartTime(lineage[1]);
+    if (selfStart == 0 || parentStart == 0 || parentStart > selfStart)
+    {
+        goto Cleanup;
+    }
+
+    parent = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, lineage[1]);
+    if (parent == NULL)
+    {
+        goto Cleanup;
+    }
+
+    if (IsSameUserAndIntegrityProcess(parent) && QueryFullProcessImageNameW(parent, 0, image, &length) && length > 0 &&
+        length < ARRAYSIZE(image) && IsWslHostPath(image))
+    {
+        caller = lineage[1];
+    }
+
+Cleanup:
+    if (parent != NULL)
+    {
+        CloseHandle(parent);
+        parent = NULL;
+    }
+
+    SecureZeroMemory(image, sizeof(image));
+    SecureZeroMemory(lineage, sizeof(lineage));
+    return caller;
+}
+
+static BOOL IsAllowedWslUiProcess(_In_ DWORD processId, _Out_opt_ BOOL *isNeovide)
+{
+    HANDLE process = NULL;
+    wchar_t image[SHIM_PATH_MAX_CHARS] = { 0 };
+    DWORD length = ARRAYSIZE(image);
+    const wchar_t *name = NULL;
+    BOOL allowed = FALSE;
+
+    if (isNeovide != NULL)
+    {
+        *isNeovide = FALSE;
+    }
+
+    if (processId == 0)
+    {
+        return FALSE;
+    }
+
+    process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processId);
+    if (process == NULL)
+    {
+        return FALSE;
+    }
+
+    if (IsSameUserAndIntegrityProcess(process) && QueryFullProcessImageNameW(process, 0, image, &length) &&
+        length > 0 && length < ARRAYSIZE(image) && ClassifyPath(image) == PATH_ABSOLUTE && IsLocalDrivePath(image))
+    {
+        name = wcsrchr(image, L'\\');
+        name = (name != NULL) ? name + 1 : image;
+        if (CompareStringOrdinal(name, -1, L"neovide.exe", -1, TRUE) == CSTR_EQUAL)
+        {
+            allowed = TRUE;
+            if (isNeovide != NULL)
+            {
+                *isNeovide = TRUE;
+            }
+        }
+        else if (CompareStringOrdinal(name, -1, L"nvim.exe", -1, TRUE) == CSTR_EQUAL)
+        {
+            allowed = TRUE;
+        }
+    }
+
+    CloseHandle(process);
+    process = NULL;
+    SecureZeroMemory(image, sizeof(image));
+    return allowed;
+}
+
+static BOOL IsHexWide(_In_ wchar_t ch)
+{
+    return (ch >= L'0' && ch <= L'9') || (ch >= L'a' && ch <= L'f') || (ch >= L'A' && ch <= L'F');
+}
+
+static BOOL IsBridgeExeName(_In_opt_z_ const wchar_t *name)
+{
+    const wchar_t *prefix = L"windows_wsl_bridge-";
+    const size_t prefixLen = 19;
+    const wchar_t *cursor = NULL;
+    size_t part1 = 0;
+    size_t part2 = 0;
+
+    if (name == NULL || wcsncmp(name, prefix, prefixLen) != 0)
+    {
+        return FALSE;
+    }
+
+    cursor = name + prefixLen;
+    while (IsHexWide(*cursor) && part1 < 64)
+    {
+        ++cursor;
+        ++part1;
+    }
+
+    if (part1 == 0 || *cursor != L'-')
+    {
+        return FALSE;
+    }
+
+    ++cursor;
+    while (IsHexWide(*cursor) && part2 < 64)
+    {
+        ++cursor;
+        ++part2;
+    }
+
+    return part2 > 0 && CompareStringOrdinal(cursor, -1, L".exe", -1, TRUE) == CSTR_EQUAL;
+}
+
+static BOOL IsBridgeImagePathForSelf(_In_opt_z_ const wchar_t *bridgeImagePath,
+                                     _In_opt_z_ const wchar_t *selfModulePath,
+                                     _In_opt_z_ const wchar_t *localAppDataDir)
+{
+    wchar_t normBridge[SHIM_PATH_MAX_CHARS] = { 0 };
+    wchar_t normSelf[SHIM_PATH_MAX_CHARS] = { 0 };
+    wchar_t expectedDir[SHIM_PATH_MAX_CHARS] = { 0 };
+    wchar_t normLocal[SHIM_PATH_MAX_CHARS] = { 0 };
+    wchar_t *slash = NULL;
+    BOOL matched = FALSE;
+
+    if (!NormalizeDrivePath(bridgeImagePath, normBridge, ARRAYSIZE(normBridge)))
+    {
+        goto Cleanup;
+    }
+
+    slash = wcsrchr(normBridge, L'\\');
+    if (slash == NULL || !IsBridgeExeName(slash + 1))
+    {
+        goto Cleanup;
+    }
+
+    *slash = L'\0';
+    if (!EndsWithInsensitive(normBridge, L"\\nvim-config\\windows_wsl_bridge"))
+    {
+        goto Cleanup;
+    }
+
+    if (NormalizeDrivePath(selfModulePath, normSelf, ARRAYSIZE(normSelf)))
+    {
+        wchar_t *selfSlash = wcsrchr(normSelf, L'\\');
+
+        if (selfSlash != NULL)
+        {
+            *selfSlash = L'\0';
+            if (EndsWithInsensitive(normSelf, L"\\nvim-config\\windows_ime_helper"))
+            {
+                const size_t tailLen = 18; // "windows_ime_helper"
+                size_t selfDirLen = wcslen(normSelf);
+
+                if (selfDirLen > tailLen)
+                {
+                    normSelf[selfDirLen - tailLen] = L'\0';
+                    if (SUCCEEDED(
+                            StringCchPrintfW(expectedDir, ARRAYSIZE(expectedDir), L"%lswindows_wsl_bridge", normSelf)))
+                    {
+                        matched = CompareStringOrdinal(normBridge, -1, expectedDir, -1, TRUE) == CSTR_EQUAL;
+                    }
+                }
+
+                goto Cleanup;
+            }
+        }
+    }
+
+    if (NormalizeDrivePath(localAppDataDir, normLocal, ARRAYSIZE(normLocal)))
+    {
+        size_t localLen = wcslen(normLocal);
+        size_t bridgeLen = wcslen(normBridge);
+
+        if (localLen == 3)
+        {
+            matched = bridgeLen > 3 && CompareStringOrdinal(normBridge, 3, normLocal, 3, TRUE) == CSTR_EQUAL;
+        }
+        else if (bridgeLen > localLen + 1 && normBridge[localLen] == L'\\')
+        {
+            matched = CompareStringOrdinal(normBridge, (int)localLen, normLocal, (int)localLen, TRUE) == CSTR_EQUAL;
+        }
+    }
+
+Cleanup:
+    SecureZeroMemory(normBridge, sizeof(normBridge));
+    SecureZeroMemory(normSelf, sizeof(normSelf));
+    SecureZeroMemory(expectedDir, sizeof(expectedDir));
+    SecureZeroMemory(normLocal, sizeof(normLocal));
+    return matched;
+}
+
+static BOOL IsBridgeProcess(_In_ DWORD processId)
+{
+    HANDLE process = NULL;
+    wchar_t image[SHIM_PATH_MAX_CHARS] = { 0 };
+    wchar_t selfPath[SHIM_PATH_MAX_CHARS] = { 0 };
+    wchar_t localAppData[SHIM_PATH_MAX_CHARS] = { 0 };
+    DWORD length = ARRAYSIZE(image);
+    DWORD selfLen = 0;
+    BOOL hasLocalAppData = FALSE;
+    BOOL matched = FALSE;
+
+    if (processId == 0)
+    {
+        return FALSE;
+    }
+
+    process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processId);
+    if (process == NULL)
+    {
+        return FALSE;
+    }
+
+    if (IsSameUserAndIntegrityProcess(process) && QueryFullProcessImageNameW(process, 0, image, &length) &&
+        length > 0 && length < ARRAYSIZE(image) && ClassifyPath(image) == PATH_ABSOLUTE && IsLocalDrivePath(image))
+    {
+        selfLen = GetModuleFileNameW(NULL, selfPath, ARRAYSIZE(selfPath));
+        hasLocalAppData = ReadKnownFolderPath(&FOLDERID_LocalAppData, localAppData, ARRAYSIZE(localAppData));
+        matched = IsBridgeImagePathForSelf(image, (selfLen > 0 && selfLen < ARRAYSIZE(selfPath)) ? selfPath : NULL,
+                                           (hasLocalAppData) ? localAppData : NULL);
+    }
+
+    CloseHandle(process);
+    process = NULL;
+    SecureZeroMemory(image, sizeof(image));
+    SecureZeroMemory(selfPath, sizeof(selfPath));
+    SecureZeroMemory(localAppData, sizeof(localAppData));
+    return matched;
+}
+
+// Binds wsl-watch-input-state to the exact host Neovide (ancestor) or bridge-spawned nvim.exe (sibling) session.
+static BOOL IsBoundWslUiProcess(_In_ DWORD uiPid, _In_ BOOL isNeovide)
+{
+    DWORD selfLineage[MAX_LINEAGE] = { 0 };
+    DWORD uiLineage[2] = { 0 };
+    int selfLength = GetProcessLineage(GetCurrentProcessId(), selfLineage, MAX_LINEAGE);
+    BOOL bound = FALSE;
+
+    if (selfLength < 3 || uiPid == 0)
+    {
+        goto Cleanup;
+    }
+
+    if (isNeovide)
+    {
+        for (int i = 2; i < selfLength; ++i)
+        {
+            if (selfLineage[i] == uiPid)
+            {
+                bound = TRUE;
+                break;
+            }
+        }
+    }
+    else if (GetProcessLineage(uiPid, uiLineage, 2) >= 2 && uiLineage[1] != 0)
+    {
+        for (int i = 2; i < selfLength; ++i)
+        {
+            if (selfLineage[i] == uiLineage[1] && IsBridgeProcess(uiLineage[1]))
+            {
+                bound = TRUE;
+                break;
+            }
+        }
+    }
+
+Cleanup:
+    SecureZeroMemory(selfLineage, sizeof(selfLineage));
+    SecureZeroMemory(uiLineage, sizeof(uiLineage));
+    return bound;
+}
+
+// WSL-bound watcher acts only while the bound Host Neovide/Neovim (or its terminal) owns the foreground window.
+static BOOL IsOwnerForeground(_In_ DWORD ownerPid, _In_ BOOL isNeovide, _Inout_ HWND *cachedNonMatch)
+{
+    HWND foreground = GetForegroundWindow();
+    DWORD fgPid = 0;
+    DWORD lineage[MAX_LINEAGE] = { 0 };
+    HWND shell = NULL;
+    HWND console = NULL;
+    DWORD shellPid = 0;
+    int length = 0;
+    BOOL matched = FALSE;
+
+    if (foreground == NULL || !IsWindow(foreground) || GetWindowThreadProcessId(foreground, &fgPid) == 0 || fgPid == 0)
+    {
+        return FALSE;
+    }
+
+    if (fgPid == ownerPid)
+    {
+        return TRUE;
+    }
+
+    if (isNeovide)
+    {
+        return FALSE;
+    }
+
+    length = GetProcessLineage(ownerPid, lineage, MAX_LINEAGE);
+    shell = GetShellWindow();
+    if (shell != NULL && GetWindowThreadProcessId(shell, &shellPid) != 0 && shellPid != 0)
+    {
+        for (int i = 0; i < length; ++i)
+        {
+            if (lineage[i] == shellPid)
+            {
+                length = i;
+                break;
+            }
+        }
+    }
+
+    for (int i = 0; i < length; ++i)
+    {
+        if (lineage[i] == fgPid)
+        {
+            matched = TRUE;
+            goto Cleanup;
+        }
+    }
+
+    if (foreground != *cachedNonMatch)
+    {
+        console = FindConsoleWindow(ownerPid);
+        if (console == foreground)
+        {
+            matched = TRUE;
+        }
+        else
+        {
+            *cachedNonMatch = foreground;
+        }
+    }
+
+Cleanup:
+    SecureZeroMemory(lineage, sizeof(lineage));
+    return matched;
+}
+
+static int WatchIndicatorState(_In_ DWORD ownerPid, _In_ DWORD intervalMs, _In_ BOOL isWslBound, _In_ BOOL isNeovide)
+{
+    HANDLE owner = NULL;
+    HANDLE reader = NULL;
+    HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+    HANDLE waits[2] = { NULL, NULL };
+    DWORD waitCount = 1;
+    DWORD waitResult = WAIT_FAILED;
+    LONG mode = MODE_NONE;
+    HWND cachedNonMatch = NULL;
+    int state = 0;
+    int lastState = -1;
+    int result = EXIT_DONE;
+    BOOL isPaused = FALSE;
+
+    if (ownerPid == 0 || intervalMs < MIN_INTERVAL_MS || intervalMs > MAX_INTERVAL_MS)
+    {
+        return EXIT_USAGE;
+    }
+
+    owner = OpenProcess(SYNCHRONIZE, FALSE, ownerPid);
+    if (owner == NULL)
+    {
+        fwprintf(stderr, L"watch-input-state: process %lu not found (error %lu)\n", ownerPid, GetLastError());
+        return EXIT_FAILED;
+    }
+
+    // Waiting on the owner is the poll's sleep and its exit test in one; the handle also pins the process, so a
+    // reused pid cannot stand in for it.
+    waits[0] = owner;
+
+    // Only a pipe: reading a console stdin would take the user's keystrokes. A pipe means the caller sends
+    // commands, so a watcher that cannot receive them fails instead of silently ignoring them.
+    if (input != NULL && input != INVALID_HANDLE_VALUE && GetFileType(input) == FILE_TYPE_PIPE)
+    {
+        gs_commandEvent = CreateEventW(NULL, FALSE, FALSE, NULL);
+        if (gs_commandEvent != NULL)
+        {
+            reader = CreateThread(NULL, 0, ReadCommandsThread, NULL, 0, NULL);
+        }
+
+        if (reader == NULL)
+        {
+            fwprintf(stderr, L"watch-input-state: cannot read commands (error %lu)\n", GetLastError());
+            result = EXIT_FAILED;
+            goto Cleanup;
+        }
+
+        waits[waitCount] = gs_commandEvent;
+        ++waitCount;
+    }
+
+    while (1)
+    {
+        if (!isPaused && (!isWslBound || IsOwnerForeground(ownerPid, isNeovide, &cachedNonMatch)))
+        {
+            state = QueryIndicatorState();
+            if (state != lastState)
+            {
+                lastState = state;
+                if (PrintIndicatorState(state) != 0)
+                {
+                    break;
+                }
+            }
+        }
+
+        waitResult = WaitForMultipleObjects(waitCount, waits, FALSE, isPaused ? PAUSED_WAKE_MS : intervalMs);
+        if (waitResult == WAIT_OBJECT_0)
+        {
+            break;
+        }
+
+        if (waitResult == WAIT_FAILED)
+        {
+            fwprintf(stderr, L"watch-input-state: cannot wait for Neovim (error %lu)\n", GetLastError());
+            result = EXIT_FAILED;
+            break;
+        }
+
+        // Commands are taken at every wake, not only when signalled: a lost SetEvent then delays them instead
+        // of losing them.
+        mode = InterlockedExchange(&gs_requestedMode, MODE_NONE);
+        if (gs_isProtocolViolated)
+        {
+            fwprintf(stderr, L"watch-input-state: unknown command on stdin\n");
+            result = EXIT_PROTOCOL;
+            break;
+        }
+
+        // Said, and the watcher goes on: Neovim shows the line while it runs.
+        if (InterlockedExchange(&gs_isEnglishWanted, 0) &&
+            (!isWslBound || IsOwnerForeground(ownerPid, isNeovide, &cachedNonMatch)) && SetImeEnglish() != EXIT_DONE)
+        {
+            fwprintf(stderr, L"watch-input-state: the foreground window's IME did not take the mode in %d ms\n",
+                     IME_TIMEOUT_MS);
+        }
+
+        if (mode == MODE_PAUSE)
+        {
+            isPaused = TRUE;
+        }
+        else if (mode == MODE_RESUME)
+        {
+            isPaused = FALSE;
+            lastState = -1;
+        }
+
+        if (gs_isInputClosed)
+        {
+            break;
+        }
+    }
+
+Cleanup:
+    StopCommandReader(reader);
+    reader = NULL;
+    CloseHandle(owner);
+    owner = NULL;
+    SecureZeroMemory(&state, sizeof(state));
+    SecureZeroMemory(&lastState, sizeof(lastState));
+    SecureZeroMemory(&mode, sizeof(mode));
+    return result;
+}
+
+// One pass over the top-level windows serves the whole lineage, keeping the window of the nearest ancestor.
+static BOOL CALLBACK MatchLineageWindow(_In_ HWND window, _In_ LPARAM parameter)
+{
+    WINDOW_QUERY *query = (WINDOW_QUERY *)parameter;
+    DWORD processId = 0;
+
+    if (query == NULL || query->lineage == NULL || query->length <= 0 || query->length > MAX_LINEAGE)
+    {
+        return FALSE;
+    }
+
+    if (window == NULL || !IsWindowVisible(window) || GetWindow(window, GW_OWNER) != NULL ||
+        GetWindowThreadProcessId(window, &processId) == 0 || processId == 0)
+    {
+        return TRUE;
+    }
+
+    for (int i = 0; i < query->nearest && i < query->length; ++i)
+    {
+        if (query->lineage[i] == processId)
+        {
+            query->nearest = i;
+            query->found = window;
+            break;
+        }
+    }
+
+    // The process itself has a window: no ancestor can be nearer.
+    return query->nearest != 0;
 }
 
 // The foreground lock refuses SetForegroundWindow to most background processes; joining the foreground
@@ -855,7 +1670,7 @@ static BOOL IsNeovimProcess(_In_ DWORD processId, _In_ ULONGLONG startedBy)
     if (QueryFullProcessImageNameW(process, 0, image, &length) && length > 0 && length < ARRAYSIZE(image))
     {
         name = wcsrchr(image, L'\\');
-        name = name != NULL ? name + 1 : image;
+        name = (name != NULL) ? name + 1 : image;
         isNeovim = CompareStringOrdinal(name, -1, L"nvim.exe", -1, TRUE) == CSTR_EQUAL;
     }
 
@@ -867,6 +1682,7 @@ static BOOL IsNeovimProcess(_In_ DWORD processId, _In_ ULONGLONG startedBy)
     isNeovim = isNeovim && started != 0 && started <= startedBy;
 
     CloseHandle(process);
+    process = NULL;
     SecureZeroMemory(image, sizeof(image));
     return isNeovim;
 }
@@ -1027,27 +1843,6 @@ Cleanup:
     return result;
 }
 
-// Only a drive path (C:\...) or a plain relative one. Drive-relative (C:tool.exe) and rooted (\tool.exe) paths change
-// meaning with the current drive and directory; device paths (\\.\, \\?\) never name a program here; shares
-// (\\server\...) would fetch it from the network, handing the user's credentials to whoever answers.
-static PATH_KIND ClassifyPath(_In_opt_z_ const wchar_t *path)
-{
-    BOOL isLetter = FALSE;
-
-    if (path == NULL || path[0] == L'\0')
-    {
-        return PATH_REFUSED;
-    }
-
-    isLetter = (path[0] >= L'A' && path[0] <= L'Z') || (path[0] >= L'a' && path[0] <= L'z');
-    if (isLetter && path[1] == L':')
-    {
-        return path[2] == L'\\' || path[2] == L'/' ? PATH_ABSOLUTE : PATH_REFUSED;
-    }
-
-    return path[0] == L'\\' || path[0] == L'/' ? PATH_REFUSED : PATH_RELATIVE;
-}
-
 // The .shim's first line as a full path: UTF-8, no control characters, absolute or relative to the .shim's own
 // directory (never the current one, which the caller controls), with "." and ".." resolved. No colon may follow
 // the drive's: tool.exe:stream would run an alternate data stream.
@@ -1176,6 +1971,7 @@ _Success_(return != FALSE) static BOOL GetFileId(_In_opt_z_ const wchar_t *path,
     }
 
     CloseHandle(file);
+    file = INVALID_HANDLE_VALUE;
     return wasRead;
 }
 
@@ -1419,6 +2215,7 @@ Cleanup:
     if (file != INVALID_HANDLE_VALUE)
     {
         CloseHandle(file);
+        file = INVALID_HANDLE_VALUE;
     }
 
     if (result != SHIM_OK)
@@ -1524,7 +2321,7 @@ static BOOL PrependOwnDirectory(_In_opt_z_ const wchar_t *target, _Out_ DWORD *l
     }
 
     size = directoryLength + 2 + oldLength;
-    path = calloc(size, sizeof(wchar_t));
+    path = calloc(size, sizeof(*path));
     if (path == NULL)
     {
         *lastError = ERROR_NOT_ENOUGH_MEMORY;
@@ -1540,17 +2337,18 @@ static BOOL PrependOwnDirectory(_In_opt_z_ const wchar_t *target, _Out_ DWORD *l
         // PATH changed between the two calls: what would be set is not what was read.
         if (copied == 0 || copied >= oldLength)
         {
-            *lastError = copied == 0 ? GetLastError() : ERROR_INSUFFICIENT_BUFFER;
+            *lastError = (copied == 0) ? GetLastError() : ERROR_INSUFFICIENT_BUFFER;
             goto Cleanup;
         }
     }
 
     isSet = SetEnvironmentVariableW(L"PATH", path);
-    *lastError = isSet ? ERROR_SUCCESS : GetLastError();
+    *lastError = (isSet) ? ERROR_SUCCESS : GetLastError();
 
 Cleanup:
-    SecureZeroMemory(path, size * sizeof(wchar_t));
+    SecureZeroMemory(path, size * sizeof(*path));
     free(path);
+    path = NULL;
     return isSet;
 }
 
@@ -1558,7 +2356,7 @@ static HANDLE GetValidStdHandle(_In_ DWORD which)
 {
     HANDLE handle = GetStdHandle(which);
 
-    return handle == INVALID_HANDLE_VALUE ? NULL : handle;
+    return (handle == INVALID_HANDLE_VALUE) ? NULL : handle;
 }
 
 // Neovim watches this file beside the shims (lua/features/util/tool_paths/init.lua) and shows each new
@@ -1637,6 +2435,7 @@ Cleanup:
     if (file != INVALID_HANDLE_VALUE)
     {
         CloseHandle(file);
+        file = INVALID_HANDLE_VALUE;
     }
 
     SecureZeroMemory(path, sizeof(path));
@@ -1653,12 +2452,12 @@ static int FailShim(_In_opt_z_ const wchar_t *shim, _In_opt_z_ const wchar_t *wh
 
     if (lastError != ERROR_SUCCESS)
     {
-        formatted = StringCchPrintfW(message, ARRAYSIZE(message), L"%ls (error %lu)", what != NULL ? what : L"failed",
+        formatted = StringCchPrintfW(message, ARRAYSIZE(message), L"%ls (error %lu)", (what != NULL) ? what : L"failed",
                                      lastError);
     }
     else
     {
-        formatted = StringCchPrintfW(message, ARRAYSIZE(message), L"%ls", what != NULL ? what : L"failed");
+        formatted = StringCchPrintfW(message, ARRAYSIZE(message), L"%ls", (what != NULL) ? what : L"failed");
     }
 
     // Cut short is still worth reporting; StringCchPrintf leaves it terminated.
@@ -1748,7 +2547,7 @@ static int RunShim(_In_opt_z_ const wchar_t *shim, _In_opt_z_ const wchar_t *sel
         goto Cleanup;
     }
 
-    commandLine = calloc(size, sizeof(wchar_t));
+    commandLine = calloc(size, sizeof(*commandLine));
     if (commandLine == NULL)
     {
         exitCode = (DWORD)FailShim(shim, L"out of memory", ERROR_NOT_ENOUGH_MEMORY);
@@ -1825,7 +2624,7 @@ static int RunShim(_In_opt_z_ const wchar_t *shim, _In_opt_z_ const wchar_t *sel
     if (inheritedCount > 0)
     {
         InitializeProcThreadAttributeList(NULL, 1, 0, &attributesSize);
-        attributes = (LPPROC_THREAD_ATTRIBUTE_LIST)calloc(1, attributesSize);
+        attributes = calloc(1, attributesSize);
         if (attributes == NULL)
         {
             exitCode = (DWORD)FailShim(shim, L"out of memory", ERROR_NOT_ENOUGH_MEMORY);
@@ -1892,21 +2691,25 @@ Cleanup:
         }
 
         CloseHandle(process.hProcess);
+        process.hProcess = NULL;
     }
 
     if (process.hThread != NULL)
     {
         CloseHandle(process.hThread);
+        process.hThread = NULL;
     }
 
     if (job != NULL)
     {
         CloseHandle(job);
+        job = NULL;
     }
 
     if (targetFile != INVALID_HANDLE_VALUE)
     {
         CloseHandle(targetFile);
+        targetFile = INVALID_HANDLE_VALUE;
     }
 
     if (isAttributeListReady)
@@ -1915,11 +2718,13 @@ Cleanup:
     }
 
     free(attributes);
+    attributes = NULL;
 
     if (commandLine != NULL)
     {
-        SecureZeroMemory(commandLine, size * sizeof(wchar_t));
+        SecureZeroMemory(commandLine, size * sizeof(*commandLine));
         free(commandLine);
+        commandLine = NULL;
     }
 
     SecureZeroMemory(inherited, sizeof(inherited));
@@ -1975,8 +2780,8 @@ static BOOL PrepareStdout(void)
 
 static int PrintUsage(void)
 {
-    fputs("usage: windows_ime_helper ime-english | input-state | watch-input-state PID [MS] | raise-window PID | "
-          "version\n",
+    fputs("usage: windows_ime_helper ime-english | input-state | watch-input-state PID [MS] | "
+          "wsl-watch-input-state PID [MS] | raise-window PID | version\n",
           stderr);
     return EXIT_USAGE;
 }
@@ -2053,7 +2858,7 @@ int main(int argc, char **argv)
             goto Cleanup;
         }
 
-        exitCode = FindNeovimCaller(SHIM_CALLER_DEPTH) != 0 ? RunShim(shim, self) : RefuseCaller();
+        exitCode = (FindNeovimCaller(SHIM_CALLER_DEPTH) != 0) ? RunShim(shim, self) : RefuseCaller();
         goto Cleanup;
     }
 
@@ -2070,6 +2875,43 @@ int main(int argc, char **argv)
         goto Cleanup;
     }
 
+    if (IsCommand(argc, argv, "wsl-watch-input-state", 3) || IsCommand(argc, argv, "wsl-watch-input-state", 4))
+    {
+        BOOL isNeovide = FALSE;
+
+        if (FindWslInteropCaller() == 0)
+        {
+            fwprintf(stderr, L"windows_ime_helper: wsl-watch-input-state runs only from WSL\n");
+            exitCode = EXIT_NOT_NEOVIM;
+            goto Cleanup;
+        }
+
+        LeaveCallerDirectory();
+        ownerPid = ParseNumber(argv[2]);
+        intervalMs = (argc == 4) ? ParseNumber(argv[3]) : DEFAULT_INTERVAL_MS;
+        if (ownerPid == 0 || intervalMs < MIN_INTERVAL_MS || intervalMs > MAX_INTERVAL_MS)
+        {
+            exitCode = PrintUsage();
+        }
+        else if (!IsAllowedWslUiProcess(ownerPid, &isNeovide))
+        {
+            fwprintf(stderr, L"wsl-watch-input-state: process %lu is not a running Neovide or Neovim of this user\n",
+                     ownerPid);
+            exitCode = EXIT_FAILED;
+        }
+        else if (!IsBoundWslUiProcess(ownerPid, isNeovide))
+        {
+            fwprintf(stderr, L"wsl-watch-input-state: process %lu does not belong to this WSL session\n", ownerPid);
+            exitCode = EXIT_NOT_NEOVIM;
+        }
+        else
+        {
+            exitCode = (PrepareStdout()) ? WatchIndicatorState(ownerPid, intervalMs, TRUE, isNeovide) : EXIT_FAILED;
+        }
+
+        goto Cleanup;
+    }
+
     caller = FindNeovimCaller(1);
     if (caller == 0)
     {
@@ -2080,7 +2922,7 @@ int main(int argc, char **argv)
     LeaveCallerDirectory();
     if (IsCommand(argc, argv, "version", 2))
     {
-        exitCode = PrepareStdout() && printf("windows_ime_helper %s x64\n", WINDOWS_IME_HELPER_COMPILER) >= 0
+        exitCode = (PrepareStdout() && printf("windows_ime_helper %s x64\n", WINDOWS_IME_HELPER_COMPILER) >= 0)
                        ? EXIT_DONE
                        : EXIT_FAILED;
     }
@@ -2095,12 +2937,12 @@ int main(int argc, char **argv)
     }
     else if (IsCommand(argc, argv, "input-state", 2))
     {
-        exitCode = PrepareStdout() && PrintIndicatorState(QueryIndicatorState()) == 0 ? EXIT_DONE : EXIT_FAILED;
+        exitCode = (PrepareStdout() && PrintIndicatorState(QueryIndicatorState()) == 0) ? EXIT_DONE : EXIT_FAILED;
     }
     else if (IsCommand(argc, argv, "watch-input-state", 3) || IsCommand(argc, argv, "watch-input-state", 4))
     {
         ownerPid = ParseNumber(argv[2]);
-        intervalMs = argc == 4 ? ParseNumber(argv[3]) : DEFAULT_INTERVAL_MS;
+        intervalMs = (argc == 4) ? ParseNumber(argv[3]) : DEFAULT_INTERVAL_MS;
         if (ownerPid == 0 || intervalMs < MIN_INTERVAL_MS || intervalMs > MAX_INTERVAL_MS)
         {
             exitCode = PrintUsage();
@@ -2113,7 +2955,7 @@ int main(int argc, char **argv)
         }
         else
         {
-            exitCode = PrepareStdout() ? WatchIndicatorState(ownerPid, intervalMs) : EXIT_FAILED;
+            exitCode = (PrepareStdout()) ? WatchIndicatorState(ownerPid, intervalMs, FALSE, FALSE) : EXIT_FAILED;
         }
     }
     else if (IsCommand(argc, argv, "raise-window", 3))

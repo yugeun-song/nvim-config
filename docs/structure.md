@@ -31,7 +31,7 @@ nvim-config/
 │   │   │                        remaining Mason packages
 │   │   ├── dap/                 core (nvim-dap, gdb, LLDB, panels), linux_kernel
 │   │   └── util/                managed paths, tool paths, feature status, Discord Rich Presence, cmd.exe
-│   │                            arguments on Windows
+│   │                            arguments on Windows, host-to-WSL bridge on Windows
 │   └── features/                the configuration's own code, in the same categories and under the same names
 │       ├── ui/ editor/ lang/ lsp/ dap/ util/
 │       └── <category>/health.lua   :checkhealth features.<category>
@@ -40,11 +40,11 @@ nvim-config/
 ├── queries/asm/                 highlights.scm
 ├── colors/                      spaceduck-remix.lua
 ├── neovide/config.toml          Neovide's own settings, linked to its configuration directory
-├── native/                      windows_ime_helper.c and its .clang-format
+├── native/                      windows_ime_helper.c, windows_wsl_bridge.c and their .clang-format
 ├── scripts/                     check_repository.lua, update_credits.lua, reset_to_fresh_clone.lua, open-at.lua,
-│                                alive_lsp_over_stdio.lisp
+│                                wsl.lua, alive_lsp_over_stdio.lisp
 ├── tests/                       containers/ (by hand, Linux host), managed_paths/, msvc_compile_database/,
-│                                windows_ime_helper/, focus_events/
+│                                windows_ime_helper/, windows_wsl_bridge/, focus_events/
 └── docs/                        this documentation; docs/features/ has one page per category, agent-guide.md the
                                  agents' guide to this repository, agent-rules.md the rules that the author's repositories share
 ```

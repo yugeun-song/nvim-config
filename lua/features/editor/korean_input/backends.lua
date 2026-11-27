@@ -29,6 +29,10 @@ function M.english_commands(opts)
       table.insert(candidates, 1, { ime_helper, "ime-english" })
     end
   elseif vim.fn.has("wsl") == 1 then
+    if require("features.editor.korean_input.wsl_bridge").resolve() then
+      return {}
+    end
+
     candidates = { { "im-select.exe", "1033" } }
   else
     local fcitx = { { "fcitx5-remote", "-c" }, { "fcitx-remote", "-c" } }
@@ -109,6 +113,10 @@ function M.indicators()
     local ime_helper = require("features.util.windows.ime_helper")
 
     return (ime_helper.path() or ime_helper.is_building()) and { watch = true } or {}
+  end
+
+  if vim.fn.has("wsl") == 1 and require("features.editor.korean_input.wsl_bridge").resolve() then
+    return { watch = "wsl" }
   end
 
   if vim.fn.has("linux") == 0 then

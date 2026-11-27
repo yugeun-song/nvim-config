@@ -21,7 +21,7 @@ A [LazyVim](https://www.lazyvim.org/)-based Neovim configuration for Linux kerne
 | Debian, Ubuntu, Fedora, openSUSE and other Linux | Full; package names and gdb versions differ |
 | macOS | Partly: C and C++ debug through LLDB; no QEMU user mode or kernel debugging |
 | Windows (x86_64) | Partly: no man page highlighting, QEMU user mode or kernel debugging |
-| WSL | As Linux, with the IME switch through `im-select.exe` |
+| WSL | As Linux; host Windows Neovim/Neovide connects via `:Wsl` (`<leader>fw`) with the IME bridged to the host UI |
 | Neovim 0.11 or older | Unsupported |
 
 What each system needs: [installation](docs/installation.md).

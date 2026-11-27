@@ -177,24 +177,31 @@ end
 -- Whether Neovim has the focus, as far as the indicators were told.
 local active, awaited = false, false
 
+local function watcher_bridge()
+  return both == "wsl" and require("features.editor.korean_input.wsl_bridge")
+    or require("features.util.windows.ime_helper")
+end
+
 local function watch_both()
   if not both then
     return
   end
 
-  local ime_helper = require("features.util.windows.ime_helper")
+  local bridge = watcher_bridge()
 
-  if ime_helper.send("r") or ime_helper.watch(on_pair) or awaited then
+  if bridge.send("r") or bridge.watch(on_pair) or awaited then
     return
   end
 
-  -- Still being built (the first start, or the first after its source changed): watched once it lands.
-  awaited = true
-  ime_helper.on_ready(function()
-    if active then
-      watch_both()
-    end
-  end)
+  -- Still being built on Windows (the first start, or after its source changed): watched once it lands.
+  if both == true then
+    awaited = true
+    require("features.util.windows.ime_helper").on_ready(function()
+      if active then
+        watch_both()
+      end
+    end)
+  end
 end
 
 local has_caps = caps_path ~= nil or caps_watch ~= nil or both ~= nil
@@ -238,7 +245,7 @@ function M.start()
     end
 
     if both then
-      require("features.util.windows.ime_helper").send("p")
+      watcher_bridge().send("p")
     elseif watcher then
       watcher:kill("sigterm")
       watcher = nil

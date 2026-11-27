@@ -181,6 +181,60 @@ local function changeable_folders()
   end
 end
 
+local function wsl_connection()
+  if not status.WINDOWS then
+    status.unsupported("WSL connection (<leader>fw, :Wsl)", "connects Windows Neovim and Neovide to WSL")
+
+    return
+  end
+
+  local wsl = require("features.util.windows.wsl")
+  local wsl_exe = wsl.wsl_exe()
+
+  if not wsl_exe then
+    status.blocked("WSL executable", "System32\\wsl.exe is missing")
+
+    return
+  end
+
+  local distros, list_err = wsl.list_distros_sync()
+
+  if #distros > 0 then
+    local names = vim.tbl_map(function(d)
+      return d.name .. (d.default and "*" or "")
+    end, distros)
+
+    status.available("WSL distributions", table.concat(names, ", "))
+  else
+    status.blocked("WSL distributions", list_err or "no WSL distributions installed", { "wsl --install" })
+  end
+
+  local bridge = require("features.util.windows.wsl_bridge")
+  local bridge_path, bridge_why = bridge.path({ build = false })
+
+  if bridge_path then
+    status.available("windows_wsl_bridge", bridge_path)
+  elseif bridge_why == "not built yet" then
+    status.available("windows_wsl_bridge", "builds on first WSL connection (native/windows_wsl_bridge.c)")
+  else
+    status.blocked("windows_wsl_bridge", bridge_why or "not available", {
+      "Visual Studio's cl or clang targeting MSVC builds native/windows_wsl_bridge.c on first WSL connection",
+    })
+  end
+
+  if wsl.find_neovide() then
+    status.available("WSL GUI mode (Neovide)", "neovide.exe")
+  else
+    status.blocked("WSL GUI mode (Neovide)", "neovide.exe is not on PATH (TUI mode still works)")
+  end
+
+  status.available("WSL TUI mode (nvim --remote-ui)", vim.v.progpath)
+
+  for _, line in ipairs(bridge.reports()) do
+    vim.health.info("windows_wsl_bridge reported " .. line)
+  end
+end
+
 function M.check()
   vim.health.start("Managed paths")
   managed_paths()
@@ -193,6 +247,8 @@ function M.check()
   windows_platform()
   vim.health.start("Folders other accounts may change (Windows)")
   changeable_folders()
+  vim.health.start("WSL connection")
+  wsl_connection()
 end
 
 return M

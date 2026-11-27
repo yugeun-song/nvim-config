@@ -144,6 +144,13 @@ check(
 r = run({ cmd_exe, "/d", "/c", win(exe) .. " version" })
 check(r.code == 4, "refused when cmd.exe, not Neovim, starts it: exit " .. r.code)
 
+-- wsl-watch-input-state refuses direct Neovim or cmd.exe callers (must come from WSL interop).
+r = run({ exe, "wsl-watch-input-state", me })
+check(r.code == 4, "wsl-watch-input-state refused from Neovim directly: exit " .. r.code)
+
+r = run({ cmd_exe, "/d", "/c", win(exe) .. " wsl-watch-input-state " .. me })
+check(r.code == 4, "wsl-watch-input-state refused from cmd.exe: exit " .. r.code)
+
 local shims = vim.fs.joinpath(root, "shims")
 local tool = vim.fs.joinpath(shims, "tool.exe")
 local shim_file = vim.fs.joinpath(shims, "tool.shim")

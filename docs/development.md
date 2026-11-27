@@ -14,7 +14,7 @@ The rules every change follows, and how to check and test one.
 - Comments are compact and appear only where the code alone is unclear or a judgment was made; they say why.
 - One comment syntax per file; in C that is `//`.
 - Lua: StyLua (`stylua.toml`: 2 spaces, 120 columns). A blank line follows a statement that spans several lines and a run of `local` declarations, and precedes `return`.
-- C (`native/windows_ime_helper.c` and its tests) follows Microsoft's Windows layout (`native/.clang-format`, clang-format 21 or later):
+- C (`native/windows_ime_helper.c`, `native/windows_wsl_bridge.c` and their tests) follows Microsoft's Windows layout (`native/.clang-format`, clang-format 21 or later):
   - braces on their own line, and on every body;
   - globals `g_`, file-static globals `gs_`;
   - booleans named with a be-verb (`isCrashed`);
@@ -97,3 +97,12 @@ A failure prints the steps before it and the seed that repeats it. Nothing of th
 - `fuzz.c`, a libFuzzer target over the parsers.
 
 It needs Visual Studio 2022 or later with the C++ tools and enters a Developer PowerShell itself. Without clang or clang-format those steps are SKIP.
+
+### Windows WSL bridge
+
+`powershell -ExecutionPolicy Bypass -File tests\windows_wsl_bridge\run.ps1 [-FuzzSeconds 60] [-Nvim nvim]` builds and runs every test of `native/windows_wsl_bridge.c` and its Lua side in a temporary directory:
+
+- clang-format, `cl /W4 /WX /sdl /analyze`, clang `-Wall -Wextra -Werror` and `--analyze`, and the five cross-target preprocessor guards;
+- `unit.c` (C unit tests, including `CommandLineToArgvW` round-trips) and `test.lua` (Neovim-driven caller/input rejections) under AddressSanitizer;
+- `lua_check.lua` (distro parser, path/argument validators, `wt.exe` base64 escaping, WSL IME bridge env checks, zero-cost Linux/macOS spec checks), which also runs alone on any system: `nvim -l tests/windows_wsl_bridge/lua_check.lua`;
+- `fuzz.c`, a libFuzzer target over the validators and Win32 argument quoting.

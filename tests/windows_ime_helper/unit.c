@@ -156,6 +156,7 @@ static BOOL WriteBytes(_In_z_ const wchar_t *path, _In_reads_bytes_(size) const 
 
     isWritten = WriteFile(file, bytes, size, &written, NULL) && written == size;
     CloseHandle(file);
+    file = INVALID_HANDLE_VALUE;
     return isWritten;
 }
 
@@ -367,6 +368,79 @@ static void TestMisc(void)
     Check(!PrependOwnDirectory(NULL, &lastError), "prepend refuses NULL");
     Check(!PrependOwnDirectory(L"C:\\x.exe", NULL), "prepend refuses a NULL error");
 
+    Check(IsWslHostPathUnder(L"C:\\Windows\\System32\\wsl.exe", L"C:\\Windows\\System32", L"C:\\Program Files"),
+          "WSL host System32 wsl.exe");
+    Check(IsWslHostPathUnder(L"c:\\windows\\system32\\WSLHOST.EXE", L"C:\\Windows\\System32", L"C:\\Program Files"),
+          "WSL host System32 wslhost.exe case-insensitive");
+    Check(IsWslHostPathUnder(L"C:\\Program Files\\WSL\\wsl.exe", L"C:\\Windows\\System32", L"C:\\Program Files"),
+          "WSL host Program Files wsl.exe");
+    Check(IsWslHostPathUnder(L"C:\\Program Files\\WSL\\wslhost.exe", L"C:\\Windows\\System32", L"C:\\Program Files"),
+          "WSL host Program Files wslhost.exe");
+    Check(!IsWslHostPathUnder(L"C:\\Temp\\wsl.exe", L"C:\\Windows\\System32", L"C:\\Program Files"),
+          "WSL host rejects arbitrary wsl.exe path");
+    Check(!IsWslHostPathUnder(L"\\\\server\\share\\wsl.exe", L"C:\\Windows\\System32", L"C:\\Program Files"),
+          "WSL host rejects UNC path");
+    Check(!IsWslHostPathUnder(L"C:\\Windows\\System32\\wsl.exe\\extra.exe", L"C:\\Windows\\System32",
+                              L"C:\\Program Files"),
+          "WSL host rejects trailing path");
+    Check(!IsWslHostPathUnder(NULL, L"C:\\Windows\\System32", L"C:\\Program Files"), "WSL host rejects NULL");
+
+    Check(IsBridgeExeName(L"windows_wsl_bridge-0123abcd-4567ef.exe"), "bridge exe name valid");
+    Check(!IsBridgeExeName(NULL), "bridge exe name rejects NULL");
+    Check(!IsBridgeExeName(L"windows_wsl_bridge-xyz-123.exe"), "bridge exe name rejects non-hex");
+    Check(!IsBridgeExeName(L"evil_bridge-1-2.exe"), "bridge exe name rejects wrong prefix");
+    Check(!IsBridgeExeName(L"windows_wsl_bridge-1-2.exe.bat"), "bridge exe name rejects suffix");
+
+    {
+        wchar_t savedProgramFiles[SHIM_PATH_MAX_CHARS] = { 0 };
+        DWORD savedLen = GetEnvironmentVariableW(L"ProgramFiles", savedProgramFiles, ARRAYSIZE(savedProgramFiles));
+        BOOL hadSaved = savedLen > 0 && savedLen < ARRAYSIZE(savedProgramFiles);
+
+        Check(SetEnvironmentVariableW(L"ProgramFiles", L"C:\\Temp\\FakePF") != FALSE, "tamper ProgramFiles env");
+        Check(!IsWslHostPath(L"C:\\Temp\\FakePF\\WSL\\wsl.exe"), "IsWslHostPath ignores tampered ProgramFiles env");
+        SetEnvironmentVariableW(L"ProgramFiles", (hadSaved) ? savedProgramFiles : NULL);
+        SecureZeroMemory(savedProgramFiles, sizeof(savedProgramFiles));
+    }
+
+    {
+        const wchar_t *selfProd =
+            L"C:\\Users\\user\\AppData\\Local\\nvim-data\\nvim-config\\windows_ime_helper\\windows_ime_helper-1-2.exe";
+        const wchar_t *selfAppName =
+            L"C:\\Users\\user\\AppData\\Local\\app2-data\\nvim-config\\windows_ime_helper\\windows_ime_helper-1-2.exe";
+        const wchar_t *selfXdg = L"D:\\xdg\\nvim-data\\nvim-config\\windows_ime_helper\\windows_ime_helper-1-2.exe";
+        const wchar_t *selfTemp = L"C:\\Temp\\unit.exe";
+        const wchar_t *localAppData = L"C:\\Users\\user\\AppData\\Local";
+
+        Check(IsBridgeImagePathForSelf(L"C:\\Users\\user\\AppData\\Local\\nvim-data\\nvim-config\\windows_wsl_bridge\\"
+                                       L"windows_wsl_bridge-1-2.exe",
+                                       selfProd, localAppData),
+              "bridge sibling matches default storage");
+        Check(IsBridgeImagePathForSelf(L"C:/Users/user/AppData/Local/app2-data/nvim-config/windows_wsl_bridge/"
+                                       L"windows_wsl_bridge-1-2.exe",
+                                       selfAppName, localAppData),
+              "bridge sibling matches NVIM_APPNAME storage");
+        Check(
+            IsBridgeImagePathForSelf(L"D:\\xdg\\nvim-data\\nvim-config\\windows_wsl_bridge\\windows_wsl_bridge-1-2.exe",
+                                     selfXdg, localAppData),
+            "bridge sibling matches XDG_DATA_HOME storage");
+        Check(!IsBridgeImagePathForSelf(L"C:\\Temp\\windows_wsl_bridge-1-2.exe", selfProd, localAppData),
+              "bridge rejects C:\\Temp binary");
+        Check(!IsBridgeImagePathForSelf(L"C:\\Temp\\nvim-config\\windows_wsl_bridge\\windows_wsl_bridge-1-2.exe",
+                                        selfProd, localAppData),
+              "bridge rejects non-sibling Fake nvim-config dir");
+        Check(
+            !IsBridgeImagePathForSelf(L"\\\\server\\share\\nvim-config\\windows_wsl_bridge\\windows_wsl_bridge-1-2.exe",
+                                      selfProd, localAppData),
+            "bridge rejects UNC path");
+        Check(IsBridgeImagePathForSelf(L"C:\\Users\\user\\AppData\\Local\\nvim-data\\nvim-config\\windows_wsl_bridge\\"
+                                       L"windows_wsl_bridge-1-2.exe",
+                                       selfTemp, localAppData),
+              "standalone test accepts bridge under LocalAppData");
+        Check(!IsBridgeImagePathForSelf(L"C:\\Temp\\nvim-config\\windows_wsl_bridge\\windows_wsl_bridge-1-2.exe",
+                                        selfTemp, localAppData),
+              "standalone test rejects bridge outside LocalAppData");
+    }
+
     // Last: it moves this process.
     LeaveCallerDirectory();
     Check(GetCurrentDirectoryW(ARRAYSIZE(currentDirectory), currentDirectory) != 0 &&
@@ -384,5 +458,5 @@ int main(void)
     TestFiles();
     TestMisc();
     printf("== %d checks, %d failed\n", gs_checkCount, gs_failureCount);
-    return gs_failureCount == 0 ? 0 : 1;
+    return (gs_failureCount == 0) ? 0 : 1;
 }

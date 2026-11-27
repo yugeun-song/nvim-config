@@ -9,6 +9,7 @@ The keys this configuration adds to LazyVim's. `<leader>` is Space and `<localle
 | `<leader>sK` | Every key, mapped and built-in | [help](features/editor.md#key-cheat-sheet) |
 | `<leader>fo` | Open Folder in a CLI file manager (`spf`, else `yazi`; only when installed) | [editing](features/editor.md#open-folder) |
 | `<leader>fp` | Projects: opened folders and git roots of recent files | [editing](features/editor.md#open-folder) |
+| `<leader>fw` | Connect host Windows Neovim or Neovide to WSL (Windows only) | [WSL connection](features/util.md#wsl-connection) |
 | `<leader>ba` | All buffers in a picker | [appearance](features/ui.md) |
 | `<leader>uR` | Reload changed files, refresh the explorers | [editing](features/editor.md#changes-on-disk) |
 | `<leader>uK` | Toggle the ChKeys keystroke display | [appearance](features/ui.md) |

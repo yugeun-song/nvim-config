@@ -99,7 +99,7 @@ Korean input without leaving Normal mode in Hangul.
   | Linux | `fcitx5-remote -c`, `fcitx-remote -c`, `ibus engine` with `vim.g.ibus_english_engine` (default `xkb:us::eng`); ibus first when `XMODIFIERS` names it |
   | macOS | `macism`, `im-select` or `issw`, to `com.apple.keylayout.ABC` |
   | Windows | the [IME helper](util.md#windows-ime-helper)'s `ime-english`, which keeps the keyboard layout; else `im-select.exe 1033` |
-  | WSL | `im-select.exe 1033` |
+  | WSL | `windows_ime_helper wsl-watch-input-state` (when launched from host Windows), else `im-select.exe 1033` |
 
   On Windows the switch is a line to the running indicator watcher's stdin, starting no process.
 
@@ -128,7 +128,7 @@ None. The langmap and the switch load at start, so keys typed during startup are
 | Linux | `fcitx5`, `fcitx` or `ibus` | `fcitx5-remote` and the sysfs Caps Lock LED |
 | macOS | `macism`, `im-select` or `issw` | the same, and `osascript` |
 | Windows | Visual Studio's `cl` or clang targeting MSVC, to build the helper; else `im-select.exe` | the helper |
-| WSL | `im-select.exe` | as Linux |
+| WSL | `windows_ime_helper` (from host Windows) or `im-select.exe` | `windows_ime_helper` (from host Windows), else as Linux |
 
 ### Systems
 

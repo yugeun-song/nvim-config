@@ -24,8 +24,10 @@ The configuration writes for itself only into `nvim-config` inside `stdpath(kind
 | state | `reset_report.txt` | what the last reset removed |
 | state | `reset_report_unread` | the last reset's report, until a start has shown it |
 | state | `reset_confirmation` | the confirmation a typed `reset` leaves for the reset |
+| state | `wsl_history.json` | recent WSL connections (`<leader>fw`, `:Wsl`) (Windows) |
 | run, else state | `running_instances` | running Neovims with a UI, for `scripts/open-at.lua` (run: in a directory per `NVIM_APPNAME`) |
 | data | `windows_ime_helper` | the Windows IME helper's builds |
+| data | `windows_wsl_bridge` | the Windows WSL bridge's builds |
 | data | `registered_program_shims` | one shim per registered program |
 | data | `language_server_attach_rules.json` | language server attach rules |
 | data | `alive_lsp` | the Common Lisp language server and its libraries |
@@ -202,6 +204,30 @@ None of its own. `:checkhealth features.util` shows whether the lookup memory is
 ### What it needs
 
 Visual Studio (or its Build Tools) with the MSVC tools, or clang targeting MSVC, to build the helper.
+
+### Systems
+
+Windows (x86_64) only. On Linux and macOS, `:FeatureStatus` reports it as not supported.
+
+## WSL connection
+
+Connects host Windows Neovim or Neovide to Neovim inside WSL without a Linux GUI or `neovide` inside WSL (`lua/plugins/util/wsl.lua`, `lua/features/util/windows/wsl.lua`, `lua/features/util/windows/wsl_bridge.lua`, `native/windows_wsl_bridge.c`, `scripts/wsl.lua`). Off Windows, `lua/plugins/util/wsl.lua` returns `{}` immediately: no command, keymap, dashboard entry, autocmd, timer or `wsl.exe` call exists. On Windows, the dashboard `w` entry, `<leader>fw` and `:Wsl` are enabled only when `System32\wsl.exe` and at least one installed distribution under `HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss` exist (read synchronously in-process in under 1 ms with no `wsl.exe` startup or background polling), and nothing builds until you invoke it.
+
+- **GUI mode (Neovide)**: starts `neovide.exe --no-fork --neovim-bin <windows_wsl_bridge.exe>`, which spawns `System32\wsl.exe --distribution <distro> --cd <dir> --exec <nvim> --embed` directly without a Linux shell (`$SHELL`), passing standard pipes straight through and setting `vim.g.neovide = true` inside WSL.
+- **TUI mode (`nvim --remote-ui`)**: `windows_wsl_bridge.exe run-tui` creates a single-instance, owner-SID-only Named Pipe (`PIPE_REJECT_REMOTE_CLIENTS`) with a 128-bit random name, starts `<host_nvim> --server <pipe> --remote-ui`, verifies `GetNamedPipeClientProcessId == host_nvim_pid`, then relays bytes over anonymous stdio pipes to `System32\wsl.exe --exec <nvim> --embed`. From inside a running Windows Neovim, TUI mode opens a new Windows Terminal tab (`wt.exe`, passing `--dir-b64` and `--file-b64` so `;` cannot split subcommands) or falls back to `spawn-console` (`CREATE_NEW_CONSOLE`, without `cmd.exe`).
+- **Host IME bridge**: passes `NVIM_WSL_UI_PID` and the host `windows_ime_helper` location through `WSLENV` (works even with `appendWindowsPath=false`). Inside WSL, `lua/features/editor/korean_input/wsl_bridge.lua` spawns `windows_ime_helper.exe wsl-watch-input-state <ui_pid>`, which accepts only genuine WSL interop parents (`System32` or `Program Files\WSL`) and reads or switches the Windows IME only while that bound Neovide or Neovim window owns the foreground.
+
+### Keys and commands
+
+| Command | Does |
+|---|---|
+| `:Wsl` | Pick a WSL distribution, Linux directory and GUI/TUI mode (`<leader>fw`, dashboard `w`) |
+| `:Wsl [gui\|tui] [DISTRO [DIR [FILES...]]]` | Connect directly |
+| `nvim -l scripts/wsl.lua [--gui\|--tui] [-d DISTRO] [--dir DIR] [-- FILE...]` | Connect from a Windows terminal |
+
+### What it needs
+
+Windows 10/11 with WSL and Neovim installed inside the distribution; Neovide on host PATH for GUI mode; Visual Studio's `cl` or `clang` targeting MSVC on first use to build `native/windows_wsl_bridge.c`. Tests: [development](../development.md#windows-wsl-bridge).
 
 ### Systems
 
