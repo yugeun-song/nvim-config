@@ -60,7 +60,7 @@ Everything this configuration uses: how much it needs each one, and who installs
 | Linux kernels | [kbuildlab](https://github.com/yugeun-song/kbuildlab); [gdbtools](https://github.com/yugeun-song/gdbtools) optional | Linux |
 | Korean input switch and marks | `fcitx5`, `fcitx` or `ibus` | Linux |
 | | `macism`, `im-select` or `issw`; `osascript` | macOS |
-| | Visual Studio's `cl` or `clang` (builds the helper), else `im-select.exe` | Windows; WSL: `im-select.exe` |
+| | Visual Studio's `cl` (builds the helper), else `im-select.exe` | Windows; WSL: `im-select.exe` |
 | Window raise for `scripts/open-at.lua` | `hyprctl`, `swaymsg`, `niri`, `kdotool` or `xdotool` | Linux desktops |
 | | `osascript` | macOS |
 | | the IME helper, else PowerShell | Windows |

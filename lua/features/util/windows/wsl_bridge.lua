@@ -1,6 +1,5 @@
 -- Windows only: native/windows_wsl_bridge.c, built on demand into stdpath("data")/nvim-config/windows_wsl_bridge
--- by Visual Studio's cl or clang targeting MSVC (the source refuses anything else). Nothing runs at startup or on
--- Linux/macOS.
+-- by Visual Studio's cl (MSVC). Nothing runs at startup or on Linux/macOS.
 local M = {}
 
 local uv = vim.uv
@@ -20,73 +19,8 @@ local SELFTEST_TIMEOUT_MS = 5000
 local RECHECK_MS = 2000
 local RETRY_AFTER_S = 24 * 3600
 
-local function cl_in_toolset()
-  local dir = uv.os_getenv("VCToolsInstallDir")
-
-  if not dir or dir == "" then
-    return nil
-  end
-
-  local host = (uv.os_uname().machine or ""):lower():find("arm") and "Hostarm64" or "Hostx64"
-  local cl = vim.fs.joinpath(dir, "bin", host, "x64", "cl.exe")
-  local st = uv.fs_stat(cl)
-
-  return st and st.type == "file" and cl or nil
-end
-
-local COMPILERS = {
-  {
-    name = "cl",
-    version = "msvc",
-    locate = cl_in_toolset,
-    args = function(out, program)
-      return {
-        program,
-        "/nologo",
-        "/Fo" .. out:sub(1, -5) .. ".obj",
-        "/O2",
-        "/MT",
-        "/W4",
-        "/WX",
-        "/sdl",
-        "/guard:cf",
-        "/Fe" .. out,
-        SRC,
-        "/link",
-        "/WX",
-        "/guard:cf",
-        "/DEPENDENTLOADFLAG:0x800",
-        "/CETCOMPAT",
-      }
-    end,
-  },
-  {
-    name = "clang",
-    version = "clang",
-    locate = function()
-      local clang = vim.fn.exepath("clang")
-
-      return clang ~= "" and clang or nil
-    end,
-    args = function(out, program)
-      return {
-        program,
-        "--target=x86_64-pc-windows-msvc",
-        "-O2",
-        "-fms-runtime-lib=static",
-        "-Wall",
-        "-Wextra",
-        "-Werror",
-        "-Xclang",
-        "-cfguard",
-        "-o",
-        out,
-        SRC,
-        "-Wl,/WX,/guard:cf,/DEPENDENTLOADFLAG:0x800,/CETCOMPAT",
-      }
-    end,
-  },
-}
+-- cl's command lines: lua/features/util/windows/native_build.lua.
+local COMPILERS = require("features.util.windows.native_build").compilers(SRC)
 
 local LOAD_ERRORS = {
   [0xC0000135] = "a DLL it imports is missing",
@@ -269,7 +203,7 @@ local function compile(s)
   end
 
   if #found == 0 then
-    return finish(nil, "no Visual Studio cl (its MSVC environment), nor clang targeting MSVC on PATH")
+    return finish(nil, "no Visual Studio cl (its MSVC environment)")
   end
 
   vim.fn.mkdir(DIR, "p")

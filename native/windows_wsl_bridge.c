@@ -24,15 +24,16 @@
 #error "windows_wsl_bridge targets x86_64 Windows only."
 #endif
 
-// MSVC, or clang targeting the MSVC ABI (clang-cl, clang --target=x86_64-pc-windows-msvc).
+// Visual Studio's cl (MSVC) builds it. clang targeting the MSVC ABI (clang-cl, clang --target=x86_64-pc-windows-msvc)
+// reads it only for the tests' static checks.
 #if defined(__MINGW32__) || defined(__MINGW64__)
-#error "windows_wsl_bridge: MinGW is not supported; build with Visual Studio's cl, or clang targeting MSVC."
+#error "windows_wsl_bridge: MinGW is not supported; build with Visual Studio's cl."
 #elif defined(_MSC_VER) && !defined(__clang__)
 #define WINDOWS_WSL_BRIDGE_COMPILER "msvc"
 #elif defined(_MSC_VER) && defined(__clang__)
 #define WINDOWS_WSL_BRIDGE_COMPILER "clang"
 #else
-#error "windows_wsl_bridge: unknown compiler; build with Visual Studio's cl, or clang targeting MSVC."
+#error "windows_wsl_bridge: unknown compiler; build with Visual Studio's cl."
 #endif
 
 #define WIN32_LEAN_AND_MEAN

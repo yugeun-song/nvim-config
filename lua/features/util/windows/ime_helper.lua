@@ -1,10 +1,9 @@
 -- Windows only: native/windows_ime_helper.c, the native helper behind the IME switch, the 한/EN and CAPS indicators, the
 -- window raise and the tool shims. Built in the background into stdpath("data")/nvim-config/windows_ime_helper, once
--- per version of the source, by Visual Studio's cl or clang targeting MSVC (the source refuses anything else); nothing
--- is downloaded. Nothing it hands back is trusted unchecked: a build that warns, links oddly or cannot load its imports
--- is discarded (it must answer `version` exactly), the program is re-checked before use, and a watcher that says
--- anything but its two digits is stopped. It runs only as Neovim's child and ends with it
--- (native/windows_ime_helper.c).
+-- per version of the source, by Visual Studio's cl (MSVC); nothing is downloaded. Nothing it hands back is trusted
+-- unchecked: a build that warns, links oddly or cannot load its imports is discarded (it must answer `version`
+-- exactly), the program is re-checked before use, and a watcher that says anything but its two digits is stopped.
+-- It runs only as Neovim's child and ends with it (native/windows_ime_helper.c).
 local M = {}
 
 local uv = vim.uv
@@ -26,81 +25,8 @@ local COMPILER_WAIT_MS = 20000
 local SELFTEST_TIMEOUT_MS = 5000
 local RECHECK_MS = 2000
 
--- The cl of the toolset the MSVC environment names (Neovim's, from a Developer prompt or the captured one in
--- lua/features/lang/c/msvc_toolchain/developer_environment.lua), by its full path: PATH can list folders other
--- users may write before the toolset's own.
-local function cl_in_toolset()
-  local dir = uv.os_getenv("VCToolsInstallDir")
-
-  if not dir or dir == "" then
-    return nil
-  end
-
-  local host = (uv.os_uname().machine or ""):lower():find("arm") and "Hostarm64" or "Hostx64"
-  local cl = vim.fs.joinpath(dir, "bin", host, "x64", "cl.exe")
-  local st = uv.fs_stat(cl)
-
-  return st and st.type == "file" and cl or nil
-end
-
--- cl first, as the source is written for it. Warnings fail the build (/WX, -Werror), the linker's too: a library
--- for another machine is only a warning otherwise. The C runtime is linked in, so the program loads no DLL but
--- the system's own.
-local COMPILERS = {
-  {
-    name = "cl",
-    version = "msvc",
-    locate = cl_in_toolset,
-    args = function(out, program)
-      return {
-        program,
-        "/nologo",
-        -- The object beside the build's own temporary .exe: another Neovim may be building at the same time.
-        "/Fo" .. out:sub(1, -5) .. ".obj",
-        "/O2",
-        "/MT",
-        "/W4",
-        "/WX",
-        "/sdl",
-        "/guard:cf",
-        "/Fe" .. out,
-        SRC,
-        "/link",
-        "/WX",
-        "/guard:cf",
-        "/DEPENDENTLOADFLAG:0x800",
-        "/CETCOMPAT",
-      }
-    end,
-  },
-  {
-    name = "clang",
-    version = "clang",
-    locate = function()
-      local clang = vim.fn.exepath("clang")
-
-      return clang ~= "" and clang or nil
-    end,
-    args = function(out, program)
-      return {
-        program,
-        "--target=x86_64-pc-windows-msvc",
-        "-O2",
-        "-fms-runtime-lib=static",
-        "-Wall",
-        "-Wextra",
-        "-Werror",
-        -- What cl gets from /guard:cf (clang-cl passes the same).
-        "-Xclang",
-        "-cfguard",
-        "-o",
-        out,
-        SRC,
-        "-Wl,/WX,/guard:cf,/DEPENDENTLOADFLAG:0x800,/CETCOMPAT",
-      }
-    end,
-  },
-}
+-- cl's command lines: lua/features/util/windows/native_build.lua.
+local COMPILERS = require("features.util.windows.native_build").compilers(SRC)
 
 -- What a failed self-test's exit status means, for the log.
 local LOAD_ERRORS = {
@@ -345,10 +271,7 @@ local function compile(s, is_second_try)
       end, COMPILER_WAIT_MS)
     end
 
-    return finish(
-      nil,
-      "no Visual Studio cl (its MSVC environment), nor clang targeting MSVC on PATH; the features that need it are off"
-    )
+    return finish(nil, "no Visual Studio cl (its MSVC environment); the features that need it are off")
   end
 
   vim.fn.mkdir(DIR, "p")

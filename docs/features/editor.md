@@ -127,7 +127,7 @@ None. The langmap and the switch load at start, so keys typed during startup are
 |---|---|---|
 | Linux | `fcitx5`, `fcitx` or `ibus` | `fcitx5-remote` and the sysfs Caps Lock LED |
 | macOS | `macism`, `im-select` or `issw` | the same, and `osascript` |
-| Windows | Visual Studio's `cl` or clang targeting MSVC, to build the helper; else `im-select.exe` | the helper |
+| Windows | Visual Studio's `cl`, to build the helper; else `im-select.exe` | the helper |
 | WSL | `windows_ime_helper` (from host Windows) or `im-select.exe` | `windows_ime_helper` (from host Windows), else as Linux |
 
 ### Systems

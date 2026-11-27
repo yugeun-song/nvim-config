@@ -14,7 +14,7 @@ The rules every change follows, and how to check and test one.
 - Comments are compact and appear only where the code alone is unclear or a judgment was made; they say why.
 - One comment syntax per file; in C that is `//`.
 - Lua: StyLua (`stylua.toml`: 2 spaces, 120 columns). A blank line follows a statement that spans several lines and a run of `local` declarations, and precedes `return`.
-- C (`native/windows_ime_helper.c`, `native/windows_wsl_bridge.c` and their tests) follows Microsoft's Windows layout (`native/.clang-format`, clang-format 21 or later):
+- C (`native/windows_ime_helper.c`, `native/windows_wsl_bridge.c` and their tests) is built by Visual Studio's `cl` (MSVC) with the command in `lua/features/util/windows/native_build.lua`; clang targeting MSVC only checks it in the tests. It follows Microsoft's Windows layout (`native/.clang-format`, clang-format 21 or later):
   - braces on their own line, and on every body;
   - globals `g_`, file-static globals `gs_`;
   - booleans named with a be-verb (`isCrashed`);

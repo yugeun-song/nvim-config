@@ -96,7 +96,7 @@ local function windows_platform()
     status.available("windows_ime_helper (IME, indicators, window raise, shims)", path)
   else
     status.blocked("windows_ime_helper (IME, indicators, window raise, shims)", why, {
-      "Visual Studio's cl, or clang targeting MSVC, on PATH builds native/windows_ime_helper.c in the background at startup",
+      "Visual Studio's cl (its MSVC environment) builds native/windows_ime_helper.c in the background at startup",
     })
   end
 end
@@ -218,7 +218,7 @@ local function wsl_connection()
     status.available("windows_wsl_bridge", "builds on first WSL connection (native/windows_wsl_bridge.c)")
   else
     status.blocked("windows_wsl_bridge", bridge_why or "not available", {
-      "Visual Studio's cl or clang targeting MSVC builds native/windows_wsl_bridge.c on first WSL connection",
+      "Visual Studio's cl (its MSVC environment) builds native/windows_wsl_bridge.c on first WSL connection",
     })
   end
 

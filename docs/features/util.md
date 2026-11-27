@@ -166,7 +166,7 @@ What Windows lacks and Linux has elsewhere: an IME tool, a Caps Lock LED, a wind
 
 Copied as `NAME.exe` beside a `NAME.shim`, it runs the program that file names instead ([shims](#programs-registered-by-path)). It serves the [IME switch and indicators](editor.md#korean-input), the [window raise](editor.md#opening-from-other-programs) and the shims.
 
-- **Build.** x86_64 Windows only, by Visual Studio's `cl`, run by its full path in the toolset the [MSVC environment](lang.md#msvc-toolchain) names (PATH may list folders other users can write before it), or clang targeting MSVC; the preprocessor stops any other target or compiler (Linux, macOS, MinGW, 32-bit, ARM64). `CL`, `_CL_`, `LINK` and `_LINK_` are emptied for the build. Warnings fail the build, the linker's too; the C runtime is linked in, so the program loads only the system's DLLs. A build is named after a hash of the source and of every compiler's arguments, so a changed flag builds anew. A build that does not answer `version` exactly is discarded and the next compiler tried; the compilers' output is kept in `windows_ime_helper-*.log` beside the builds. A failed build is said at every start, the previous build runs meanwhile when there is one, and it is tried again once the compilers, INCLUDE, LIB or VCToolsInstallDir change, or a day later.
+- **Build.** x86_64 Windows only, by Visual Studio's `cl` (MSVC), run by its full path in the toolset the [MSVC environment](lang.md#msvc-toolchain) names (PATH may list folders other users can write before it); the preprocessor stops any other target or compiler (Linux, macOS, MinGW, 32-bit, ARM64; clang targeting MSVC only for the tests' static checks). `lua/features/util/windows/native_build.lua` holds the command for both native programs. `CL`, `_CL_`, `LINK` and `_LINK_` are emptied for the build. Warnings fail the build, the linker's too; the C runtime is linked in, so the program loads only the system's DLLs. A build is named after a hash of the source and of the compiler's arguments, so a changed flag builds anew. A build that does not answer `version` exactly is discarded; the compiler's output is kept in `windows_ime_helper-*.log` beside the builds. A failed build is said at every start, the previous build runs meanwhile when there is one, and it is tried again once `cl`, INCLUDE, LIB or VCToolsInstallDir change, or a day later.
 - **Only for Neovim.** It runs only as Neovim's child (its parent must be `nvim.exe`, checked against reused process ids; a shim's may be a few levels up, for `:terminal`), raises only a Neovim's window, and ends with Neovim: the watcher waits on Neovim's process and its stdin. That keeps it from being picked up as a general tool; it is no barrier against a program of the same user, which can name itself `nvim.exe` and could call Windows itself. The helper holds no privilege such a program lacks: not elevated, no service, no network.
 - **No keystrokes.** It reads only Caps Lock and the IME's mode, polled rather than hooked, since a keyboard hook would see every key; even that state is wiped once used.
 - **Nothing from where it starts.** Its libraries load from System32 only (it does not run where that cannot be set), and unless it runs as a shim it leaves the directory Neovim started it in: a repository can plant nothing for it, and the watcher does not keep that directory from being renamed or deleted.
@@ -202,7 +202,7 @@ None of its own. `:checkhealth features.util` shows whether the lookup memory is
 
 ### What it needs
 
-Visual Studio (or its Build Tools) with the MSVC tools, or clang targeting MSVC, to build the helper.
+Visual Studio (or its Build Tools) with the MSVC tools, to build the helper.
 
 ### Systems
 
@@ -226,7 +226,7 @@ Connects host Windows Neovim or Neovide to Neovim inside WSL without a Linux GUI
 
 ### What it needs
 
-Windows 10/11 with WSL and Neovim installed inside the distribution; Neovide on host PATH for GUI mode; Visual Studio's `cl` or `clang` targeting MSVC on first use to build `native/windows_wsl_bridge.c`. Tests: [development](../development.md#windows-wsl-bridge).
+Windows 10/11 with WSL and Neovim installed inside the distribution; Neovide on host PATH for GUI mode; Visual Studio's `cl` (MSVC) on first use to build `native/windows_wsl_bridge.c`. Tests: [development](../development.md#windows-wsl-bridge).
 
 ### Systems
 

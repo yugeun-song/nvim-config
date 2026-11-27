@@ -242,7 +242,7 @@ local function korean_input()
     )
   else
     local advice = status.MACOS and "macism, im-select or issw"
-      or status.WINDOWS and "Visual Studio's cl or clang targeting MSVC (builds native/windows_ime_helper.c), or im-select.exe"
+      or status.WINDOWS and "Visual Studio's cl (builds native/windows_ime_helper.c), or im-select.exe"
       or "fcitx5, fcitx or ibus"
 
     status.blocked("English on leaving Insert", "no IME tool found", { "install " .. advice })
@@ -256,7 +256,7 @@ local function korean_input()
       status.available("IME and Caps Lock in the statusline", path .. " watch")
     else
       status.blocked("IME and Caps Lock in the statusline", "windows_ime_helper " .. why, {
-        "Visual Studio's cl, or clang targeting MSVC, on PATH builds native/windows_ime_helper.c in the background at startup",
+        "Visual Studio's cl (its MSVC environment) builds native/windows_ime_helper.c in the background at startup",
       })
     end
 
