@@ -16,6 +16,8 @@
 --                    opened in it, one per line. env (optional) adds variables, for a program that takes such a
 --                    path from its environment.
 --   capture_stdout   (optional) true for a program that prints the folder it quits in instead of writing a file
+--   keys             (optional) { key, action } pairs that the float's footer shows: the program's own keys that open
+--                    or cancel, since its help names them after its own editor and cd actions
 --   read(got) -> dir?, chosen, err?
 --                    what the program left: got.cwd_file and got.chooser_file hold the lines of those files, and
 --                    got.stdout what it printed after leaving its alternate screen (escape sequences removed), when
@@ -57,12 +59,14 @@ local function run_probe(argv, env)
 end
 
 M.ADAPTERS = {
-  -- spf --print-last-dir prints the folder on every quit (q, Esc, Q); --chooser-file takes the file opened (Enter)
-  -- and quits. Its TUI draws on stdout, so the folder is read from the terminal's output.
+  -- spf --print-last-dir prints the folder shown on every quit (q, Esc, Q). With --chooser-file, e writes the item
+  -- under the cursor (folder or file), E the folder shown and Enter a file, and spf quits. Its TUI draws on stdout,
+  -- so the folder is read from the terminal's output.
   superfile = {
     executable = "spf",
     url = "https://superfile.dev/",
     capture_stdout = true,
+    keys = { { "e", "open item under cursor" }, { "q", "open folder shown" }, { "C-\\ C-n q", "cancel" } },
     probe = function(exe)
       -- spf writes default theme files on first invocation; keep the probe out of the user's XDG directories.
       local tmp = vim.fn.tempname()
@@ -106,6 +110,7 @@ M.ADAPTERS = {
   yazi = {
     executable = "yazi",
     url = "https://yazi-rs.github.io/",
+    keys = { { "Space Enter", "open item selected" }, { "q", "open folder shown" }, { "Q", "cancel" } },
     probe = function(exe)
       -- yazi --help queries the terminal when attached to one and fails without a tty; --version works headless.
       local ok, out = run_probe({ exe, "--version" })

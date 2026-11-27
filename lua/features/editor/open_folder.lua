@@ -160,6 +160,25 @@ local function choice(file_managers, name, dir, chosen)
   return dir, files
 end
 
+-- The footer naming fm's keys, styled as Snacks styles a window's own keys; nil when fm names none.
+local function key_footer(fm)
+  if type(fm.keys) ~= "table" or not fm.keys[1] then
+    return nil
+  end
+
+  local footer = {}
+
+  for _, pair in ipairs(fm.keys) do
+    footer[#footer + 1] = { " ", "SnacksFooter" }
+    footer[#footer + 1] = { " " .. pair[1] .. " ", "SnacksFooterKey" }
+    footer[#footer + 1] = { " " .. pair[2] .. " ", "SnacksFooterDesc" }
+  end
+
+  footer[#footer + 1] = { " ", "SnacksFooter" }
+
+  return footer
+end
+
 -- Runs the first installed file manager of lua/features/editor/file_managers.lua in a float at the working directory.
 function M.pick()
   local file_managers = require("features.editor.file_managers")
@@ -191,6 +210,7 @@ function M.pick()
     border = "rounded",
     title = " Open Folder ",
     title_pos = "center",
+    footer = key_footer(fm),
     -- <Esc> is the file manager's own key: twice in a row it would leave it for Normal mode, where its keys hit a
     -- terminal buffer (E21) and q closes the float under it.
     keys = { q = "close", term_normal = false },
